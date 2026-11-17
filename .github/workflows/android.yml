@@ -150,3 +150,39 @@ jobs:
         with:
           name: e2e-results
           path: out
+
+  # Publishes a GitHub *pre*release when a tag like v0.1.0-mvp.1 is pushed, only after the
+  # emulator e2e passed. Attaches the signed APK and the proot GPL-2 corresponding source.
+  prerelease:
+    name: Publish prerelease
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-')
+    needs: [apk, proot, droidc, emulator-e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: selkie-apk
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: proot-android
+          path: proot
+      - uses: actions/download-artifact@v4
+        with:
+          name: droidc-android
+          path: droidc
+      - name: Collect assets
+        run: |
+          cp proot/proot-src-*.tar.gz dist/
+          cp droidc/DROIDC_COMMIT dist/DROIDC_COMMIT.txt
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -la dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          make_latest: false
+          body_path: docs/release-notes.md
+          files: dist/*
