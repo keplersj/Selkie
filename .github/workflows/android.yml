@@ -55,15 +55,8 @@ jobs:
           name: droidc-android
           path: out
 
-  # TEMPORARY GUARD: proot.yml is not on this branch yet, so the real
-  #   proot:
-  #     uses: ./.github/workflows/proot.yml
-  # would make the whole workflow invalid. Restore it once proot.yml is merged.
   proot:
-    name: Build proot (stub until proot.yml lands)
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "proot.yml not merged yet"
+    uses: ./.github/workflows/proot.yml
 
   apk:
     name: Build APK and unit tests
@@ -80,7 +73,10 @@ jobs:
         with:
           name: droidc-android
           path: third_party/bin
-      # TEMPORARY: proot-android artifact does not exist until proot.yml lands.
+      - uses: actions/download-artifact@v4
+        with:
+          name: proot-android
+          path: third_party/bin
       - name: Show native binaries
         run: find third_party/bin -type f | sort
       - name: Build release APK + unit tests, debug + androidTest APKs
