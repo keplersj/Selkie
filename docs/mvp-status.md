@@ -50,6 +50,21 @@ Result: **passes** (CI run [44081405858](https://github.com/keplersj/Selkie/acti
 - DNS via droidc's `--dns` resolver path was not exercised: CI networks provide resolvers
   normally. On Android, Selkie passes the DNS servers from `ConnectivityManager`.
 
+## Release status: prerelease not yet published (blocker)
+
+The `prerelease` job in `.github/workflows/android.yml` publishes `v0.1.0-mvp.1` (APK, proot
+source tarball, droidc commit, SHA256SUMS) when a `v*-*` tag is pushed, and only after the emulator
+e2e passes on that tag. This session's git access refuses tag pushes (HTTP 403; only the working
+branch is writable), so the tag hasn't been pushed and the release doesn't exist yet. To publish,
+push the tag on the PR's head commit, for example:
+
+    git fetch origin ccr-78817e77-qptw7t
+    git tag -a v0.1.0-mvp.1 -m "Selkie 0.1.0-mvp.1 (prerelease)" FETCH_HEAD
+    git push origin v0.1.0-mvp.1
+
+Until then the same signed APK is available as the `selkie-apk` artifact of the latest green
+Android CI run on the branch.
+
 ## Install on the Galaxy Tab S11
 
 1. On the tablet, open the release page
