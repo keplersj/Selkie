@@ -11,7 +11,8 @@ rc=0
 # Printed into the job log on failure (artifacts may be unreachable from some sandboxes).
 diag() {
   echo "::group::logcat (seccomp|SIGSYS|audit|selkie|droidc|proot)"
-  adb logcat -d | grep -iE "seccomp|SIGSYS|audit|selkie|droidc|proot" | tail -300
+  adb logcat -d | grep -iE "seccomp|SIGSYS|audit|droidc|proot" | grep -v gmscore | tail -200
+  echo "::group::SelkieE2E log"; adb logcat -d -s SelkieE2E:V | tail -400
   echo "::endgroup::"
   echo "::group::droidc stderr log (app cacheDir/droidc.log)"
   adb shell run-as $PKG cat cache/droidc.log 2>&1 | tail -300 | tee "$OUT/droidc.log"
