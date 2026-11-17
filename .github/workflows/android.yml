@@ -142,8 +142,9 @@ jobs:
           ram-size: 4096M
           heap-size: 512M
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -qemu -cpu host
           disable-animations: true
+          # CentOS Stream 10 glibc requires x86-64-v3; the default emulator CPU model lacks it.
           script: bash .github/scripts/e2e.sh apks out
       - uses: actions/upload-artifact@v4
         if: always()
