@@ -138,7 +138,7 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          disk-size: 8G
+          disk-size: 12G
           ram-size: 4096M
           heap-size: 512M
           force-avd-creation: false

@@ -55,20 +55,25 @@ class EngineE2ETest {
         return p.exitValue() to text.toString()
     }
 
-    /** Two different digests of centos-bootc stream10: `stream10` and the newest other tag with a different digest. */
-    private fun findOtherTag(): String? {
-        val url = "https://quay.io/api/v1/repository/centos-bootc/centos-bootc/tag/?limit=100&onlyActiveTags=true"
+    /**
+     * A second, older digest of centos-bootc stream10, from Quay's tag history (the previous
+     * build the `stream10` tag pointed at), referenced by digest.
+     */
+    private fun findOtherTag(currentDigest: String): String? {
+        val url = "https://quay.io/api/v1/repository/centos-bootc/centos-bootc/tag/" +
+            "?specificTag=stream10&onlyActiveTags=false&limit=20"
         val c = URL(url).openConnection() as HttpURLConnection
         val body = c.inputStream.bufferedReader().readText()
-        val tags = SelkieJson.parseToJsonElement(body).jsonObject["tags"]!!.jsonArray.map { it.jsonObject }
-        fun name(o: JsonObject) = o["name"]!!.jsonPrimitive.content
+        val history = SelkieJson.parseToJsonElement(body).jsonObject["tags"]!!.jsonArray.map { it.jsonObject }
         fun digest(o: JsonObject) = o["manifest_digest"]!!.jsonPrimitive.content
-        val base = tags.firstOrNull { name(it) == "stream10" } ?: return null
-        val cands = tags.filter { name(it).startsWith("stream10") && digest(it) != digest(base) &&
-            it["is_manifest_list"]?.jsonPrimitive?.booleanOrNull != false }
-        log("tags seen: ${tags.map { name(it) }}")
-        return cands.minByOrNull { it["start_ts"]?.jsonPrimitive?.longOrNull ?: Long.MAX_VALUE }
-            ?.let { "quay.io/centos-bootc/centos-bootc:${name(it)}" }
+        val indexDigest = history.firstOrNull { it["end_ts"] == null || it["end_ts"] is kotlinx.serialization.json.JsonNull }
+            ?.let { digest(it) }
+        log("stream10 history: ${history.map { digest(it).take(19) }}")
+        return history
+            .filter { it["is_manifest_list"]?.jsonPrimitive?.booleanOrNull != false }
+            .map { digest(it) }
+            .firstOrNull { it != indexDigest && it != currentDigest }
+            ?.let { "quay.io/centos-bootc/centos-bootc@$it" }
     }
 
     @Test fun fullLifecycle() = runBlocking {
@@ -129,7 +134,7 @@ class EngineE2ETest {
         val afterUp = status().current!!.manifestDigest
 
         // 4. second digest, then rollback
-        val other = findOtherTag()
+        val other = findOtherTag(afterUp)
         assertNotNull("could not find a second centos-bootc stream10 tag with a different digest", other)
         log("second ref: $other")
         runSwitch(other!!)
