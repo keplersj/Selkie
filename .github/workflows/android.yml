@@ -1,0 +1,141 @@
+name: Android
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  droidc:
+    name: Build droidc (static musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read droidc ref
+        id: ref
+        run: echo "ref=$(tr -d '[:space:]' < droidc.ref)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: keplersj/droidc
+          ref: ${{ steps.ref.outputs.ref }}
+          path: droidc-src
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            droidc-src/target
+          key: droidc-${{ runner.os }}-${{ hashFiles('droidc-src/Cargo.lock') }}
+          restore-keys: droidc-${{ runner.os }}-
+      - name: Install zig + cargo-zigbuild
+        run: |
+          pip install ziglang
+          cargo install cargo-zigbuild --locked
+      - name: Build
+        working-directory: droidc-src
+        run: |
+          # If droidc's README documents a different build command, prefer that one.
+          cargo zigbuild --release --bin droidc --target aarch64-unknown-linux-musl
+          cargo zigbuild --release --bin droidc --target x86_64-unknown-linux-musl
+      - name: Stage
+        run: |
+          mkdir -p out/arm64-v8a out/x86_64
+          cp droidc-src/target/aarch64-unknown-linux-musl/release/droidc out/arm64-v8a/libdroidc.so
+          cp droidc-src/target/x86_64-unknown-linux-musl/release/droidc out/x86_64/libdroidc.so
+          file out/*/libdroidc.so
+          echo "$(git -C droidc-src rev-parse HEAD)" > out/DROIDC_COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droidc-android
+          path: out
+
+  proot:
+    name: Build proot
+    uses: ./.github/workflows/proot.yml
+
+  apk:
+    name: Build APK and unit tests
+    needs: [droidc, proot]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: droidc-android
+          path: third_party/bin
+      - uses: actions/download-artifact@v4
+        with:
+          name: proot-android
+          path: third_party/bin
+      - name: Show native binaries
+        run: find third_party/bin -type f | sort
+      - name: Build release APK + unit tests, debug + androidTest APKs
+        run: ./gradlew --no-daemon assembleRelease testReleaseUnitTest assembleDebug assembleDebugAndroidTest
+      - name: Name the APK
+        run: |
+          VERSION=$(sed -n 's/^val selkieVersion = "\(.*\)"/\1/p' app/build.gradle.kts)
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/selkie-${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk dist/
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selkie-apk
+          path: dist/selkie-*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-apks
+          path: |
+            dist/app-debug.apk
+            dist/app-debug-androidTest.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-reports
+          path: app/build/reports/tests
+
+  emulator-e2e:
+    name: Emulator E2E (x86_64, API 34)
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-apks
+          path: apks
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disk-size: 8G
+          ram-size: 4096M
+          heap-size: 512M
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash .github/scripts/e2e.sh apks out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: out
