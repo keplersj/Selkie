@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val selkieVersion = "0.1.0"
+val selkieVersion = "0.1.0-mvp.1"
 val abis = listOf("arm64-v8a", "x86_64")
 val nativeLibs = listOf("libdroidc.so", "libdroidc-guest.so", "libproot.so", "libproot-loader.so")
 
@@ -58,7 +58,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += abis }
         buildConfigField("String", "PROOT_SOURCE_URL",
-            "\"https://github.com/keplersj/Selkie/releases\"")
+            "\"https://github.com/keplersj/Selkie/releases/tag/v$selkieVersion\"")
     }
 
     signingConfigs {
