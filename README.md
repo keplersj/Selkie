@@ -22,11 +22,12 @@ See [docs/architecture.md](docs/architecture.md).
 
 Requirements: JDK 21, Android SDK (platform 36, build-tools 36.0.0). The Gradle wrapper is included.
 
-Native binaries are **not committed**. The APK needs `libdroidc.so`, `libproot.so`, `libproot-loader.so`
+Native binaries are **not committed**. The APK needs `libdroidc.so` (Android/bionic build), `libdroidc-guest.so` (static musl build), `libproot.so`, `libproot-loader.so`
 for `arm64-v8a` and `x86_64`:
 
 ```
 third_party/bin/<abi>/libdroidc.so
+third_party/bin/<abi>/libdroidc-guest.so
 third_party/bin/<abi>/libproot.so
 third_party/bin/<abi>/libproot-loader.so
 ```
@@ -35,7 +36,9 @@ or any other directory with that layout via `-Pselkie.nativeBinDir=<dir>`. Gradl
 `app/src/main/jniLibs/` (git-ignored) and fails with a clear message if any is missing.
 `-Pselkie.allowMissingNative=true` permits a compile-only build with no binaries (the app won't run).
 
-- droidc: static musl build (`cargo zigbuild --release --bin droidc --target {aarch64,x86_64}-unknown-linux-musl`), copy as `libdroidc.so`. CI does this; see `.github/workflows/android.yml` and `droidc.ref`.
+- droidc is built twice per ABI (CI does this; see `.github/workflows/android.yml` and `droidc.ref`):
+  - `libdroidc.so`: Android/bionic build (`cargo ndk -t arm64-v8a -t x86_64 build --release --bin droidc`, NDK r27c), run by Selkie. Android's app seccomp filter kills static musl binaries with SIGSYS (legacy syscalls such as `mkdir`, `rename`, `poll` on x86_64), so the app-side engine must be a bionic binary.
+  - `libdroidc-guest.so`: static musl build (`cargo zigbuild --release --bin droidc --target {aarch64,x86_64}-unknown-linux-musl`), bound into the guest as `/usr/bin/droidc`; inside proot syscalls are handled by proot, so musl is fine there.
 - proot: `third_party/proot/build.sh <outdir> <abi>` (NDK; separate workflow `.github/workflows/proot.yml`, artifact `proot-android`).
 
 ```

@@ -10,7 +10,9 @@ fun engineEnvFrom(context: Context, dns: List<String> = currentDns(context)): En
     val uid = Process.myUid()
     return EngineEnv(
         nativeLibDir = java.io.File(app.applicationInfo.nativeLibraryDir),
-        filesDir = app.filesDir,
+        // Canonical: droidc records absolute host paths in link2symlink entries, so the path droidc
+        // sees and the path proot gets as -r must be the same (/data/user/0 vs /data/data).
+        filesDir = app.filesDir.canonicalFile,
         cacheDir = app.cacheDir,
         uid = uid,
         gid = uid,

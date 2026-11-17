@@ -78,6 +78,7 @@ class EngineE2ETest {
         assertEquals("phantom check should report OK after settings put global", PhantomProcessCheck.State.OK, phantom.state)
         assertTrue("libdroidc.so missing", env.droidcBin.isFile)
         assertTrue("libproot.so missing", env.prootBin.isFile)
+        assertTrue("libdroidc-guest.so missing", env.droidcGuestBin.isFile)
         env.droidcRoot.deleteRecursively()
         log("droidc: ${client.version()} / proot: ${client.prootVersion()}")
 

@@ -23,7 +23,7 @@ class ProotCommandBuilderTest {
             "/lib/libproot.so", "--kill-on-exit", "--link2symlink", "-i", "10234:10234",
             "-r", "/files/droidc/current/rootfs", "-w", "/root",
             "-b", "/dev:/dev", "-b", "/proc:/proc", "-b", "/sys:/sys",
-            "-b", "/lib/libdroidc.so:/usr/bin/droidc",
+            "-b", "/lib/libdroidc-guest.so:/usr/bin/droidc",
             "-b", "/files/guest/tmp:/tmp", "-b", "/files/guest/run:/run", "-b", "/files/guest/shm:/dev/shm",
             "-b", "/files/guest/generated/resolv.conf:/etc/resolv.conf",
             "-b", "/files/guest/generated/proc_stat:/proc/stat",

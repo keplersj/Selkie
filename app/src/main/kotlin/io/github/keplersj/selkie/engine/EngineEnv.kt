@@ -14,7 +14,10 @@ data class EngineEnv(
     val gid: Int,
     val dns: List<String> = emptyList(),
 ) {
+    /** Android (bionic) build of droidc: run by Selkie. Static musl builds hit Android's seccomp allowlist (SIGSYS). */
     val droidcBin: File get() = File(nativeLibDir, "libdroidc.so")
+    /** Static musl build of droidc: bound into the guest as /usr/bin/droidc (proot handles that side). */
+    val droidcGuestBin: File get() = File(nativeLibDir, "libdroidc-guest.so")
     val prootBin: File get() = File(nativeLibDir, "libproot.so")
     val prootLoader: File get() = File(nativeLibDir, "libproot-loader.so")
 

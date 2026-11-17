@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   droidc:
-    name: Build droidc (static musl)
+    name: Build droidc (bionic + static musl)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,31 +24,43 @@ jobs:
           path: droidc-src
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
+          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl,aarch64-linux-android,x86_64-linux-android
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             droidc-src/target
-          key: droidc-${{ runner.os }}-${{ hashFiles('droidc-src/Cargo.lock') }}
+          key: droidc-${{ runner.os }}-${{ hashFiles('droidc-src/Cargo.lock') }}-v2
           restore-keys: droidc-${{ runner.os }}-
-      - name: Install zig + cargo-zigbuild
+      - name: Install NDK r27c
+        run: |
+          curl -fsSL -o ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          unzip -q ndk.zip -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r27c" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$RUNNER_TEMP/android-ndk-r27c" >> "$GITHUB_ENV"
+      - name: Install zig, cargo-zigbuild, cargo-ndk
         run: |
           pip install ziglang
           cargo install cargo-zigbuild --locked
-      - name: Build
+          cargo install cargo-ndk --locked
+      - name: Build static musl (guest) binaries
         working-directory: droidc-src
         run: |
-          # If droidc's README documents a different build command, prefer that one.
+          # If droidc's README documents different commands, prefer those.
           cargo zigbuild --release --bin droidc --target aarch64-unknown-linux-musl
           cargo zigbuild --release --bin droidc --target x86_64-unknown-linux-musl
+      - name: Build Android (bionic) binaries
+        working-directory: droidc-src
+        run: cargo ndk --platform 29 -t arm64-v8a -t x86_64 build --release --bin droidc
       - name: Stage
         run: |
           mkdir -p out/arm64-v8a out/x86_64
-          cp droidc-src/target/aarch64-unknown-linux-musl/release/droidc out/arm64-v8a/libdroidc.so
-          cp droidc-src/target/x86_64-unknown-linux-musl/release/droidc out/x86_64/libdroidc.so
-          file out/*/libdroidc.so
+          cp droidc-src/target/aarch64-linux-android/release/droidc out/arm64-v8a/libdroidc.so
+          cp droidc-src/target/x86_64-linux-android/release/droidc out/x86_64/libdroidc.so
+          cp droidc-src/target/aarch64-unknown-linux-musl/release/droidc out/arm64-v8a/libdroidc-guest.so
+          cp droidc-src/target/x86_64-unknown-linux-musl/release/droidc out/x86_64/libdroidc-guest.so
+          file out/*/*.so
           echo "$(git -C droidc-src rev-parse HEAD)" > out/DROIDC_COMMIT
       - uses: actions/upload-artifact@v4
         with:

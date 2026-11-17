@@ -13,7 +13,7 @@ data class Invocation(val argv: List<String>, val env: Map<String, String>) {
  * Builds the proot command line for entering the current deployment. Pure: no I/O, so the exact
  * argv is unit-tested. [GuestFiles] creates the host files/dirs that the binds refer to.
  *
- * Android binds: /dev, /proc, /sys, libdroidc.so -> /usr/bin/droidc, writable /tmp, /run, /dev/shm,
+ * Android binds: /dev, /proc, /sys, libdroidc-guest.so -> /usr/bin/droidc, writable /tmp, /run, /dev/shm,
  * generated resolv.conf, and fake /proc files for entries Android hides. Binds from
  * `droidc shell-spec` come after, so guest paths under /run (e.g. /run/droidc/root) land inside
  * the writable /run dir.
@@ -36,7 +36,7 @@ class ProotCommandBuilder(
         bind("/dev", "/dev")
         bind("/proc", "/proc")
         bind("/sys", "/sys")
-        bind(env.droidcBin.path, "/usr/bin/droidc")
+        bind(env.droidcGuestBin.path, "/usr/bin/droidc")
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
         bind(env.guestShm.path, "/dev/shm")

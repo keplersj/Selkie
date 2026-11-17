@@ -2,7 +2,7 @@
 
 ```
 MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
-                                    |-- DroidcClient  --ProcessBuilder--> libdroidc.so --json (NDJSON)
+                                    |-- DroidcClient  --ProcessBuilder--> libdroidc.so (bionic) --json (NDJSON)
                                     |-- terminal sessions: TerminalSession(libproot.so ... droidc supervise -- bash -l)
                                     '-- StateFlow<ServiceState>  (operation, status, sessions)
 ```
@@ -22,10 +22,19 @@ Command line: `libdroidc.so --root <filesDir>/droidc --json [--dns a,b] <cmd>`. 
 (its tail is shown on error cards). Cancelling kills the process; droidc is crash-safe and recovers on its next run.
 DNS servers come from `ConnectivityManager` link properties because Android has no `/etc/resolv.conf` for a static binary.
 
+## Two droidc builds
+
+Android applies a seccomp allowlist to app processes. A static musl binary uses legacy syscalls (`mkdir`, `chmod`,
+`rename`, `unlink`, `poll`, `access`, `lstat`, ... on x86_64) that are not on it, so it dies with SIGSYS (exit status 159).
+Selkie therefore runs a **bionic** build (`libdroidc.so`, built with the NDK) itself, while the **static musl** build is
+shipped as `libdroidc-guest.so` and bound into the guest as `/usr/bin/droidc`, where proot intercepts syscalls.
+The filesDir path is canonicalized before it is given to droidc and proot, because link2symlink entries contain absolute
+host paths that must resolve the same way for both.
+
 ## proot session
 
 `libproot.so --kill-on-exit --link2symlink -i <uid>:<gid> -r <rootfs> -w <cwd>` + binds
-(`/dev /proc /sys`, `libdroidc.so:/usr/bin/droidc`, writable tmp/run/shm, resolv.conf, fake proc files, then the
+(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, writable tmp/run/shm, resolv.conf, fake proc files, then the
 binds from `droidc shell-spec`). Environment is built from scratch (shell-spec env plus `PROOT_LOADER`,
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
