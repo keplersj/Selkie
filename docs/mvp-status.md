@@ -32,7 +32,7 @@ Emulator end-to-end (CI, `reactivecircus/android-emulator-runner`, API 34 google
 `quay.io/centos-bootc/centos-bootc:stream10` with `--links link2symlink`, runs commands inside the
 deployment through the bundled proot (`cat /etc/os-release`, `droidc --json status`, `ls`, `id`,
 `id -u` under `-0`), upgrades, switches to a second stream10 digest, and rolls back.
-Result: EMULATOR_RESULT
+Result: **passes** (CI run [44081405858](https://github.com/keplersj/Selkie/actions/runs/44081405858)). Earlier runs found and fixed three Android-only problems: SIGSYS from musl on x86_64 (fixed by the bionic build), CentOS 10 needing x86-64-v3 (emulator `-cpu host`), and the test's second-digest lookup.
 
 ### Not working or not done
 
@@ -79,14 +79,14 @@ with a secret-held key before any real release.
 | | Bluefin LTS arm64 (`ghcr.io/projectbluefin/bluefin-lts:stable`) | CentOS Stream 10 bootc x86_64 |
 | --- | --- | --- |
 | Where | GitHub `ubuntu-24.04-arm` runner (native arm64, ext4) | emulator, API 34 x86_64 (and a Linux runner) |
-| Manifest digest | `sha256:d2a12ef3…0343d` (index `sha256:baee8880…e022`, built 2026-10-12) | `stream10` on 2026-11-17 |
+| Manifest digest | `sha256:d2a12ef3…0343d` (index `sha256:baee8880…e022`, built 2026-10-12) | `stream10` on 2026-11-17 (`sha256:058a60b7…79ec`) |
 | Signature | keyless, verified: `https://github.com/projectbluefin/actions/.github/workflows/reusable-build.yml@refs/tags/v1`, issuer GitHub Actions | none (unsigned, `--insecure-allow-unsigned`) |
 | Download (compressed layers) | **3,797,209,399 bytes (3.80 GB)**, 68 zstd layers | 917,727,248 bytes (0.92 GB), 66 gzip layers |
 | Files | 216,143 | 101,564 |
 | Hard links in the image | **41,542** (46,856 `.l2s.*` entries after conversion) | 31,863 |
 | Deployment size on disk | **7.27 GB** (droidc count; `du -sh` 6.8 GB) | 2.71 GB on the emulator |
 | Blob cache kept on disk | 3.6 GB | 0.9 GB |
-| Unpack time | 32–33 s (two runs) on the arm64 runner; 81 s wall for download + unpack | **EMULATOR_UNPACK** in the emulator; 24 s on an x86_64 Linux runner |
+| Unpack time | 32–33 s (two runs) on the arm64 runner; 81 s wall for download + unpack | **27–52 s** in the emulator (4 runs: 52.4, 39.8, 26.9, 31.8 s; 70–160 s including download); 24 s on an x86_64 Linux runner |
 
 link2symlink costs about 15% extra disk compared to real hard links (CentOS x86_64 locally: 2.07 GB
 vs 1.80 GB), and roughly doubles unpack time (25 s vs 13 s), because each hard link becomes two
