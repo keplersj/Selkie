@@ -1,0 +1,60 @@
+name: proot
+
+# Builds the patched proot for Android (arm64-v8a, x86_64). Called by the app CI,
+# also runnable by hand. See third_party/proot/README.md.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y gawk
+      - name: Install NDK r27c
+        run: |
+          curl -fsSL -o ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          unzip -q ndk.zip -d "$RUNNER_TEMP"
+          echo "NDK=$RUNNER_TEMP/android-ndk-r27c" >> "$GITHUB_ENV"
+      - name: Build proot
+        run: third_party/proot/build.sh "$RUNNER_TEMP/out/${{ matrix.abi }}" ${{ matrix.abi }}
+      - name: Stage outputs
+        run: |
+          mkdir -p stage
+          cp "$RUNNER_TEMP/out/${{ matrix.abi }}"/lib*.so stage/
+          cp "$RUNNER_TEMP/out/${{ matrix.abi }}"/proot-src-*.tar.gz stage/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proot-${{ matrix.abi }}
+          path: stage/
+          if-no-files-found: error
+
+  bundle:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: proot-*
+          path: in
+      - name: Assemble
+        run: |
+          mkdir -p out/arm64-v8a out/x86_64
+          cp in/proot-arm64-v8a/lib*.so out/arm64-v8a/
+          cp in/proot-x86_64/lib*.so out/x86_64/
+          # one source tarball (both ABIs are built from the same inputs)
+          cp in/proot-arm64-v8a/proot-src-*.tar.gz out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proot-android
+          path: out/
+          if-no-files-found: error
