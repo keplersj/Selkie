@@ -40,6 +40,12 @@ sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
+  for f in "$OUT"/screenshots/*-session-failed.log; do
+    [ -f "$f" ] || continue
+    echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
+    grep -i -E "pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -150
+    echo "::endgroup::"
+  done
   echo "::group::SelkieE2E log"; grep -E "SelkieE2E|SelkieDesktop|AndroidRuntime" "$OUT/logcat.txt" | tail -200; echo "::endgroup::"
 fi
 exit $rc
