@@ -2,6 +2,7 @@ package io.github.keplersj.selkie.ui
 
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -9,7 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -47,9 +52,13 @@ fun DesktopScreen(service: SessionService, onBack: () -> Unit) {
         if (service.state.value.desktop is DesktopState.Stopped) service.startDesktop(s.first, s.second)
     }
 
+    // Compose, not the embedded view, owns key focus in this window, so hardware keys (and the test's
+    // injected ones) are forwarded to the compositor view from here. Back is left to the system.
+    val keyFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { keyFocus.requestFocus() } }
     Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged {
         if (it.width > 0 && it.height > 0 && size == null) size = it.width to it.height
-    }) {
+    }.focusRequester(keyFocus).focusable().onPreviewKeyEvent { viewRef?.dispatchKeyEvent(it.nativeKeyEvent) ?: false }) {
         AndroidView(
             factory = { c -> CompositorView(c) { service.compositor() }.also { viewRef = it } },
             modifier = Modifier.fillMaxSize(),
