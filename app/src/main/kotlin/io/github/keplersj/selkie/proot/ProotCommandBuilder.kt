@@ -24,6 +24,8 @@ class ProotCommandBuilder(
     /** guest path (e.g. "/proc/stat") -> host file with generated content. */
     private val fakeProc: Map<String, File> = emptyMap(),
     private val resolvConf: File = File(env.guestGenerated, "resolv.conf"),
+    /** guest path -> generated host file bound over the image's: /etc/passwd, /etc/group, /proc/filesystems. */
+    private val overlays: Map<String, File> = emptyMap(),
 ) {
     fun prootArgs(rootMode: Boolean = false): List<String> = buildList {
         add(env.prootBin.path)
@@ -41,7 +43,7 @@ class ProotCommandBuilder(
         bind(env.guestRun.path, "/run")
         bind(env.guestShm.path, "/dev/shm")
         bind(resolvConf.path, "/etc/resolv.conf")
-        for ((guest, host) in fakeProc.toSortedMap()) bind(host.path, guest)
+        for ((guest, host) in (fakeProc + overlays).toSortedMap()) bind(host.path, guest)
         for (b in spec.binds) bind(b.host, b.guest)
     }
 

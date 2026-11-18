@@ -55,6 +55,37 @@ class ProotCommandBuilderTest {
         dir.deleteRecursively()
     }
 
+    @Test fun identityAddsAppUserOnce() {
+        val base = "root:x:0:0:Super User:/root:/bin/bash\n"
+        val out = GuestFiles.passwdWithUser(base, 10234, 10234, "/root")
+        assertEquals(base + "selkie:x:10234:10234:Selkie:/root:/bin/bash\n", out)
+        assertEquals(out, GuestFiles.passwdWithUser(out, 10234, 10234, "/root"))
+        assertEquals("root:x:0:\nselkie:x:10234:\n", GuestFiles.groupWithGid("root:x:0:\n", 10234))
+        assertEquals("selkie:x:10234:\n", GuestFiles.groupWithGid("", 10234))
+    }
+
+    @Test fun selinuxfsIsHiddenFromProcFilesystems() {
+        val host = "nodev\tsysfs\nnodev\tselinuxfs\nnodev\tproc\n\text4\n"
+        assertEquals("nodev\tsysfs\nnodev\tproc\n\text4\n", GuestFiles.withoutSelinuxfs(host))
+    }
+
+    @Test fun selinuxHidingFallsBackWhenHostProcFilesystemsUnreadable() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"))
+        val m = GuestFiles.prepareSelinuxHiding(env, read = { throw java.io.IOException("EACCES") })
+        val text = m.getValue("/proc/filesystems").readText()
+        assertTrue(text.contains("proc")); assertFalse(text.contains("selinuxfs"))
+        assertTrue(m.getValue("/sys/fs/selinux").isDirectory)
+        dir.deleteRecursively()
+    }
+
+    @Test fun identityFilesAreBound() {
+        val id = mapOf("/etc/passwd" to File("/files/guest/generated/passwd"), "/etc/group" to File("/files/guest/generated/group"))
+        val a = ProotCommandBuilder(TestEnv.env(), spec, overlays = id).prootArgs()
+        assertTrue("/files/guest/generated/passwd:/etc/passwd" in a)
+        assertTrue("/files/guest/generated/group:/etc/group" in a)
+    }
+
     @Test fun phantomEvaluate() {
         val skip = PhantomProcessCheck.PropRead.Skipped
         fun v(x: String) = PhantomProcessCheck.PropRead.Value(x)
