@@ -129,7 +129,13 @@ class DesktopE2ETest {
         rule.onAllNodes(open).onFirst().performClick()
         val t0 = SystemClock.uptimeMillis()
         waitFor("a frame on screen", 10 * 60_000L, 2000) {
-            (s.state.value.desktop as? DesktopState.Failed)?.let { fail("session failed: ${it.message}\n${it.logTail}") }
+            (s.state.value.desktop as? DesktopState.Failed)?.let {
+                // Keep the whole session log: a later test restarts the desktop and truncates it.
+                runCatching {
+                    java.io.File(inst.targetContext.cacheDir, "desktop.log").copyTo(java.io.File(rule.activity.getExternalFilesDir(null), "$metric-session-failed.log"), overwrite = true)
+                }
+                fail("session failed: ${it.message}\n${it.logTail}")
+            }
             colors(s) > minColors
         }
         log("SELKIE_METRIC ${metric}_first_frame_seconds=${(SystemClock.uptimeMillis() - t0) / 1000.0} stats=${stats(s)}")
