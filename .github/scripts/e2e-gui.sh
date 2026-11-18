@@ -11,9 +11,12 @@ rc=0
 
 adb shell settings put global settings_enable_monitor_phantom_procs false
 adb shell device_config put activity_manager max_phantom_processes 2147483647 || true
-# Landscape, like a tablet: GNOME's virtual monitor takes the view's size.
+# A tablet-sized landscape screen (the default AVD is 320x640): GNOME's virtual monitor takes the
+# view's size.
 adb shell settings put system accelerometer_rotation 0
-adb shell settings put system user_rotation 1
+adb shell wm size 1280x800
+adb shell wm density 160
+adb shell wm size; adb shell wm density
 
 adb install -r -t "$APKS/app-debug.apk"
 adb install -r -t "$APKS/app-debug-androidTest.apk"

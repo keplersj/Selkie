@@ -69,10 +69,16 @@ class ProotCommandBuilder(
     fun graphicalSession(width: Int, height: Int, scale: Float = 1f): Invocation {
         val inv = command(listOf("/usr/bin/droidc", "supervise", "--session",
             "--width", width.toString(), "--height", height.toString(), "--scale", scale.toString()))
-        // No GPU is passed through yet: guest GL is Mesa's llvmpipe.
         return inv.copy(env = inv.env + mapOf(
             "WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY,
+            // No GPU is passed through yet: guest GL is Mesa's llvmpipe.
             "LIBGL_ALWAYS_SOFTWARE" to "1",
+            // PipeWire's access module runs a Flatpak check on each client through /proc/<pid>/root,
+            // which Android hides; the check then fails and every client (Mutter's screen-cast stream,
+            // the portal) is restricted to nothing ("No node factory discovered"). The manager socket of
+            // PipeWire's default configuration skips that check. Flatpak apps get their own environment
+            // and keep using the checked socket.
+            "PIPEWIRE_REMOTE" to "pipewire-0-manager",
         ))
     }
 }

@@ -22,6 +22,7 @@ class GraphicalSessionTest {
             "--scale", "1.0"), inv.argv.takeLast(9))
         assertEquals("wayland-0", inv.env["WAYLAND_DISPLAY"])
         assertEquals("1", inv.env["LIBGL_ALWAYS_SOFTWARE"])
+        assertEquals("pipewire-0-manager", inv.env["PIPEWIRE_REMOTE"])
         assertEquals("/run/droidc/root", inv.env["DROIDC_ROOT"])
         // The compositor socket is in the guest's /run/user/<uid>, inside the writable /run bind.
         assertEquals(File("/files/guest/run/user/10234/wayland-0"), TestEnv.env().waylandSocket)

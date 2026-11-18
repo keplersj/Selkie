@@ -97,6 +97,8 @@ class DesktopE2ETest {
     }
 
     private fun ensureBluefin(s: SessionService) {
+        // A clean desktop state: an earlier test may have left the session running or failed.
+        inst.runOnMainSync { s.stopDesktop() }
         if (s.state.value.status?.current?.imageRef == ref) return
         inst.runOnMainSync { s.switchTo(ref, insecure = false) }
         var lastPhase = ""
