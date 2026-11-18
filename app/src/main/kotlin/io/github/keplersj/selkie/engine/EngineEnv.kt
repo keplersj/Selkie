@@ -66,9 +66,9 @@ object PipeWireServices {
     private const val SCRIPT = DIAG +
         "for f in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do " +
         "[ -r \"\$f\" ] || continue; c=\"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\"; " +
-        "awk 'skip{n+=gsub(/\\{/,\"{\");n-=gsub(/\\}/,\"}\");if(n<=0)skip=0;next} " +
-        "/libpipewire-module-access/{n=gsub(/\\{/,\"{\")-gsub(/\\}/,\"}\");skip=(n>0);next} 1' \"\$f\" > \"\$c\" " +
-        "&& [ -s \"\$c\" ] && { pipewire -c \"\$c\"; echo \"PWDIAG pipewire exit=\$?\"; exit; }; done; exec pipewire"
+        "sed 's/^\\([[:space:]]*\\)#access\\.socket = .*/\\1access.socket = { pipewire-0 = \"unrestricted\", pipewire-0-manager = \"unrestricted\" }/' " +
+        "\"\$f\" > \"\$c\" " +
+        "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && { pipewire -c \"\$c\"; echo \"PWDIAG pipewire exit=\$?\"; exit; }; done; exec pipewire"
 
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
