@@ -63,6 +63,8 @@ root_mode() {
   adb shell sh /data/local/tmp/root-mode-device.sh "$lib" "$droot" apply | tee "$OUT/root-mode.txt"
   grep -q "ROOTCHECK FAIL" "$OUT/root-mode.txt" && return 1
   grep -q "^passwd 0 4755" "$OUT/root-mode.txt" || { echo "passwd not 0 4755 under enter"; return 1; }
+  adb shell sh /data/local/tmp/root-mode-device.sh "$lib" "$droot" kill | tee -a "$OUT/root-mode.txt"
+  grep -q "ROOTCHECK FAIL" "$OUT/root-mode.txt" && return 1
   local s; s=$(app status); echo "app status after root: $s"
   echo "$s" | grep -q '"ok":true' || { echo "app cannot read status after root commands"; return 1; }
   s=$(app gc); echo "app gc while image-owned: $s"

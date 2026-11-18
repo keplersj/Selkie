@@ -18,6 +18,18 @@ case "$3" in
       stat -L -c "passwd %u %a" /usr/bin/passwd
       echo "dev: $(ls /dev | tr "\n" " ")"' || fail enter
     labels ;;
+  kill)
+    # The emulator kernel has no pid namespace: enter's init must still kill the guest when enter
+    # itself is killed (what Selkie does to stop a root-mode terminal).
+    guests() { pgrep -f '^sleep 424[67]$' | wc -l; }
+    $D --root "$R" enter -- /bin/sh -c '(setsid sleep 4246 &); sleep 4247' >/dev/null 2>&1 &
+    P=$!; n=0
+    for i in $(seq 100); do n=$(guests); [ "$n" -ge 2 ] && break; sleep 0.1; done
+    [ "$n" -ge 2 ] || fail "guest did not start"
+    kill -TERM $P
+    for i in $(seq 100); do n=$(guests); [ "$n" -eq 0 ] && break; sleep 0.1; done
+    [ "$n" -eq 0 ] || { pkill -9 -f '^sleep 424[67]$'; fail "killing enter left $n guest processes"; }
+    echo "killing enter left no guest processes" ;;
   undo)
     U=$($D --root "$R" --json fix-ownership --undo | tail -n1); echo "undo: $U"
     case "$U" in *'"ok":true'*) ;; *) fail undo ;; esac
