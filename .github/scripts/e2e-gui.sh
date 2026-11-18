@@ -46,6 +46,6 @@ if [ $rc -ne 0 ]; then
     grep -i -E "PWDIAG|pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -250
     echo "::endgroup::"
   done
-  echo "::group::SelkieE2E log"; grep -E "SelkieE2E|SelkieDesktop|AndroidRuntime" "$OUT/logcat.txt" | tail -200; echo "::endgroup::"
+  echo "::group::SelkieE2E log"; grep -E "SelkieE2E|SelkieDesktop|SelkieKey|AndroidRuntime" "$OUT/logcat.txt" | tail -200; echo "::endgroup::"
 fi
 exit $rc

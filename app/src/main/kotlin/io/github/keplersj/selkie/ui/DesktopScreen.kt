@@ -57,7 +57,10 @@ fun DesktopScreen(service: SessionService, onBack: () -> Unit) {
     LaunchedEffect(Unit) { runCatching { keyFocus.requestFocus() } }
     Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged {
         if (it.width > 0 && it.height > 0 && size == null) size = it.width to it.height
-    }.focusRequester(keyFocus).focusable().onPreviewKeyEvent { viewRef?.dispatchKeyEvent(it.nativeKeyEvent) ?: false }) {
+    }.focusRequester(keyFocus).focusable().onPreviewKeyEvent {
+        android.util.Log.i("SelkieKey", "compose preview key ${it.nativeKeyEvent}")
+        viewRef?.dispatchKeyEvent(it.nativeKeyEvent) ?: false
+    }) {
         AndroidView(
             factory = { c -> CompositorView(c) { service.compositor() }.also { viewRef = it } },
             modifier = Modifier.fillMaxSize(),
