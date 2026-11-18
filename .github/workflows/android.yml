@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   droidc:
-    name: Build droidc (bionic + static musl)
+    name: Build droidc (bionic + static musl) and the compositor
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             droidc-src/target
-          key: droidc-${{ runner.os }}-${{ hashFiles('droidc-src/Cargo.lock') }}-v2
+            native/selkie-compositor/target
+          key: droidc-${{ runner.os }}-${{ hashFiles('droidc-src/Cargo.lock', 'native/selkie-compositor/Cargo.lock') }}-v3
           restore-keys: droidc-${{ runner.os }}-
       - name: Install NDK r27c
         run: |
@@ -53,9 +54,17 @@ jobs:
       - name: Build Android (bionic) binaries
         working-directory: droidc-src
         run: cargo ndk --platform 29 -t arm64-v8a -t x86_64 build --release --bin droidc
+      - name: Test the compositor (Linux, real Wayland client)
+        working-directory: native/selkie-compositor
+        run: cargo test --release
+      - name: Build the compositor (Android)
+        working-directory: native/selkie-compositor
+        run: cargo ndk --platform 29 -t arm64-v8a -t x86_64 build --release --lib
       - name: Stage
         run: |
           mkdir -p out/arm64-v8a out/x86_64
+          cp native/selkie-compositor/target/aarch64-linux-android/release/libselkie_compositor.so out/arm64-v8a/
+          cp native/selkie-compositor/target/x86_64-linux-android/release/libselkie_compositor.so out/x86_64/
           cp droidc-src/target/aarch64-linux-android/release/droidc out/arm64-v8a/libdroidc.so
           cp droidc-src/target/x86_64-linux-android/release/droidc out/x86_64/libdroidc.so
           cp droidc-src/target/aarch64-unknown-linux-musl/release/droidc out/arm64-v8a/libdroidc-guest.so
@@ -150,6 +159,50 @@ jobs:
         if: always()
         with:
           name: e2e-results
+          path: out
+
+  emulator-gui:
+    name: Emulator GUI (Bluefin LTS GNOME, x86_64, API 34)
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-apks
+          path: apks
+      - name: Free runner disk (Bluefin needs ~13 GB inside a 32 GB AVD)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/share/swift \
+            /usr/local/lib/android/sdk/ndk "$AGENT_TOOLSDIRECTORY" /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h /
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the desktop test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disk-size: 32G
+          ram-size: 6144M
+          heap-size: 512M
+          cores: 4
+          force-avd-creation: false
+          # Bluefin LTS (CentOS 10) glibc requires x86-64-v3; the default emulator CPU model lacks it.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -qemu -cpu host
+          disable-animations: true
+          script: bash .github/scripts/e2e-gui.sh apks out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-results
           path: out
 
   # Publishes a GitHub *pre*release when a tag like v0.1.0-mvp.1 is pushed, only after the

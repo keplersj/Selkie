@@ -15,6 +15,10 @@ License: MIT (see `LICENSE`). Bundled proot is GPL-2.0-or-later; see About in th
 1. `droidc switch <ref>` pulls the image, verifies its signature, unpacks it to `filesDir/droidc/deployments/<id>/rootfs`.
 2. `droidc shell-spec --json` says how to enter it; Selkie adds Android binds and runs `libproot.so`.
 3. The shell is `droidc supervise -- /bin/bash -l` inside the guest, in a Termux `TerminalView`.
+4. The desktop is `droidc supervise --session` inside the guest, drawn by Selkie's own Wayland compositor
+   (`native/selkie-compositor`) into a full-screen `SurfaceView`. How the session starts comes from the
+   image's `containers.droidc.session.*` labels, or from the session settings screen for images without
+   them (Bluefin LTS today: GNOME, shown through `droidc bridge`).
 
 See [docs/architecture.md](docs/architecture.md).
 
@@ -23,13 +27,14 @@ See [docs/architecture.md](docs/architecture.md).
 Requirements: JDK 21, Android SDK (platform 36, build-tools 36.0.0). The Gradle wrapper is included.
 
 Native binaries are **not committed**. The APK needs `libdroidc.so` (Android/bionic build), `libdroidc-guest.so` (static musl build), `libproot.so`, `libproot-loader.so`
-for `arm64-v8a` and `x86_64`:
+and `libselkie_compositor.so` for `arm64-v8a` and `x86_64`:
 
 ```
 third_party/bin/<abi>/libdroidc.so
 third_party/bin/<abi>/libdroidc-guest.so
 third_party/bin/<abi>/libproot.so
 third_party/bin/<abi>/libproot-loader.so
+third_party/bin/<abi>/libselkie_compositor.so
 ```
 
 or any other directory with that layout via `-Pselkie.nativeBinDir=<dir>`. Gradle copies them into
@@ -39,6 +44,8 @@ or any other directory with that layout via `-Pselkie.nativeBinDir=<dir>`. Gradl
 - droidc is built twice per ABI (CI does this; see `.github/workflows/android.yml` and `droidc.ref`):
   - `libdroidc.so`: Android/bionic build (`cargo ndk -t arm64-v8a -t x86_64 build --release --bin droidc`, NDK r27c), run by Selkie. Android's app seccomp filter kills static musl binaries with SIGSYS (legacy syscalls such as `mkdir`, `rename`, `poll` on x86_64), so the app-side engine must be a bionic binary.
   - `libdroidc-guest.so`: static musl build (`cargo zigbuild --release --bin droidc --target {aarch64,x86_64}-unknown-linux-musl`), bound into the guest as `/usr/bin/droidc`; inside proot syscalls are handled by proot, so musl is fine there.
+- compositor: `cd native/selkie-compositor && cargo ndk --platform 29 -t arm64-v8a -t x86_64 build --release --lib`
+  (pure Rust, no C dependencies; `cargo test` runs its protocol tests on Linux). See its README.
 - proot: `third_party/proot/build.sh <outdir> <abi>` (NDK; separate workflow `.github/workflows/proot.yml`, artifact `proot-android`).
 
 ```
@@ -54,7 +61,10 @@ Signing uses the public MVP test key; see [docs/signing.md](docs/signing.md).
 ## Tests
 
 - JVM unit tests: NDJSON parser/status models, droidc argv, proot argv, guest file generation, phantom-process decision logic.
-- `app/src/androidTest`: `SmokeTest` (Compose launch) and `EngineE2ETest` (real engine: switch CentOS Stream 10, run commands under proot, upgrade, second switch, rollback, unpack-time metric). Run in CI on an x86_64 emulator (API 34). The emulator cannot cover the Tab S11's arm64 CPU or Mali GPU.
+- `native/selkie-compositor`: `cargo test` drives the compositor with a real Wayland client.
+- `app/src/androidTest`: `DesktopE2ETest` (installs Bluefin LTS, opens the GNOME desktop from the home screen,
+  checks frames reach the screen and that Super toggles the overview; screenshots in the `gui-results`
+  artifact of the `emulator-gui` CI job), `SmokeTest` (Compose launch) and `EngineE2ETest` (real engine: switch CentOS Stream 10, run commands under proot, upgrade, second switch, rollback, unpack-time metric). Run in CI on an x86_64 emulator (API 34). The emulator cannot cover the Tab S11's arm64 CPU or Mali GPU.
 
 ## First run on the device
 
