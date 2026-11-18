@@ -83,6 +83,8 @@ pub struct Stats {
     pub toplevels: usize,
     pub commits: u64,
     pub presented: u64,
+    /// Input events delivered to the shown client (events with no client to receive them are dropped).
+    pub inputs: u64,
     pub output: (u32, u32),
     pub frame: Option<FrameSummary>,
 }
@@ -97,8 +99,8 @@ impl Stats {
             None => "null".into(),
         };
         format!(
-            "{{\"clients\":{},\"toplevels\":{},\"commits\":{},\"presented\":{},\"output\":[{},{}],\"frame\":{}}}",
-            self.clients, self.toplevels, self.commits, self.presented, self.output.0, self.output.1, f
+            "{{\"clients\":{},\"toplevels\":{},\"commits\":{},\"presented\":{},\"inputs\":{},\"output\":[{},{}],\"frame\":{}}}",
+            self.clients, self.toplevels, self.commits, self.presented, self.inputs, self.output.0, self.output.1, f
         )
     }
 }

@@ -21,10 +21,16 @@ import org.junit.Test
 import java.io.File
 
 /**
- * The graphical session end to end, through the real UI: install Bluefin LTS (signed; GNOME 50), set its
- * session (Bluefin sets no session labels yet), tap "Open desktop", and check that GNOME's frames reach
- * the screen through droidc bridge and Selkie's compositor, and that keyboard input reaches GNOME
- * (Super opens or closes the overview). Screenshots go to the app's external files dir.
+ * Graphical sessions end to end through the real UI on Bluefin LTS (signed). Bluefin sets no
+ * `containers.droidc.session.*` labels yet, so each test sets the session with the override:
+ *
+ * - [gnomeHeadless]: `renderer=screencast`, gnome-shell 50 shown by droidc bridge. Checks that frames
+ *   reach the screen, that a key pressed in the Android view reaches the compositor, and that Super
+ *   (overlay button) changes what GNOME shows.
+ * - [gtkAppNested]: `renderer=wayland`, a GTK 4 app (Nautilus) as a direct client of Selkie's
+ *   compositor, the path nested session compositors (KWin, cosmic-comp, gamescope) take.
+ *
+ * Screenshots go to the app's external files dir.
  */
 class DesktopE2ETest {
     private val tag = "SelkieE2E"
@@ -50,8 +56,21 @@ class DesktopE2ETest {
 
     private fun stats(s: SessionService): JsonObject? =
         s.compositor()?.stats()?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
-
+    private fun long(s: SessionService, key: String): Long = stats(s)?.get(key)?.jsonPrimitive?.longOrNull ?: 0
     private fun frame(s: SessionService): JsonObject? = stats(s)?.get("frame") as? JsonObject
+    private fun hash(s: SessionService): String? = frame(s)?.get("hash")?.jsonPrimitive?.content
+    private fun colors(s: SessionService): Int = frame(s)?.get("sampled_colors")?.jsonPrimitive?.intOrNull ?: 0
+
+    /** Waits until no new frame has been shown for [quietMs] (animations done). */
+    private fun settle(s: SessionService, quietMs: Long = 4000, timeoutMs: Long = 120_000) {
+        var last = long(s, "presented")
+        var since = SystemClock.uptimeMillis()
+        waitFor("frames to settle", timeoutMs, 500) {
+            val now = long(s, "presented")
+            if (now != last) { last = now; since = SystemClock.uptimeMillis() }
+            SystemClock.uptimeMillis() - since >= quietMs
+        }
+    }
 
     private fun screenshot(name: String) {
         val bmp = inst.uiAutomation.takeScreenshot() ?: return
@@ -60,67 +79,99 @@ class DesktopE2ETest {
         log("screenshot ${File(dir, name)}")
     }
 
-    @Test fun gnomeDesktopShowsAndTakesInput() {
-        val s = service()
-        // 1. Install Bluefin LTS unless it is already current.
-        if (s.state.value.status?.current?.imageRef != ref) {
-            inst.runOnMainSync { s.switchTo(ref, insecure = false) }
-            var lastPhase = ""
-            waitFor("switch to $ref", 60 * 60_000L, 5000) {
-                when (val op = s.state.value.operation) {
-                    is Operation.Running -> { if (op.phase != lastPhase) { lastPhase = op.phase; log("phase=${op.phase}") }; false }
-                    is Operation.Failed -> fail("switch failed: ${op.error} ${op.stderrTail}").let { true }
-                    else -> true
-                }
+    private fun ensureBluefin(s: SessionService) {
+        if (s.state.value.status?.current?.imageRef == ref) return
+        inst.runOnMainSync { s.switchTo(ref, insecure = false) }
+        var lastPhase = ""
+        waitFor("switch to $ref", 60 * 60_000L, 5000) {
+            when (val op = s.state.value.operation) {
+                is Operation.Running -> { if (op.phase != lastPhase) { lastPhase = op.phase; log("phase=${op.phase}") }; false }
+                is Operation.Failed -> fail("switch failed: ${op.error} ${op.stderrTail}").let { true }
+                else -> true
             }
-            inst.runOnMainSync { s.dismissOperation() }
         }
-        // 2. Bluefin LTS has no containers.droidc.session.* labels: use the documented override.
+        inst.runOnMainSync { s.dismissOperation() }
+    }
+
+    private fun configure(s: SessionService, renderer: String, exec: String, services: String?, name: String) {
         var err: String? = "pending"
-        inst.runOnMainSync {
-            s.configureSession("screencast",
-                """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
-                """[["pipewire"],["wireplumber"]]""", "GNOME") { err = it }
-        }
+        inst.runOnMainSync { s.configureSession(renderer, exec, services, name) { err = it } }
         waitFor("session override", 120_000) { err != "pending" }
         assertNull("droidc session set: $err", err)
-        waitFor("graphical session in shell-spec", 120_000) { s.state.value.graphical?.configured == true }
+        waitFor("session in shell-spec", 120_000) {
+            s.state.value.graphical?.let { it.configured && it.renderer == renderer && it.name == name } == true
+        }
+    }
 
-        // 3. Open it from the home screen.
+    /** Opens the desktop from the home screen and waits for a frame with more than [minColors] colours. */
+    private fun openDesktop(s: SessionService, minColors: Int, metric: String) {
         val open = hasText("Open desktop", substring = true)
         rule.waitUntil(timeoutMillis = 60_000) { rule.onAllNodes(open).fetchSemanticsNodes().isNotEmpty() }
         rule.onAllNodes(open).onFirst().performClick()
         val t0 = SystemClock.uptimeMillis()
-        waitFor("a GNOME frame on screen", 10 * 60_000L, 2000) {
+        waitFor("a frame on screen", 10 * 60_000L, 2000) {
             (s.state.value.desktop as? DesktopState.Failed)?.let { fail("session failed: ${it.message}\n${it.logTail}") }
-            (frame(s)?.get("sampled_colors")?.jsonPrimitive?.intOrNull ?: 0) > 50
+            colors(s) > minColors
         }
-        val first = (SystemClock.uptimeMillis() - t0) / 1000.0
-        log("SELKIE_METRIC desktop_first_frame_seconds=$first stats=${stats(s)}")
-        Thread.sleep(5000) // let the shell finish its start-up animation
-        screenshot("desktop-1.png")
+        log("SELKIE_METRIC ${metric}_first_frame_seconds=${(SystemClock.uptimeMillis() - t0) / 1000.0} stats=${stats(s)}")
+    }
 
-        // 4. Keyboard through the Android view: Super toggles the overview, which changes the frame.
-        val view = rule.activity.window.decorView
-        val (w, h) = view.width.toFloat() to view.height.toFloat()
-        val now = SystemClock.uptimeMillis()
-        // A tap on the right edge (empty desktop in both GNOME views) focuses the compositor view.
-        inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, w * 0.97f, h * 0.6f, 0))
-        inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, w * 0.97f, h * 0.6f, 0))
-        Thread.sleep(3000)
-        val before = frame(s)?.get("hash")?.jsonPrimitive?.content
-        val presentedBefore = stats(s)?.get("presented")?.jsonPrimitive?.longOrNull ?: 0
-        inst.sendKeySync(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_META_LEFT))
-        inst.sendKeySync(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_META_LEFT))
-        waitFor("the frame to change after Super", 60_000, 500) {
-            frame(s)?.get("hash")?.jsonPrimitive?.content != before
-        }
-        Thread.sleep(5000)
-        log("SELKIE_METRIC desktop_after_super stats=${stats(s)} presented_before=$presentedBefore")
-        screenshot("desktop-2-super.png")
-
-        // 5. Stop: compositor and session go away.
+    private fun stop(s: SessionService) {
         inst.runOnMainSync { s.stopDesktop() }
         waitFor("stopped", 30_000) { s.state.value.desktop is DesktopState.Stopped && s.compositor() == null }
+        rule.waitForIdle()
+    }
+
+    @Test fun gnomeHeadless() {
+        val s = service()
+        ensureBluefin(s)
+        configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
+            """[["pipewire"],["wireplumber"]]""", "GNOME")
+        openDesktop(s, 50, "gnome")
+        settle(s)
+        screenshot("gnome-1.png")
+
+        // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
+        // Android key path then closes GNOME's first-run dialog if it is up. The compositor's input
+        // counter proves the events got through Android.
+        val view = rule.activity.window.decorView
+        val (w, h) = view.width.toFloat() to view.height.toFloat()
+        val inputs0 = long(s, "inputs")
+        val now = SystemClock.uptimeMillis()
+        inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, w * 0.97f, h * 0.6f, 0))
+        inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, w * 0.97f, h * 0.6f, 0))
+        inst.sendKeySync(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ESCAPE))
+        inst.sendKeySync(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ESCAPE))
+        waitFor("tap and Escape to reach the compositor", 30_000, 250) { long(s, "inputs") >= inputs0 + 4 }
+        settle(s)
+        screenshot("gnome-2-escape.png")
+
+        // Super from the overlay button toggles GNOME's overview: the frame changes.
+        val before = hash(s)
+        val inputs1 = long(s, "inputs")
+        rule.onAllNodes(hasText("Super")).onFirst().performClick()
+        waitFor("Super to reach the compositor", 30_000, 250) { long(s, "inputs") >= inputs1 + 2 }
+        waitFor("GNOME to redraw after Super", 60_000, 500) { hash(s) != before }
+        settle(s)
+        log("SELKIE_METRIC gnome_after_super stats=${stats(s)}")
+        screenshot("gnome-3-super.png")
+        stop(s)
+    }
+
+    @Test fun gtkAppNested() {
+        val s = service()
+        ensureBluefin(s)
+        configure(s, "wayland", """["nautilus","--new-window"]""", null, "Files")
+        openDesktop(s, 5, "gtk")
+        assertTrue("a client is connected: ${stats(s)}", long(s, "clients") >= 1)
+        settle(s)
+        screenshot("gtk-nautilus.png")
+        val inputs0 = long(s, "inputs")
+        val view = rule.activity.window.decorView
+        val now = SystemClock.uptimeMillis()
+        inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, view.width * 0.5f, view.height * 0.5f, 0))
+        inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, view.width * 0.5f, view.height * 0.5f, 0))
+        waitFor("touch to reach the app", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
+        stop(s)
     }
 }

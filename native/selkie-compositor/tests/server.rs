@@ -296,6 +296,7 @@ fn toplevel_frames_and_input() {
         pressed: false,
     }));
     until(&mut q, &mut c, "keys", |c| c.keys.len() == 4);
+    wait_stats(&h, "input counter", |s| s.inputs == 4);
     assert_eq!(
         c.keys,
         vec![(42, true), (30, true), (30, false), (42, false)]

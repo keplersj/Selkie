@@ -261,6 +261,7 @@ pub struct State {
     mods_locked: u32,
     commits: u64,
     presented: u64,
+    inputs: u64,
 }
 
 impl State {
@@ -294,6 +295,7 @@ impl State {
             mods_locked: 0,
             commits: 0,
             presented: 0,
+            inputs: 0,
         }
     }
 
@@ -319,6 +321,7 @@ impl State {
         s.toplevels = self.toplevels.len();
         s.commits = self.commits;
         s.presented = self.presented;
+        s.inputs = self.inputs;
         s.output = (self.width, self.height);
         s.frame = self.summary;
     }
@@ -487,6 +490,7 @@ impl State {
         let Some(surface) = self.focused_surface() else {
             return;
         };
+        self.inputs += 1;
         let t = self.time();
         match i {
             Input::TouchDown { id, x, y } => {

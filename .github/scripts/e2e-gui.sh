@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs on the CI emulator: DesktopE2ETest (Bluefin LTS GNOME through droidc bridge and Selkie's
-# compositor), then pulls its screenshots and logs.
+# Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, and a GTK app
+# nested directly in Selkie's compositor), then pulls its screenshots and logs.
 # usage: e2e-gui.sh <apk-dir> <out-dir>
 set -u
 APKS=${1:?apk dir}; OUT=${2:?out dir}
@@ -29,8 +29,7 @@ timeout 7800 adb shell am instrument -w -e class $PKG.DesktopE2ETest $RUNNER | t
 grep -q '^OK (' "$OUT/gui.txt" || { echo "desktop test failed"; rc=1; }
 
 adb shell screencap -p /sdcard/final.png && adb pull /sdcard/final.png "$OUT/screen-final.png" || true
-adb pull "/sdcard/Android/data/$PKG/files/desktop-1.png" "$OUT/" || true
-adb pull "/sdcard/Android/data/$PKG/files/desktop-2-super.png" "$OUT/" || true
+adb pull "/sdcard/Android/data/$PKG/files/." "$OUT/screenshots" || true
 adb shell run-as $PKG cat cache/desktop.log > "$OUT/desktop.log" 2>&1 || true
 adb shell run-as $PKG cat cache/droidc.log > "$OUT/droidc.log" 2>&1 || true
 adb shell df -h /data | tee "$OUT/df-after.txt"

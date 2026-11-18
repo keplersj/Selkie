@@ -78,6 +78,14 @@ fun DesktopScreen(service: SessionService, onBack: () -> Unit) {
             else -> {}
         }
         Row(Modifier.align(Alignment.TopEnd).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Super (the Activities key in GNOME, the launcher in most desktops): touch has no other
+            // way to press it, and Android may keep a hardware Meta key for itself.
+            FilledTonalButton(onClick = {
+                service.compositor()?.let { c ->
+                    c.input(io.github.keplersj.selkie.display.NativeCompositor.KEY, 125, true)
+                    c.input(io.github.keplersj.selkie.display.NativeCompositor.KEY, 125, false)
+                }
+            }) { Text("Super") }
             FilledTonalButton(onClick = {
                 viewRef?.let { v ->
                     v.requestFocus()
