@@ -76,7 +76,7 @@ refused, so use the Developer options toggle.
   Tab S11 and the Razr, but `flatpak` itself was not tried there.
 - No GPU, audio or Steam.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
-  only.** The emulator GUI test (`emulator-gui` job) is written but has not run yet. No GPU (llvmpipe),
+  only.** The emulator GUI test (`emulator-gui` job) passes on x86_64; real arm64 devices have not been tried. No GPU (llvmpipe),
   no audio, no Steam.
 - The terminal UI was used by hand only, and the foreground service's survival when the activity is
   closed has not been tested.
@@ -245,8 +245,8 @@ nested mode).
 | D-Bus-activated apps open inside GNOME, not on Selkie's screen | Works | Same (Nautilus via `gapplication launch`) |
 | A GTK 4 app (Nautilus) nested directly in Selkie's compositor | Works (wl_shm, Mesa swrast) | Same |
 | Compositor protocol (configure, shm, frame pacing, input, resize) | Works | `cargo test` with a real Wayland client |
-| All of the above on Android, through the app | **Not run yet** | `DesktopE2ETest` on the x86_64 emulator (`emulator-gui` job) |
-| proot instead of bwrap | **Not run yet** | Only on Android in the emulator job |
+| GNOME → bridge → compositor on Android, through the app (frames in ~6-10 s, tap, Escape, Super) | Works on the x86_64 emulator; PipeWire needs `access.socket` unrestricted (Android hides `/proc/<pid>/root`); injected hardware keys reached the view on some runs only (test falls back to the view and logs `key_path`) | `DesktopE2ETest` (`emulator-gui` job) |
+| proot instead of bwrap | Works (GNOME and Nautilus run under proot on the emulator) | `emulator-gui` job; real arm64 devices not tried |
 
 Known gaps: popups are dismissed and subsurfaces are not drawn (fine for full-screen session compositors
 and the bridge, not for single apps with menus); no clipboard; US keymap only; the session size is fixed

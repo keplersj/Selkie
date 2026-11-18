@@ -47,28 +47,19 @@ data class EngineEnv(
 /**
  * `containers.droidc.session.services` JSON that starts PipeWire and WirePlumber for a graphical session.
  *
- * PipeWire's access module runs a Flatpak check on every client through `/proc/<pid>/root`, which
- * Android hides, so every client (Mutter's screen-cast stream, WirePlumber) ends up restricted to
- * nothing. The emulator run showed `flatpak check failed` even on the manager socket, so PipeWire
- * starts here from a copy of its own configuration without the access module.
+ * PipeWire's access module runs a Flatpak check on each client through `/proc/<pid>/root`, which
+ * Android hides: the check fails and every client (Mutter's screen-cast stream, WirePlumber, the portal)
+ * is restricted to nothing. `PIPEWIRE_REMOTE=pipewire-0-manager` was not enough in the emulator, because
+ * not every client uses it. PipeWire therefore starts from a copy of its own configuration whose
+ * `access.socket` makes the default socket `unrestricted` too.
  */
 object PipeWireServices {
-    // Temporary diagnostics: what PipeWire exposes to a manager and to a normal client, 25 s in.
-    private const val DIAG =
-        "( sleep 15; { ls -la \"\${XDG_RUNTIME_DIR:-/tmp}\" 2>&1 | grep -i pipewire; pgrep -a pipewire; pgrep -a wireplumber; " +
-        "for o in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do [ -r \$o ] && { echo \"orig=\$o\"; " +
-        "diff \$o \"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\" | head -40; break; }; done; " +
-        "for r in pipewire-0-manager pipewire-0; do echo \"remote=\$r\"; " +
-        "for k in Factory Client Node; do PIPEWIRE_REMOTE=\$r timeout 3 pw-cli ls \$k 2>&1 | " +
-        "grep -E 'factory.name|application.name|pipewire.access|node.name|rror|ailed'; done; done; } 2>&1 | " +
-        "sed -u 's/^/PWDIAG /' ) & "
-
-    private const val SCRIPT = DIAG +
+    private const val SCRIPT =
         "for f in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do " +
         "[ -r \"\$f\" ] || continue; c=\"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\"; " +
         "sed 's/^\\([[:space:]]*\\)#access\\.socket = .*/\\1access.socket = { pipewire-0 = \"unrestricted\", pipewire-0-manager = \"unrestricted\" }/' " +
         "\"\$f\" > \"\$c\" " +
-        "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && { pipewire -c \"\$c\"; echo \"PWDIAG pipewire exit=\$?\"; exit; }; done; exec pipewire"
+        "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && exec pipewire -c \"\$c\"; done; exec pipewire"
 
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =

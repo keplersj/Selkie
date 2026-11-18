@@ -193,8 +193,8 @@ class DesktopE2ETest {
             keysArrived = long(s, "inputs") >= inputs0 + 4
         }
         if (!keysArrived) {
-            // The injected keys did not get to the compositor view through Android's focus routing (see
-            // the SelkieKey log lines). Deliver them to the view directly so the rest of the key path
+            // The injected keys did not get to the compositor view through Android's focus routing
+            // (seen on some emulator runs). Deliver them to the view directly so the rest of the key path
             // (KeyMap, compositor, GNOME) is still exercised, and say so in the metrics.
             log("SELKIE_METRIC key_path=direct-to-view inputs=${long(s, "inputs")}")
             inst.runOnMainSync {

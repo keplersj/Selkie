@@ -93,9 +93,7 @@ class CompositorView(context: Context, private val compositor: () -> NativeCompo
 
     private fun key(e: KeyEvent, pressed: Boolean): Boolean {
         if (e.keyCode == KeyEvent.KEYCODE_BACK) return false
-        val code = KeyMap.evdev(e.keyCode, e.scanCode)
-        android.util.Log.i("SelkieKey", "view key ${KeyEvent.keyCodeToString(e.keyCode)} pressed=$pressed evdev=$code")
-        code ?: return false
+        val code = KeyMap.evdev(e.keyCode, e.scanCode) ?: return false
         send(NativeCompositor.KEY, code, pressed)
         return true
     }

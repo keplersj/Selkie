@@ -54,13 +54,11 @@ fun DesktopScreen(service: SessionService, onBack: () -> Unit) {
     // Compose, not the embedded view, owns key focus in this window, so hardware keys (and the test's
     // injected ones) are forwarded to the compositor view from here. Back is left to the system.
     val keyFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { keyFocus.requestFocus() } }
+    // Asked again once the session runs: the first request can come before the focus target is attached.
+    LaunchedEffect(desktop is DesktopState.Running) { runCatching { keyFocus.requestFocus() } }
     Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged {
         if (it.width > 0 && it.height > 0 && size == null) size = it.width to it.height
-    }.focusRequester(keyFocus).focusable().onPreviewKeyEvent {
-        android.util.Log.i("SelkieKey", "compose preview key ${it.nativeKeyEvent}")
-        viewRef?.dispatchKeyEvent(it.nativeKeyEvent) ?: false
-    }) {
+    }.focusRequester(keyFocus).focusable().onPreviewKeyEvent { viewRef?.dispatchKeyEvent(it.nativeKeyEvent) ?: false }) {
         AndroidView(
             factory = { c -> CompositorView(c) { service.compositor() }.also { viewRef = it } },
             modifier = Modifier.fillMaxSize(),
