@@ -54,6 +54,7 @@ fun AboutScreen(onBack: () -> Unit) {
         Text("Termux terminal-view / terminal-emulator: Apache-2.0 (Termux terminal library exception).")
         Text("proot: GPL-2.0-or-later. Corresponding source is attached to the Selkie GitHub release.")
         TextButton(onClick = { uri.openUri(BuildConfig.PROOT_SOURCE_URL) }) { Text("proot source (GPL-2, on this release)") }
+        Text("Terminal font: JetBrains Mono Nerd Font Mono (no ligatures), SIL Open Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors; patched by Nerd Fonts.")
         Text("kotlinx.serialization, kotlinx.coroutines, AndroidX, Jetpack Compose: Apache-2.0.")
         Spacer(Modifier.height(8.dp))
         Button(onClick = onBack) { Text("Back") }

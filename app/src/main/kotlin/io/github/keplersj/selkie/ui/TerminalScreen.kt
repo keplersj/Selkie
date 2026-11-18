@@ -20,6 +20,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import io.github.keplersj.selkie.R
 import io.github.keplersj.selkie.service.SessionService
 import kotlinx.coroutines.launch
 
@@ -141,7 +142,7 @@ fun TerminalScreen(service: SessionService, onBack: () -> Unit) {
                     client.view = v
                     v.setTerminalViewClient(client)
                     v.setTextSize(client.initialSize())
-                    v.setTypeface(Typeface.MONOSPACE)
+                    v.setTypeface(terminalTypeface(c))
                     v.isFocusable = true; v.isFocusableInTouchMode = true
                 }
             },
@@ -185,3 +186,12 @@ private fun ExtraKeys(ctrlOn: Boolean, altOn: Boolean, onCtrl: () -> Unit, onAlt
         }
     }
 }
+
+/**
+ * JetBrains Mono with Nerd Font symbols (OFL-1.1): programs such as `fastfetch` and prompts print icons from
+ * the Private Use Area that Android's stock monospace font lacks and draws as tofu. Falls back to the stock
+ * font if the resource cannot be loaded.
+ */
+internal fun terminalTypeface(context: Context): Typeface =
+    runCatching { context.resources.getFont(R.font.jetbrains_mono_nl_nerd_mono_regular) }
+        .getOrDefault(Typeface.MONOSPACE)
