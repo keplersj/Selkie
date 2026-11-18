@@ -67,6 +67,12 @@ extracted to `nativeLibraryDir`, the only place a modern targetSdk app may exec 
 
 Signing uses the public MVP test key; see [docs/signing.md](docs/signing.md).
 
+## Root mode (optional)
+
+On a rooted device (Magisk, KernelSU, APatch) Home shows a **Root mode** switch: Linux then runs
+natively through `droidc enter` (namespaces + chroot) instead of proot, with the image's real file
+owners, so it is much faster and `sudo` works. Off by default; see [docs/architecture.md](docs/architecture.md).
+
 ## Tests
 
 - JVM unit tests: NDJSON parser/status models, droidc argv, proot argv, guest file generation, phantom-process decision logic.

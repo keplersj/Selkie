@@ -118,7 +118,11 @@ data class Deployment(
     val signature: Signature? = null,
     val insecure: Boolean = false,
     val stats: DeployStats? = null,
+    /** `"image"` once the image's owners/setuid were applied (root mode); null otherwise. */
+    val ownership: String? = null,
 ) {
+    val imageOwned: Boolean get() = ownership == "image"
+
     /** `sha256:abcdef...` -> `abcdef123456` */
     val shortDigest: String get() = manifestDigest.substringAfter(':').take(12)
 }
