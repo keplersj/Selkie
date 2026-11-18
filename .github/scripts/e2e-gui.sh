@@ -43,7 +43,7 @@ if [ $rc -ne 0 ]; then
   for f in "$OUT"/screenshots/*-session-failed.log; do
     [ -f "$f" ] || continue
     echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
-    grep -i -E "pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -150
+    grep -i -E "PWDIAG|pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -250
     echo "::endgroup::"
   done
   echo "::group::SelkieE2E log"; grep -E "SelkieE2E|SelkieDesktop|AndroidRuntime" "$OUT/logcat.txt" | tail -200; echo "::endgroup::"

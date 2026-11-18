@@ -53,7 +53,14 @@ data class EngineEnv(
  * starts here from a copy of its own configuration without the access module.
  */
 object PipeWireServices {
-    private const val SCRIPT =
+    // Temporary diagnostics: what PipeWire exposes to a manager and to a normal client, 25 s in.
+    private const val DIAG =
+        "( sleep 25; for r in pipewire-0-manager pipewire-0; do echo \"remote=\$r\"; " +
+        "for k in Factory Client Node; do PIPEWIRE_REMOTE=\$r timeout 10 pw-cli ls \$k 2>&1 | " +
+        "grep -E 'factory.name|application.name|pipewire.access|node.name|rror|ailed'; done; done 2>&1 | " +
+        "sed 's/^/PWDIAG /' ) & "
+
+    private const val SCRIPT = DIAG +
         "for f in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do " +
         "[ -r \"\$f\" ] || continue; c=\"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\"; " +
         "awk 'skip{n+=gsub(/\\{/,\"{\");n-=gsub(/\\}/,\"}\");if(n<=0)skip=0;next} " +
