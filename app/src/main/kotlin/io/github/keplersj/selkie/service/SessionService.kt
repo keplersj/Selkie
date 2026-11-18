@@ -265,17 +265,21 @@ class SessionService : Service() {
                     pb.environment().apply { clear(); putAll(inv.env) }
                     pb.start()
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable: a missing native library is an Error, and it must end up on screen too.
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                android.util.Log.w(TAG, "desktop failed to start", e)
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env))) }
                 updateForeground(force = true)
                 return@launch
             }
             desktop = p
+            android.util.Log.i(TAG, "desktop session started at ${width}x$height")
             _state.update { it.copy(desktop = DesktopState.Running(width, height)) }
             updateForeground(force = true)
             val code = withContext(Dispatchers.IO) { p.waitFor() }
+            android.util.Log.i(TAG, "desktop session exited with $code")
             if (desktop === p) {
                 desktop = null
                 stopCompositor()
@@ -397,6 +401,7 @@ class SessionService : Service() {
 
     companion object {
         const val ACTION_STOP = "io.github.keplersj.selkie.STOP"
+        private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"
         private const val NOTIF_ID = 1
 

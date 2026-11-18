@@ -44,15 +44,32 @@ class DesktopE2ETest {
     private fun log(s: String) { Log.i(tag, s); println(s) }
 
     private fun service(): SessionService =
-        (serviceRule.bindService(SessionService.intent(ctx)) as SessionService.LocalBinder).service
+        (serviceRule.bindService(SessionService.intent(ctx)) as SessionService.LocalBinder).service.also { current = it }
 
+    /**
+     * Polls [f]. The Compose test rule owns the UI's frame clock: the app only recomposes when the test
+     * advances it, so each poll advances it as well as sleeping (a plain sleep would freeze the UI, e.g.
+     * a click's navigation never happens).
+     */
     private fun waitFor(what: String, timeoutMs: Long, pollMs: Long = 1000, f: () -> Boolean) {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
+        var lastLog = 0L
         while (!f()) {
-            if (SystemClock.uptimeMillis() > deadline) fail("timed out after ${timeoutMs / 1000}s waiting for $what")
+            val now = SystemClock.uptimeMillis()
+            if (now > deadline) {
+                screenshot("timeout-${what.replace(Regex("[^A-Za-z0-9]+"), "-")}.png")
+                fail("timed out after ${timeoutMs / 1000}s waiting for $what; desktop=${current?.state?.value?.desktop} stats=${current?.let { stats(it) }}")
+            }
+            if (now - lastLog > 30_000) {
+                lastLog = now
+                log("waiting for $what: desktop=${current?.state?.value?.desktop} stats=${current?.let { stats(it) }}")
+            }
+            rule.mainClock.advanceTimeBy(pollMs)
             Thread.sleep(pollMs)
         }
     }
+
+    private var current: SessionService? = null
 
     private fun stats(s: SessionService): JsonObject? =
         s.compositor()?.stats()?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }

@@ -37,6 +37,6 @@ sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
-  echo "::group::SelkieE2E log"; grep -E "SelkieE2E|AndroidRuntime" "$OUT/logcat.txt" | tail -200; echo "::endgroup::"
+  echo "::group::SelkieE2E log"; grep -E "SelkieE2E|SelkieDesktop|AndroidRuntime" "$OUT/logcat.txt" | tail -200; echo "::endgroup::"
 fi
 exit $rc
