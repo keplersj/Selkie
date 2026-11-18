@@ -55,7 +55,10 @@ data class EngineEnv(
 object PipeWireServices {
     // Temporary diagnostics: what PipeWire exposes to a manager and to a normal client, 25 s in.
     private const val DIAG =
-        "( sleep 25; for r in pipewire-0-manager pipewire-0; do echo \"remote=\$r\"; " +
+        "( sleep 25; ls -la \"\${XDG_RUNTIME_DIR:-/tmp}\" 2>&1 | grep -i pipewire; pgrep -a pipewire; pgrep -a wireplumber; " +
+        "for o in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do [ -r \$o ] && { echo \"orig=\$o\"; " +
+        "diff \$o \"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\" | head -40; break; }; done; " +
+        "for r in pipewire-0-manager pipewire-0; do echo \"remote=\$r\"; " +
         "for k in Factory Client Node; do PIPEWIRE_REMOTE=\$r timeout 10 pw-cli ls \$k 2>&1 | " +
         "grep -E 'factory.name|application.name|pipewire.access|node.name|rror|ailed'; done; done 2>&1 | " +
         "sed 's/^/PWDIAG /' ) & "
