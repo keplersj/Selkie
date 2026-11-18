@@ -1,13 +1,15 @@
 # Selkie MVP status (v0.1.0-mvp.1)
 
-Date: 2026-11-17. Components: Selkie (this repo, MIT) and droidc
+Date: 2026-11-17, updated 2026-11-18 with real-hardware results. Components: Selkie (this repo, MIT) and droidc
 ([keplersj/droidc](https://github.com/keplersj/droidc), MIT), plus a patched proot (GPL-2,
 separate binary).
 
-**Nothing in this release has run on a real Galaxy Tab S11 or any physical device.** Everything
-below was tested on Linux CI runners (x86_64 and arm64) and on an x86_64 Android 14 (API 34)
-emulator in GitHub Actions. The emulator can't test the Tab S11's arm64 Dimensity chip or its Mali
-GPU.
+**Run on two physical devices on 2026-11-17/18** (both arm64, Android 16): a Samsung Galaxy Tab S11
+(SM-X730, kernel 6.6.102-android15-8) and a Motorola Razr Ultra 2025. Before that everything was
+tested on Linux CI runners (x86_64 and arm64) and an x86_64 Android 14 (API 34) emulator in GitHub
+Actions. See [Real-hardware results](#real-hardware-results) below. The device builds were made from
+the same source as this release but not from the tagged APK itself; each fix was checked on the
+device in a build made before it was merged.
 
 ## What works, and how it was tested
 
@@ -21,10 +23,10 @@ GPU.
 | Deployments: pristine `usr/etc`, 3-way `/etc` merge, `var/` and `home/` outside, atomic `current`, one `previous`, crash recovery, GC | Works | unit tests (all four interrupted states), CI integration (switch, second switch, rollback, gc) |
 | Upgrade (no-op when the digest is unchanged), Rollback | Works | CI integration on both arches; emulator e2e (see below) |
 | `droidc status --json` inside the guest | Works | emulator e2e (static musl guest build bound to `/usr/bin/droidc`) |
-| Selkie app: Material 3 UI (image picker, progress, error cards, status, Upgrade/Rollback, terminal, About) | Builds; launches on the emulator | Compose smoke test on the emulator; 13 JVM unit tests |
-| In-app terminal (Termux `terminal-view`/`terminal-emulator` v0.118.3, Apache-2.0) | **Built, not exercised interactively** | compiled and packaged; the e2e drives proot non-interactively with the same argv builder |
-| Foreground service (`specialUse`) owning operations and terminal sessions | **Built, not exercised** | compiles; no test kills the activity and checks the session survives |
-| "Disable child process restrictions" detection and first-run explainer | Detection works on the emulator | e2e asserts the check returns OK (source `settings.global`) after `settings put global settings_enable_monitor_phantom_procs false`. Reading the Developer-options property path (what the UI toggle actually sets) is untested on a real device |
+| Selkie app: Material 3 UI (image picker, progress, error cards, status, Upgrade/Rollback, terminal, About) | Works | Compose smoke test on the emulator; JVM unit tests; run by hand on the Tab S11 and the Razr (install flow, status, terminal) |
+| In-app terminal (Termux `terminal-view`/`terminal-emulator` v0.118.3, Apache-2.0) | Works | used interactively on both devices: login shell, `id`, `busctl`, `curl`, `fastfetch`; the e2e also drives proot non-interactively with the same argv builder |
+| Foreground service (`specialUse`) owning operations and terminal sessions | Partly exercised | an install kept running to completion on the phone while its screen was locked; closing the activity and checking a terminal session survives is untested |
+| "Disable child process restrictions" detection and first-run explainer | Detection works on the emulator | e2e asserts the check returns OK (source `settings.global`) after `settings put global settings_enable_monitor_phantom_procs false`. On the Razr the first-run screen blocked until the Developer-options toggle was turned on, then moved on, so reading the property path works on a real device. `adb shell setprop` of that property is refused on that device |
 | Error kinds network / signature / storage | Implemented | signature and not-found tested in CI; network and storage-space errors are unit-level only |
 
 Emulator end-to-end (CI, `reactivecircus/android-emulator-runner`, API 34 google_apis x86_64,
@@ -34,37 +36,62 @@ deployment through the bundled proot (`cat /etc/os-release`, `droidc --json stat
 `id -u` under `-0`), upgrades, switches to a second stream10 digest, and rolls back.
 Result: **passes** (CI run [44081405858](https://github.com/keplersj/Selkie/actions/runs/44081405858)). Earlier runs found and fixed three Android-only problems: SIGSYS from musl on x86_64 (fixed by the bionic build), CentOS 10 needing x86-64-v3 (emulator `-cpu host`), and the test's second-digest lookup.
 
+## Real-hardware results
+
+Both devices: install Bluefin LTS in the app (`ghcr.io/projectbluefin/bluefin-lts:stable`, digest
+`d2a12ef344f8`, signature verified keyless), then open the terminal.
+
+| Check | Tab S11 | Razr Ultra 2025 |
+| --- | --- | --- |
+| Download 3.8 GB, unpack 216,143 files / 41,542 hard links as `link2symlink`, 6.4 GB on disk | Works (about 3.5 min) | Works (about 4 min) |
+| Login shell under proot as the app uid, prompt `selkie@localhost` | Works | Works |
+| `curl https://ghcr.io` (DNS and TLS) | Works | Works |
+| D-Bus session bus (`dbus-broker-launch`, `busctl --user list`, a `GetId` call) | Works | Works |
+| `fastfetch` (Bluefin's `ublue-fastfetch`) with icon glyphs | Works (Nerd Font bundled) | not run |
+| Crashes or SIGSYS in logcat | none | none |
+
+Problems the devices found, all fixed before the release was tagged:
+
+- The guest had no passwd entry for the app uid (`I have no name!`, dbus lookups failing). Selkie
+  now binds generated `/etc/passwd` and `/etc/group` (Selkie#2).
+- libselinux in the guest saw Android's selinuxfs, could not read it and aborted dbus. Selkie now
+  hides `/sys/fs/selinux` and `selinuxfs` in `/proc/filesystems` (Selkie#2).
+- `supervise` could not start `dbus-broker-launch`: no `/run/systemd/journal/socket`, an empty
+  `/etc/machine-id` (ENOMEDIUM), and a `dbus-daemon` fallback that reported success after it died.
+  Fixed in droidc#3.
+- Nerd Font icons drew as tofu with Android's stock monospace font; a Nerd Font is now bundled
+  (Selkie#3).
+
+Device notes: the Razr has two displays, so `adb exec-out screencap` needs `-d <display id>`. On the
+Razr, Selkie's first-run screen blocks until "Disable child process restrictions" is on, and
+`adb shell setprop persist.sys.fflag.override.settings_enable_monitor_phantom_procs false` was
+refused, so use the Developer options toggle.
+
 ### Not working or not done
 
-- **Untested on real hardware.** The Tab S11 (arm64, Mali GPU, Samsung's One UI kernel and SELinux
-  policy) has not run this build.
+- **Real-hardware coverage is narrow.** Two arm64 Android 16 devices, a short session each. Not tested:
+  x86_64 devices, other Android versions, long sessions, low-memory behaviour, the Mali GPU.
 - **`flatpak --version` inside Selkie's terminal is unverified.** Flatpak 1.18.0 is in the Bluefin
-  LTS image and runs there natively (arm64 runner, chroot), but Bluefin was never run under proot on
-  Android: the emulator is x86_64 and uses CentOS bootc, which ships no flatpak.
+  LTS image and runs there natively (arm64 runner, chroot), but Bluefin now runs under proot on the
+  Tab S11 and the Razr, but `flatpak` itself was not tried there.
+- No GPU, audio or Steam.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
   only.** The emulator GUI test (`emulator-gui` job) is written but has not run yet. No GPU (llvmpipe),
   no audio, no Steam.
-- The terminal UI and the foreground service's survival when the activity is closed have not been
-  tested by automation.
-- Upgrade on a real tag change was not observed; the e2e covers the no-op upgrade and a switch to a
-  second digest.
+- The terminal UI was used by hand only, and the foreground service's survival when the activity is
+  closed has not been tested.
+- Upgrade on a real tag change was not observed, and Upgrade/Rollback were not run on the devices;
+  the e2e covers the no-op upgrade and a switch to a second digest.
 - DNS via droidc's `--dns` resolver path was not exercised: CI networks provide resolvers
   normally. On Android, Selkie passes the DNS servers from `ConnectivityManager`.
 
-## Release status: prerelease not yet published (blocker)
+## Release status
 
-The `prerelease` job in `.github/workflows/android.yml` publishes `v0.1.0-mvp.1` (APK, proot
-source tarball, droidc commit, SHA256SUMS) when a `v*-*` tag is pushed, and only after the emulator
-e2e passes on that tag. This session's git access refuses tag pushes (HTTP 403; only the working
-branch is writable), so the tag hasn't been pushed and the release doesn't exist yet. To publish,
-push the tag on the PR's head commit, for example:
-
-    git fetch origin ccr-78817e77-qptw7t
-    git tag -a v0.1.0-mvp.1 -m "Selkie 0.1.0-mvp.1 (prerelease)" FETCH_HEAD
-    git push origin v0.1.0-mvp.1
-
-Until then the same signed APK is available as the `selkie-apk` artifact of the latest green
-Android CI run on the branch.
+`v0.1.0-mvp.1` is published as a GitHub prerelease:
+<https://github.com/keplersj/Selkie/releases/tag/v0.1.0-mvp.1> (APK, proot source tarball, droidc
+commit, SHA256SUMS). The `prerelease` job in `.github/workflows/android.yml` publishes it when a
+`v*-*` tag is pushed, only after the emulator e2e passes on that tag. The APK is signed with the
+public MVP test key.
 
 ## Install on the Galaxy Tab S11
 
@@ -197,7 +224,9 @@ From Samsung's own pages, retrieved 2026-11-17 (the US spec table renders only i
   because proot's loader (shipped in `nativeLibraryDir`) maps guest binaries instead of exec'ing
   them; only the binaries Android itself execs must be in jniLibs.
 - Does the Tab S11's One UI kernel/SELinux policy allow everything the emulator did (proot's
-  `process_vm`, seccomp acceleration, link2symlink renames)? Unknown until it runs on the tablet.
+  `process_vm`, seccomp acceleration, link2symlink renames)? Answered for what the app does: a full
+  install and a login shell with a session bus work on both devices. Whether proot's `process_vm`
+  and seccomp acceleration are actually in use there was not measured.
 
 ## Graphical sessions (follow-up to the MVP)
 

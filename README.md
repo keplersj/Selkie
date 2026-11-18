@@ -22,6 +22,13 @@ License: MIT (see `LICENSE`). Bundled proot is GPL-2.0-or-later; see About in th
 
 See [docs/architecture.md](docs/architecture.md).
 
+## Download
+
+- **Latest `main`:** the [`latest` prerelease](https://github.com/keplersj/Selkie/releases/tag/latest) is replaced on every push to `main` that passes CI (unit tests and the emulator E2E). Grab `selkie-latest.apk` from it; no GitHub login needed.
+- **Versioned builds:** prereleases tagged `v*` (see [Releases](https://github.com/keplersj/Selkie/releases)).
+
+Both are signed with the public MVP test key, for testing only (see [docs/signing.md](docs/signing.md)).
+
 ## Building
 
 Requirements: JDK 21, Android SDK (platform 36, build-tools 36.0.0). The Gradle wrapper is included.
