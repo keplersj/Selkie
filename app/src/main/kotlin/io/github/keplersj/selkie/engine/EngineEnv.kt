@@ -43,3 +43,24 @@ data class EngineEnv(
         const val WAYLAND_DISPLAY = "wayland-0"
     }
 }
+
+/**
+ * `containers.droidc.session.services` JSON that starts PipeWire and WirePlumber for a graphical session.
+ *
+ * PipeWire's access module runs a Flatpak check on every client through `/proc/<pid>/root`, which
+ * Android hides, so every client (Mutter's screen-cast stream, WirePlumber) ends up restricted to
+ * nothing. The emulator run showed `flatpak check failed` even on the manager socket, so PipeWire
+ * starts here from a copy of its own configuration without the access module.
+ */
+object PipeWireServices {
+    private const val SCRIPT =
+        "for f in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do " +
+        "[ -r \"\$f\" ] || continue; c=\"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\"; " +
+        "awk 'skip{n+=gsub(/\\{/,\"{\");n-=gsub(/\\}/,\"}\");if(n<=0)skip=0;next} " +
+        "/libpipewire-module-access/{n=gsub(/\\{/,\"{\")-gsub(/\\}/,\"}\");skip=(n>0);next} 1' \"\$f\" > \"\$c\" " +
+        "&& [ -s \"\$c\" ] && exec pipewire -c \"\$c\"; done; exec pipewire"
+
+    /** The services value for `containers.droidc.session.services` (JSON argv list). */
+    val JSON: String =
+        """[["sh","-c","${SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"")}"],["wireplumber"]]"""
+}

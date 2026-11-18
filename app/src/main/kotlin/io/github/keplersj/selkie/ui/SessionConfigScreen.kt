@@ -10,13 +10,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.GraphicalSession
+import io.github.keplersj.selkie.engine.PipeWireServices
 
 /** One filled-in example of the `containers.droidc.session.*` keys, as editable text. */
 private data class Example(val label: String, val name: String, val renderer: String, val exec: String, val services: String)
 
 private val EXAMPLES = listOf(
     Example("GNOME (headless)", "GNOME", "screencast",
-        """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""", """[["pipewire"],["wireplumber"]]"""),
+        """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""", PipeWireServices.JSON),
     Example("Nested compositor", "", "wayland", """["weston","--backend=wayland","--fullscreen"]""", ""),
 )
 

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.ServiceTestRule
+import io.github.keplersj.selkie.engine.PipeWireServices
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.SessionService
@@ -151,7 +152,7 @@ class DesktopE2ETest {
         val s = service()
         ensureBluefin(s)
         configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
-            """[["pipewire"],["wireplumber"]]""", "GNOME")
+            PipeWireServices.JSON, "GNOME")
         openDesktop(s, 50, "gnome")
         settle(s)
         screenshot("gnome-1.png")
