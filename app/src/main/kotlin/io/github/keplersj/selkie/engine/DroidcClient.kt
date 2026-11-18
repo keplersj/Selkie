@@ -28,6 +28,14 @@ object DroidcArgs {
         if (env.dns.isNotEmpty()) { add("--dns"); add(env.dns.joinToString(",")) }
     }
 
+    fun sessionSet(renderer: String, exec: String, services: String?, name: String?): List<String> = buildList {
+        add("session"); add("set")
+        add("--renderer"); add(renderer)
+        add("--exec"); add(exec)
+        if (!services.isNullOrBlank()) { add("--services"); add(services) }
+        if (!name.isNullOrBlank()) { add("--name"); add(name) }
+    }
+
     fun switch(ref: String, insecure: Boolean, links: String = "link2symlink"): List<String> = buildList {
         add("switch"); add(ref)
         if (insecure) add("--insecure-allow-unsigned")
@@ -117,6 +125,11 @@ class DroidcClient(private val env: EngineEnv) {
     suspend fun status(): DroidcOutcome = run(listOf("status"))
     suspend fun shellSpec(): DroidcOutcome = run(listOf("shell-spec"))
     suspend fun platform(): DroidcOutcome = run(listOf("platform"))
+
+    /** Writes the session override (`droidc session set`); `exec`/`services` are JSON as in the labels. */
+    suspend fun setSession(renderer: String, exec: String, services: String?, name: String?): DroidcOutcome =
+        run(DroidcArgs.sessionSet(renderer, exec, services, name))
+    suspend fun clearSession(): DroidcOutcome = run(listOf("session", "clear"))
 
     fun switch(ref: String, insecure: Boolean): Flow<DroidcEvent> =
         events(DroidcArgs.switch(ref, insecure))

@@ -94,6 +94,17 @@ class MainActivity : ComponentActivity() {
                     BackHandler { screen = "auto" }
                     TerminalScreen(service) { screen = "auto" }
                 }
+                screen == "desktop" -> {
+                    BackHandler { screen = "auto" }
+                    DesktopScreen(service) { screen = "auto" }
+                }
+                screen == "session" -> {
+                    BackHandler { screen = "auto" }
+                    SessionConfigScreen(state.graphical,
+                        onSave = { r, e, s, n, done -> service.configureSession(r, e, s, n, done) },
+                        onClear = { service.clearSessionOverride() },
+                        onBack = { screen = "auto" })
+                }
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
                 screen == "setup" || (screen == "auto" && state.statusLoaded && state.status?.current == null
                         && state.statusError == null) -> SetupScreen(
@@ -104,6 +115,8 @@ class MainActivity : ComponentActivity() {
                 !state.statusLoaded -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 else -> HomeScreen(state,
                     onOpenTerminal = { screen = "terminal" },
+                    onOpenDesktop = { screen = "desktop" },
+                    onConfigureDesktop = { screen = "session" },
                     onUpgrade = { service.upgrade() },
                     onRollback = { service.rollback() },
                     onSwitch = { switchRef = state.status?.current?.imageRef; screen = "setup" },

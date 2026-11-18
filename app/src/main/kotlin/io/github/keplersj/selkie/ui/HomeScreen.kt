@@ -16,6 +16,8 @@ import io.github.keplersj.selkie.service.ServiceState
 fun HomeScreen(
     state: ServiceState,
     onOpenTerminal: () -> Unit,
+    onOpenDesktop: () -> Unit,
+    onConfigureDesktop: () -> Unit,
     onUpgrade: () -> Unit,
     onRollback: () -> Unit,
     onSwitch: () -> Unit,
@@ -38,6 +40,21 @@ fun HomeScreen(
 
         Button(onClick = onOpenTerminal, enabled = cur != null, modifier = Modifier.fillMaxWidth()) {
             Text(if (state.sessions.isNotEmpty()) "Open terminal (${state.sessions.size} running)" else "Open terminal")
+        }
+        val graphical = state.graphical
+        if (cur != null && graphical != null) {
+            if (graphical.configured) {
+                Button(onClick = onOpenDesktop, modifier = Modifier.fillMaxWidth()) {
+                    Text(when (state.desktop) {
+                        is io.github.keplersj.selkie.service.DesktopState.Running,
+                        is io.github.keplersj.selkie.service.DesktopState.Starting -> "Return to desktop"
+                        else -> "Open desktop" + (graphical.name?.let { " ($it)" } ?: "")
+                    })
+                }
+                TextButton(onClick = onConfigureDesktop) { Text("Desktop session settings") }
+            } else {
+                OutlinedButton(onClick = onConfigureDesktop, modifier = Modifier.fillMaxWidth()) { Text("Set up a desktop session") }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onUpgrade, enabled = cur != null) { Text("Upgrade") }

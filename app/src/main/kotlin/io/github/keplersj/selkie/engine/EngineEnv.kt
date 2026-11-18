@@ -31,4 +31,15 @@ data class EngineEnv(
     val guestRun: File get() = File(filesDir, "guest/run")
     val guestShm: File get() = File(filesDir, "guest/shm")
     val guestGenerated: File get() = File(filesDir, "guest/generated")
+
+    /** The guest's `XDG_RUNTIME_DIR` (`/run/user/<uid>`), where droidc supervise puts its sockets. */
+    val guestRuntimeDir: File get() = File(guestRun, "user/$uid")
+    /** Selkie's Wayland compositor listens here; guest clients see `$XDG_RUNTIME_DIR/wayland-0`. */
+    val waylandSocket: File get() = File(guestRuntimeDir, WAYLAND_DISPLAY)
+    /** Output of the proot process running the graphical session. */
+    val desktopLog: File get() = File(cacheDir, "desktop.log")
+
+    companion object {
+        const val WAYLAND_DISPLAY = "wayland-0"
+    }
 }

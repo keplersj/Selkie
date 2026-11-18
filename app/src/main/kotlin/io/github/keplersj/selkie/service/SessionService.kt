@@ -22,6 +22,7 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.engine.status
@@ -98,6 +99,7 @@ class SessionService : Service() {
     }
 
     override fun onDestroy() {
+        stopDesktop()
         terminals.values.forEach { it.finishIfRunning() }
         scope.cancel()
         super.onDestroy()
@@ -117,6 +119,13 @@ class SessionService : Service() {
                     is DroidcOutcome.Failure -> it.copy(
                         statusError = outcome.error.message, statusLoaded = true)
                 }
+            }
+            if (_state.value.status?.current != null) {
+                val spec = withContext(Dispatchers.IO) { c.shellSpec() }
+                val session = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec().session }.getOrNull() }
+                _state.update { it.copy(graphical = session) }
+            } else {
+                _state.update { it.copy(graphical = null) }
             }
         }
     }
@@ -218,6 +227,109 @@ class SessionService : Service() {
 
     private fun runningSessions() = terminals.values.count { it.isRunning }
 
+    // ---------------- graphical session ----------------
+
+    @Volatile private var compositor: NativeCompositor? = null
+    @Volatile private var desktop: Process? = null
+    private var desktopJob: Job? = null
+
+    /** The running compositor, for the view that shows it. */
+    fun compositor(): NativeCompositor? = compositor
+
+    /**
+     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
+     * view size). The session keeps running without the activity; the compositor holds frames while
+     * nothing shows them.
+     */
+    fun startDesktop(width: Int, height: Int) {
+        val st = _state.value.desktop
+        if (st is DesktopState.Starting || st is DesktopState.Running) return
+        _state.update { it.copy(desktop = DesktopState.Starting) }
+        startForegroundService(Intent(this, SessionService::class.java))
+        updateForeground(force = true)
+        val env = newEnv()
+        desktopJob = scope.launch {
+            val p = try {
+                withContext(Dispatchers.IO) {
+                    val outcome = DroidcClient(env).shellSpec()
+                    val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
+                        ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
+                    if (spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")
+                    val fake = GuestFiles.prepare(env, spec)
+                    val inv = ProotCommandBuilder(env, spec, fake,
+                        overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env))
+                        .graphicalSession(width, height)
+                    compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
+                    val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
+                        .redirectOutput(env.desktopLog)
+                    pb.environment().apply { clear(); putAll(inv.env) }
+                    pb.start()
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                stopCompositor()
+                _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env))) }
+                updateForeground(force = true)
+                return@launch
+            }
+            desktop = p
+            _state.update { it.copy(desktop = DesktopState.Running(width, height)) }
+            updateForeground(force = true)
+            val code = withContext(Dispatchers.IO) { p.waitFor() }
+            if (desktop === p) {
+                desktop = null
+                stopCompositor()
+                _state.update { it.copy(desktop =
+                    if (code == 0) DesktopState.Stopped
+                    else DesktopState.Failed("The session exited with status $code", logTail(env))) }
+                updateForeground(force = true)
+            }
+        }
+    }
+
+    /** Stops the session (proot `--kill-on-exit` takes the guest processes with it) and the compositor. */
+    fun stopDesktop() {
+        val p = desktop
+        desktop = null
+        desktopJob?.cancel()
+        desktopJob = null
+        if (p != null) {
+            p.destroy()
+            Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
+        }
+        stopCompositor()
+        _state.update { it.copy(desktop = DesktopState.Stopped) }
+        updateForeground(force = true)
+    }
+
+    fun dismissDesktopError() {
+        if (_state.value.desktop is DesktopState.Failed) _state.update { it.copy(desktop = DesktopState.Stopped) }
+    }
+
+    private fun stopCompositor() {
+        compositor?.stop()
+        compositor = null
+    }
+
+    private fun logTail(env: EngineEnv): String = try {
+        env.desktopLog.readLines().takeLast(40).joinToString("\n")
+    } catch (_: Exception) { "" }
+
+    /** Writes the session override (`droidc session set`) and refreshes. */
+    fun configureSession(renderer: String, exec: String, services: String?, name: String?, onDone: (String?) -> Unit) {
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) { client().setSession(renderer, exec, services, name) }
+            onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
+            refreshStatus()
+        }
+    }
+
+    fun clearSessionOverride() {
+        scope.launch { withContext(Dispatchers.IO) { client().clearSession() }; refreshStatus() }
+    }
+
+    private fun desktopActive() = _state.value.desktop.let { it is DesktopState.Starting || it is DesktopState.Running }
+
     // ---------------- foreground + notification ----------------
 
     private fun ensureChannel() {
@@ -228,6 +340,7 @@ class SessionService : Service() {
 
     private fun stopEverything() {
         opJob?.cancel()
+        stopDesktop()
         terminals.values.forEach { it.finishIfRunning() }
         terminals.clear()
         publishSessions()
@@ -238,7 +351,7 @@ class SessionService : Service() {
 
     private fun updateForeground(force: Boolean = false) {
         val op = _state.value.operation
-        val active = op is Operation.Running || runningSessions() > 0
+        val active = op is Operation.Running || runningSessions() > 0 || desktopActive()
         if (!active) {
             if (foreground) { foreground = false; stopForeground(STOP_FOREGROUND_REMOVE) }
             if (_state.value.sessions.isEmpty() && op !is Operation.Running) {
@@ -273,7 +386,11 @@ class SessionService : Service() {
             else b.setProgress(0, 0, true)
         } else {
             val n = runningSessions()
-            b.setContentTitle("Selkie").setContentText("$n session${if (n == 1) "" else "s"} running")
+            val text = listOfNotNull(
+                "Desktop running".takeIf { desktopActive() },
+                "$n terminal${if (n == 1) "" else "s"} running".takeIf { n > 0 },
+            ).joinToString(" · ")
+            b.setContentTitle("Selkie").setContentText(text)
         }
         return b.build()
     }
