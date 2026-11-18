@@ -84,7 +84,10 @@ class MainActivity : ComponentActivity() {
             when {
                 needPhantom -> PhantomScreen(true, phantom == PhantomProcessCheck.State.UNVERIFIED,
                     onRecheck = { phantom = check.check() },
-                    onContinueAnyway = { prefs.edit().putBoolean("phantom_ack", true).apply(); acknowledged = true })
+                    onContinueAnyway = { prefs.edit().putBoolean("phantom_ack", true).apply(); acknowledged = true },
+                    onFixWithRoot = if (state.suFound) ({
+                        service.disablePhantomKillerWithRoot { phantom = check.check() }
+                    }) else null)
                 op !is Operation.Idle -> ProgressScreen(op,
                     onCancel = { service.cancelOperation() },
                     onRetry = { f -> service.dismissOperation(); retry(service, f, f.insecure) },
@@ -108,7 +111,8 @@ class MainActivity : ComponentActivity() {
                     onRollback = { service.rollback() },
                     onSwitch = { switchRef = state.status?.current?.imageRef; screen = "setup" },
                     onAbout = { screen = "about" },
-                    onRefresh = { service.refreshStatus() })
+                    onRefresh = { service.refreshStatus() },
+                    onRootMode = { service.setRootMode(it) })
             }
         }
     }
@@ -118,6 +122,8 @@ class MainActivity : ComponentActivity() {
             io.github.keplersj.selkie.service.OpKind.SWITCH -> service.switchTo(f.ref ?: return, insecure)
             io.github.keplersj.selkie.service.OpKind.UPGRADE -> service.upgrade()
             io.github.keplersj.selkie.service.OpKind.ROLLBACK -> service.rollback()
+            io.github.keplersj.selkie.service.OpKind.FIX_OWNERSHIP -> service.fixOwnership()
+            io.github.keplersj.selkie.service.OpKind.UNDO_OWNERSHIP -> service.setRootMode(false)
         }
     }
 }

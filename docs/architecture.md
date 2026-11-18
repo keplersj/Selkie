@@ -39,6 +39,35 @@ binds from `droidc shell-spec`). Environment is built from scratch (shell-spec e
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
 
+## Root mode (optional)
+
+Shown only where an `su` binary exists (Magisk, KernelSU, APatch; `RootShell.SU_CANDIDATES`). Off by
+default; turning it on asks su once (`su -c 'id -u'`, the root manager prompts) and stores `root_mode`
+in the `selkie` preferences. Then:
+
+- `switch`/`upgrade`/`rollback` run as root through `su -c` (`DroidcClient.events(asRoot = true)`):
+  switch with `--links auto --apply-ownership` (real hard links; the image's owners and setuid). After
+  any of them Selkie applies `fix-ownership` if the deployment now current is not image-owned (a
+  rollback to one made before root mode). `status` and `shell-spec` stay unprivileged: droidc hands
+  records, the lock and blobs back to the app uid with the app's SELinux label.
+- Terminals run `su -c '... libdroidc.so enter --bind <guest droidc>:/usr/bin/droidc --bind
+  <resolv.conf>:/etc/resolv.conf ... -- /usr/bin/droidc supervise -- /bin/bash -l'` instead of proot:
+  namespaces + chroot, private /proc /sys /dev /run /tmp, the guest runs as root
+  (`EnterCommandBuilder`).
+- Every su script is built by `RootShell`: each word single-quoted (image refs are user input),
+  `exec /system/bin/env -i` with an explicit environment. With Magisk the root process is magiskd's
+  child, not ours, so killing `su` does not stop it: the script reports its pid first (operations: a
+  `selkie-pid` line on stdout; terminals: a pid file in `cacheDir/root-sessions`) and Cancel, closing a
+  terminal and the notification's Stop kill that pid through su. `enter` then tears its namespace down.
+- Turning root mode off runs `fix-ownership --undo` (everything back to the app uid with safe modes)
+  when a deployment is image-owned, then clears the setting. Both directions need closed terminals.
+- The phantom-process screen offers "Turn it off with root" (`settings put global ...` through su).
+
+CI cannot run Selkie's root mode (the emulator has no Magisk). `e2e.sh` instead drives
+`libdroidc.so` as root with `adb root` on the deployment EngineE2ETest left: `fix-ownership`, `enter`
+(logs the kernel's namespaces), then checks as the app (`run-as`) that `status` works, `gc` refuses
+while image-owned and works after `--undo`.
+
 ## Service lifecycle
 
 Operations (switch/upgrade/rollback) and terminal sessions live in `SessionService` so they outlive the activity.

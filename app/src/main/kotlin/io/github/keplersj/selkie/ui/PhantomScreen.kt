@@ -13,7 +13,14 @@ import androidx.compose.ui.unit.dp
 
 /** First-run screen: Android kills proot's children unless child process restrictions are off. */
 @Composable
-fun PhantomScreen(stillRestricted: Boolean, unverified: Boolean = false, onRecheck: () -> Unit, onContinueAnyway: () -> Unit) {
+fun PhantomScreen(
+    stillRestricted: Boolean,
+    unverified: Boolean = false,
+    onRecheck: () -> Unit,
+    onContinueAnyway: () -> Unit,
+    /** Set where an su binary exists: turns the setting off with root instead. */
+    onFixWithRoot: (() -> Unit)? = null,
+) {
     val ctx = LocalContext.current
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -38,6 +45,11 @@ fun PhantomScreen(stillRestricted: Boolean, unverified: Boolean = false, onReche
             ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }) { Text("Open developer settings") }
+        if (onFixWithRoot != null) {
+            Text("Rooted device: Selkie can change the setting itself (your root manager will ask).",
+                style = MaterialTheme.typography.bodySmall)
+            Button(onClick = onFixWithRoot) { Text("Turn it off with root") }
+        }
         OutlinedButton(onClick = onRecheck) { Text("Check again") }
         TextButton(onClick = onContinueAnyway) { Text("Continue anyway") }
     }

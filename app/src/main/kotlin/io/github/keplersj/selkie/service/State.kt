@@ -4,7 +4,8 @@ import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.StatusData
 
 enum class OpKind(val label: String) {
-    SWITCH("Installing"), UPGRADE("Upgrading"), ROLLBACK("Rolling back")
+    SWITCH("Installing"), UPGRADE("Upgrading"), ROLLBACK("Rolling back"),
+    FIX_OWNERSHIP("Applying image ownership"), UNDO_OWNERSHIP("Giving files back to Selkie"),
 }
 
 sealed interface Operation {
@@ -38,4 +39,12 @@ data class ServiceState(
     val statusError: String? = null,
     val statusLoaded: Boolean = false,
     val sessions: List<SessionInfo> = emptyList(),
+    /** Root mode is on (droidc's mutating commands and terminals run through su). */
+    val rootMode: Boolean = false,
+    /** An su binary exists on this device. */
+    val suFound: Boolean = false,
+    /** Waiting for the root manager's grant prompt. */
+    val rootProbing: Boolean = false,
+    /** Last root-mode message (grant result, errors). */
+    val rootMessage: String? = null,
 )

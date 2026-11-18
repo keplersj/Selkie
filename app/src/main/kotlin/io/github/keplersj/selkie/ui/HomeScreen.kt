@@ -21,6 +21,7 @@ fun HomeScreen(
     onSwitch: () -> Unit,
     onAbout: () -> Unit,
     onRefresh: () -> Unit,
+    onRootMode: (Boolean) -> Unit = {},
 ) {
     var confirmRollback by remember { mutableStateOf(false) }
     val cur = state.status?.current
@@ -44,6 +45,7 @@ fun HomeScreen(
             OutlinedButton(onClick = { confirmRollback = true }, enabled = prev != null) { Text("Rollback") }
             OutlinedButton(onClick = onSwitch) { Text("Switch image") }
         }
+        if (state.suFound || state.rootMode) RootModeCard(state, onRootMode)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onRefresh) { Text("Refresh") }
             TextButton(onClick = onAbout) { Text("About") }
@@ -61,6 +63,31 @@ fun HomeScreen(
     }
 }
 
+/** Shown only where an su binary exists (or root mode is already on). */
+@Composable
+private fun RootModeCard(state: ServiceState, onRootMode: (Boolean) -> Unit) {
+    val busy = state.rootProbing || state.operation is io.github.keplersj.selkie.service.Operation.Running
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Root mode", style = MaterialTheme.typography.titleMedium)
+                    Text("Runs Linux natively instead of under proot: much faster, real file owners " +
+                        "(sudo works), systemd user services. Needs Magisk, KernelSU or APatch. " +
+                        "Linux programs then run as root on this device.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = state.rootMode, enabled = !busy && state.sessions.none { it.running },
+                    onCheckedChange = onRootMode)
+            }
+            if (state.sessions.any { it.running }) Text("Close open terminals to change this.",
+                style = MaterialTheme.typography.bodySmall)
+            state.rootMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary) }
+        }
+    }
+}
+
 @Composable
 private fun DeploymentCard(label: String, d: Deployment) {
     val clipboard = LocalClipboardManager.current
@@ -70,6 +97,7 @@ private fun DeploymentCard(label: String, d: Deployment) {
                 Text(label, style = MaterialTheme.typography.titleMedium)
                 if (d.insecure) AssistChip(onClick = {}, label = { Text("INSECURE") },
                     colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.errorContainer))
+                if (d.imageOwned) AssistChip(onClick = {}, label = { Text("Image owners (root)") })
             }
             Text(d.imageRef, style = MaterialTheme.typography.bodyLarge)
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

@@ -17,7 +17,19 @@ fun engineEnvFrom(context: Context, dns: List<String> = currentDns(context)): En
         uid = uid,
         gid = uid,
         dns = dns,
+        rootMode = rootModeEnabled(app),
+        su = RootShell.findSu(),
     )
+}
+
+private const val PREFS = "selkie"
+private const val ROOT_MODE = "root_mode"
+
+fun rootModeEnabled(context: Context): Boolean =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(ROOT_MODE, false)
+
+fun setRootModeEnabled(context: Context, on: Boolean) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(ROOT_MODE, on).apply()
 }
 
 /** DNS servers of the active network (Android has no resolv.conf for static binaries). */

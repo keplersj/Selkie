@@ -28,11 +28,19 @@ object DroidcArgs {
         if (env.dns.isNotEmpty()) { add("--dns"); add(env.dns.joinToString(",")) }
     }
 
-    fun switch(ref: String, insecure: Boolean, links: String = "link2symlink"): List<String> = buildList {
+    /**
+     * Root mode lets droidc make real hard links (`auto`; link2symlink only where link(2) fails)
+     * and apply the image's owners/setuid to the new deployment (`--apply-ownership`).
+     */
+    fun switch(ref: String, insecure: Boolean, root: Boolean = false): List<String> = buildList {
         add("switch"); add(ref)
         if (insecure) add("--insecure-allow-unsigned")
-        add("--links"); add(links)
+        add("--links"); add(if (root) "auto" else "link2symlink")
+        if (root) add("--apply-ownership")
     }
+
+    fun fixOwnership(undo: Boolean): List<String> =
+        if (undo) listOf("fix-ownership", "--undo") else listOf("fix-ownership")
 }
 
 /**
@@ -40,26 +48,38 @@ object DroidcArgs {
  * [EngineEnv.droidcLog] and its tail is exposed via [stderrTail] for error cards.
  */
 class DroidcClient(private val env: EngineEnv) {
+    /** Whether mutating commands run as root (root mode with an su binary). */
+    val useRoot: Boolean get() = env.useRoot
+
     private val tail = RingBuffer()
 
     /** Last stderr/log lines of the most recent run. */
     fun stderrTail(): String = tail.text()
 
-    private fun processEnv(pb: ProcessBuilder) {
-        val e = pb.environment()
-        e.clear()
-        e["HOME"] = env.filesDir.path
-        e["TMPDIR"] = env.cacheDir.path
-        e["PATH"] = "/system/bin"
-    }
+    /** droidc's own environment (also what root mode passes through `env -i`). */
+    private fun droidcEnv(): Map<String, String> = linkedMapOf(
+        "HOME" to env.filesDir.path, "TMPDIR" to env.cacheDir.path, "PATH" to "/system/bin",
+    )
 
-    /** Streams events for `droidc --json <args>`. Cancelling the collector kills the process. */
-    fun events(args: List<String>): Flow<DroidcEvent> = callbackFlow {
+    /**
+     * Streams events for `droidc --json <args>`; [asRoot] runs it through `su` (root mode).
+     * Cancelling the collector kills the process, and as root also the root pid (with Magisk the
+     * root process is not our child).
+     */
+    fun events(args: List<String>, asRoot: Boolean = false): Flow<DroidcEvent> = callbackFlow {
+        // Created by the app, so the root droidc hands what it makes back to the app uid.
         env.droidcRoot.mkdirs()
         env.cacheDir.mkdirs()
         tail.snapshot() // keep previous run until new lines arrive
-        val pb = ProcessBuilder(DroidcArgs.global(env, json = true) + args)
-        processEnv(pb)
+        val su = env.su
+        if (asRoot && su == null) {
+            trySend(DroidcEvent.Result(false, null, DroidcError(ErrorKind.INTERNAL, "root mode: no su binary")))
+            close(); return@callbackFlow
+        }
+        val argv = DroidcArgs.global(env, json = true) + args
+        val pb = if (asRoot && su != null) ProcessBuilder(RootShell.su(su, argv, droidcEnv(), RootShell.PID_ON_STDOUT))
+            .also { it.environment().apply { clear(); putAll(RootShell.suEnv(env.filesDir)) } }
+        else ProcessBuilder(argv).also { it.environment().apply { clear(); putAll(droidcEnv()) } }
         pb.redirectError(ProcessBuilder.Redirect.appendTo(env.droidcLog))
         val proc = try { pb.start() } catch (e: Exception) {
             trySend(DroidcEvent.Result(false, null, DroidcError(ErrorKind.INTERNAL,
@@ -67,10 +87,12 @@ class DroidcClient(private val env: EngineEnv) {
             close(); return@callbackFlow
         }
         val sawResult = AtomicReference(false)
+        val rootPid = AtomicReference<Int?>(null)
         val reader = Thread {
             try {
                 proc.inputStream.bufferedReader().useLines { seq ->
                     for (line in seq) {
+                        if (asRoot && rootPid.get() == null) RootShell.parsePid(line)?.let { rootPid.set(it); continue }
                         val ev = NdjsonParser.parseLine(line) ?: continue
                         when (ev) {
                             is DroidcEvent.Log -> tail.add("[${ev.level}] ${ev.message}")
@@ -91,7 +113,14 @@ class DroidcClient(private val env: EngineEnv) {
         }
         reader.isDaemon = true
         reader.start()
-        awaitClose { proc.destroyForcibly() }
+        awaitClose {
+            val pid = rootPid.get()
+            if (su != null && pid != null && !sawResult.get()) {
+                // Cancelled while running as root: droidc is crash-safe and recovers next time.
+                Thread { runCatching { ProcessBuilder(RootShell.kill(su, pid)).start().waitFor() } }.start()
+            }
+            proc.destroyForcibly()
+        }
     }.flowOn(Dispatchers.IO)
 
     private fun readLogTail(): String = try {
@@ -118,10 +147,13 @@ class DroidcClient(private val env: EngineEnv) {
     suspend fun shellSpec(): DroidcOutcome = run(listOf("shell-spec"))
     suspend fun platform(): DroidcOutcome = run(listOf("platform"))
 
+    // Read-only commands (status, shell-spec) never need root: droidc hands records back to the app.
     fun switch(ref: String, insecure: Boolean): Flow<DroidcEvent> =
-        events(DroidcArgs.switch(ref, insecure))
-    fun upgrade(): Flow<DroidcEvent> = events(listOf("upgrade"))
-    fun rollback(): Flow<DroidcEvent> = events(listOf("rollback"))
+        events(DroidcArgs.switch(ref, insecure, root = env.useRoot), asRoot = env.useRoot)
+    fun upgrade(): Flow<DroidcEvent> = events(listOf("upgrade"), asRoot = env.useRoot)
+    fun rollback(): Flow<DroidcEvent> = events(listOf("rollback"), asRoot = env.useRoot)
+    /** Always as root: apply the image's ownership, or ([undo]) give everything back to the app. */
+    fun fixOwnership(undo: Boolean): Flow<DroidcEvent> = events(DroidcArgs.fixOwnership(undo), asRoot = true)
 
     /** `droidc --version` (human text, no --json). */
     suspend fun version(): String = withContext(Dispatchers.IO) {

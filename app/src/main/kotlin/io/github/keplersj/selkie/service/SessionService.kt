@@ -22,11 +22,16 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.engineEnvFrom
+import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.engine.status
+import io.github.keplersj.selkie.platform.RootAccess
+import io.github.keplersj.selkie.proot.EnterCommandBuilder
 import io.github.keplersj.selkie.proot.GuestFiles
 import io.github.keplersj.selkie.proot.ProotCommandBuilder
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -57,6 +62,8 @@ class SessionService : Service() {
     private var lastNotify = 0L
 
     private val terminals = LinkedHashMap<String, TerminalSession>()
+    /** Root-mode sessions: session id -> pid file their root shell wrote. */
+    private val rootPidFiles = HashMap<String, File>()
     /** UI plugs its client in here; null while the activity is gone. */
     @Volatile var uiSessionClient: TerminalSessionClient? = null
 
@@ -87,6 +94,8 @@ class SessionService : Service() {
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
+        val env = newEnv()
+        _state.update { it.copy(rootMode = env.rootMode, suFound = env.su != null) }
         refreshStatus()
     }
 
@@ -128,9 +137,50 @@ class SessionService : Service() {
 
     fun upgrade() = start(OpKind.UPGRADE, _state.value.status?.current?.imageRef, false) { it.upgrade() }
     fun rollback() = start(OpKind.ROLLBACK, null, false) { it.rollback() }
+    fun fixOwnership() = start(OpKind.FIX_OWNERSHIP, null, false) { it.fixOwnership(undo = false) }
+
+    // ---------------- root mode ----------------
+
+    /**
+     * On: ask su (the root manager prompts), then apply the image's ownership to the current
+     * deployment. Off: give every file back to the app (`fix-ownership --undo`) so proot works
+     * again, then clear the setting. Refused while terminals run.
+     */
+    fun setRootMode(on: Boolean) {
+        val st = _state.value
+        if (st.operation is Operation.Running || st.rootProbing || on == st.rootMode) return
+        if (runningSessions() > 0) {
+            _state.update { it.copy(rootMessage = "Close open terminals before switching root mode.") }
+            return
+        }
+        if (on) scope.launch {
+            _state.update { it.copy(rootProbing = true, rootMessage = "Waiting for root permission...") }
+            val (probe, msg) = withContext(Dispatchers.IO) { RootAccess().probe() }
+            val granted = probe == RootAccess.Probe.GRANTED
+            if (granted) setRootModeEnabled(this@SessionService, true)
+            _state.update { it.copy(rootProbing = false, rootMode = granted, rootMessage = msg) }
+            val cur = _state.value.status?.current
+            if (granted && cur != null && !cur.imageOwned) fixOwnership()
+        } else {
+            val s = _state.value.status
+            val imageOwned = listOfNotNull(s?.current, s?.previous).any { it.imageOwned }
+            val off = {
+                setRootModeEnabled(this, false)
+                _state.update { it.copy(rootMode = false, rootMessage = "Root mode is off.") }
+            }
+            if (imageOwned) start(OpKind.UNDO_OWNERSHIP, null, false, onSuccess = off) { it.fixOwnership(undo = true) }
+            else off()
+        }
+    }
+
+    /** Root alternative to the Developer options toggle. */
+    fun disablePhantomKillerWithRoot(onDone: (Boolean) -> Unit) {
+        scope.launch { onDone(withContext(Dispatchers.IO) { RootAccess().disablePhantomKiller() }) }
+    }
 
     private fun start(
         kind: OpKind, ref: String?, insecure: Boolean,
+        onSuccess: () -> Unit = {},
         flow: (DroidcClient) -> kotlinx.coroutines.flow.Flow<DroidcEvent>,
     ) {
         if (_state.value.operation is Operation.Running) return
@@ -158,7 +208,18 @@ class SessionService : Service() {
                 refreshStatus()
                 throw e
             }
-            val r = result
+            var r = result
+            // Root mode: the deployment now current must carry the image's owners (a rollback to
+            // one made before root mode, or a switch that reused an older deployment).
+            if (r?.ok == true && c.useRoot && kind in setOf(OpKind.SWITCH, OpKind.UPGRADE, OpKind.ROLLBACK)) {
+                val cur = (withContext(Dispatchers.IO) { c.status() } as? DroidcOutcome.Success)
+                    ?.let { runCatching { it.status() }.getOrNull() }?.current
+                if (cur != null && !cur.imageOwned) {
+                    _state.update { it.copy(operation = Operation.Running(kind, ref, "ownership", message = "Applying image ownership")) }
+                    c.fixOwnership(undo = false).collect { ev -> if (ev is DroidcEvent.Result) r = ev }
+                }
+            }
+            if (r?.ok == true) onSuccess()
             _state.update {
                 it.copy(operation = if (r?.ok == true) Operation.Done(kind, "${kind.label} finished")
                 else Operation.Failed(kind, ref, insecure,
@@ -184,13 +245,20 @@ class SessionService : Service() {
         val outcome = withContext(Dispatchers.IO) { DroidcClient(env).shellSpec() }
         val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
             ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
+        val id = UUID.randomUUID().toString()
+        val pidFile = File(env.rootSessions, "$id.pid")
         val inv = withContext(Dispatchers.IO) {
             val fake = GuestFiles.prepare(env, spec)
-            ProotCommandBuilder(env, spec, fake, overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env)).interactiveShell()
+            if (env.useRoot) {
+                env.rootSessions.mkdirs()
+                EnterCommandBuilder(env, spec, overlays = GuestFiles.prepareSelinuxHiding(env)).interactiveShell(pidFile)
+            } else {
+                ProotCommandBuilder(env, spec, fake, overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env)).interactiveShell()
+            }
         }
+        if (env.useRoot) rootPidFiles[id] = pidFile
         val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
             inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)
-        val id = UUID.randomUUID().toString()
         terminals[id] = session
         session.mSessionName = "Session ${terminals.size}"
         startForegroundService(Intent(this, SessionService::class.java))
@@ -203,6 +271,7 @@ class SessionService : Service() {
 
     fun closeSession(s: TerminalSession) {
         s.finishIfRunning()
+        terminals.entries.firstOrNull { it.value === s }?.key?.let { stopRoot(it) }
         terminals.values.remove(s)
         publishSessions()
         updateForeground(force = true)
@@ -226,8 +295,19 @@ class SessionService : Service() {
             NotificationManager.IMPORTANCE_LOW))
     }
 
+    /**
+     * Killing our `su` may not reach the root shell (with Magisk it is magiskd's child), so stop it by
+     * the pid it wrote; droidc enter then tears the whole namespace down.
+     */
+    private fun stopRoot(id: String) {
+        val f = rootPidFiles.remove(id) ?: return
+        val su = newEnv().su ?: return
+        Thread { runCatching { ProcessBuilder(RootShell.killFromFile(su, f)).start().waitFor() } }.start()
+    }
+
     private fun stopEverything() {
         opJob?.cancel()
+        terminals.keys.toList().forEach { stopRoot(it) }
         terminals.values.forEach { it.finishIfRunning() }
         terminals.clear()
         publishSessions()
