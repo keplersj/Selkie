@@ -36,6 +36,12 @@ fun DesktopScreen(service: SessionService, onBack: () -> Unit) {
     val ctx = LocalContext.current
     ImmersiveMode()
 
+    // The view's surface usually exists before the compositor: hand it over once the session runs.
+    LaunchedEffect(desktop is DesktopState.Running || desktop is DesktopState.Starting, viewRef) {
+        viewRef?.attach()
+    }
+    LaunchedEffect(desktop) { if (desktop is DesktopState.Running) viewRef?.attach() }
+
     LaunchedEffect(size) {
         val s = size ?: return@LaunchedEffect
         if (service.state.value.desktop is DesktopState.Stopped) service.startDesktop(s.first, s.second)

@@ -26,11 +26,21 @@ class CompositorView(context: Context, private val compositor: () -> NativeCompo
         isFocusableInTouchMode = true
     }
 
+    private var size: Pair<Int, Int>? = null
+
     override fun surfaceCreated(h: SurfaceHolder) {}
     override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {
+        size = width to height
         compositor()?.setSurface(h.surface, width, height)
     }
+
+    /** Hands the current surface to the compositor; for a compositor started after the surface existed. */
+    fun attach() {
+        val (w, h) = size ?: return
+        if (holder.surface?.isValid == true) compositor()?.setSurface(holder.surface, w, h)
+    }
     override fun surfaceDestroyed(h: SurfaceHolder) {
+        size = null
         compositor()?.setSurface(null, 0, 0)
     }
 
