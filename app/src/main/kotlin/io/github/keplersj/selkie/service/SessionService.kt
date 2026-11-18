@@ -186,7 +186,7 @@ class SessionService : Service() {
             ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
         val inv = withContext(Dispatchers.IO) {
             val fake = GuestFiles.prepare(env, spec)
-            ProotCommandBuilder(env, spec, fake).interactiveShell()
+            ProotCommandBuilder(env, spec, fake, overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env)).interactiveShell()
         }
         val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
             inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)

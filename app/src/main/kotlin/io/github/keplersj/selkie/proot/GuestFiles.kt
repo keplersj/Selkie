@@ -40,6 +40,65 @@ object GuestFiles {
         return out
     }
 
+    /**
+     * Hides Android's SELinux from the guest. It is visible but off limits to apps, so libselinux in the
+     * guest (dbus-daemon, dbus-broker) believes SELinux is on, cannot read `/sys/fs/selinux/enforce` and
+     * aborts. libselinux first `statfs`es `/sys/fs/selinux` for the SELinux magic, then falls back to
+     * `/proc/filesystems`, so both are overridden: an empty directory over `/sys/fs/selinux`, and a
+     * `/proc/filesystems` without `selinuxfs` (apps usually cannot read the host's, so [FALLBACK_FILESYSTEMS]
+     * is used then). The guest then behaves as on a host without SELinux.
+     */
+    fun prepareSelinuxHiding(
+        env: EngineEnv,
+        read: () -> String = { File("/proc/filesystems").readText() },
+    ): Map<String, File> {
+        env.guestGenerated.mkdirs()
+        val f = File(env.guestGenerated, "proc_filesystems")
+        f.writeText(withoutSelinuxfs(try { read() } catch (_: Exception) { FALLBACK_FILESYSTEMS }))
+        val empty = File(env.guestGenerated, "empty").apply { mkdirs() }
+        return mapOf("/proc/filesystems" to f, "/sys/fs/selinux" to empty)
+    }
+
+    val FALLBACK_FILESYSTEMS = listOf(
+        "nodev\tsysfs", "nodev\ttmpfs", "nodev\tproc", "nodev\tdevpts", "nodev\tcgroup", "nodev\tcgroup2",
+        "nodev\tfuse", "\text4", "\tf2fs", "\tvfat",
+    ).joinToString("\n", postfix = "\n")
+
+    fun withoutSelinuxfs(content: String): String =
+        content.lines().filterNot { it.trim().endsWith("selinuxfs") }.joinToString("\n").trimEnd('\n') + "\n"
+
+    /**
+     * Generates `/etc/passwd` and `/etc/group` for the guest: the image's own files plus an entry for the app
+     * uid/gid, which Android assigns per install and no image knows about. Without it `id`, `getpwuid` and
+     * dbus-broker fail. Returns guest path -> host file, to be bound over the image's files. Regenerated on
+     * every launch from the image's current files, so image upgrades never conflict with it.
+     */
+    fun prepareIdentity(env: EngineEnv, spec: ShellSpec): Map<String, File> {
+        env.guestGenerated.mkdirs()
+        val etc = File(spec.rootfs, "etc")
+        val home = spec.env["HOME"] ?: "/root"
+        val passwd = File(env.guestGenerated, "passwd")
+        val group = File(env.guestGenerated, "group")
+        passwd.writeText(passwdWithUser(readOrEmpty(File(etc, "passwd")), env.uid, env.gid, home))
+        group.writeText(groupWithGid(readOrEmpty(File(etc, "group")), env.gid))
+        return linkedMapOf("/etc/passwd" to passwd, "/etc/group" to group)
+    }
+
+    /** [base] plus `selkie:x:<uid>:<gid>:Selkie:<home>:/bin/bash`, unless the uid is already present. */
+    fun passwdWithUser(base: String, uid: Int, gid: Int, home: String): String =
+        withEntry(base, 2, uid, "selkie:x:$uid:$gid:Selkie:$home:/bin/bash")
+
+    /** [base] plus `selkie:x:<gid>:`, unless the gid is already present. */
+    fun groupWithGid(base: String, gid: Int): String = withEntry(base, 2, gid, "selkie:x:$gid:")
+
+    private fun withEntry(base: String, idField: Int, id: Int, entry: String): String {
+        val lines = base.lines().filter { it.isNotEmpty() }
+        val taken = lines.any { it.split(':').getOrNull(idField)?.toIntOrNull() == id }
+        return (if (taken) lines else lines + entry).joinToString("\n", postfix = "\n")
+    }
+
+    private fun readOrEmpty(f: File): String = try { f.readText() } catch (_: Exception) { "" }
+
     fun resolvConf(dns: List<String>): String =
         (dns.ifEmpty { listOf("1.1.1.1", "8.8.8.8") }).joinToString("\n", postfix = "\n") { "nameserver $it" }
 
