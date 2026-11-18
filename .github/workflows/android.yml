@@ -187,3 +187,68 @@ jobs:
           make_latest: false
           body_path: docs/release-notes.md
           files: dist/*
+
+  # Keeps a rolling *pre*release tagged `latest` pointing at the newest main that passed CI, so there
+  # is always a public APK (artifacts need a GitHub login and expire). The release is replaced on each
+  # push to main; creating it with GITHUB_TOKEN does not start another workflow run.
+  rolling-prerelease:
+    name: Publish rolling prerelease (latest)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [apk, proot, droidc, emulator-e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: rolling-prerelease
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: selkie-apk
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: proot-android
+          path: proot
+      - uses: actions/download-artifact@v4
+        with:
+          name: droidc-android
+          path: droidc
+      - name: Collect assets
+        run: |
+          cp dist/selkie-*.apk dist/selkie-latest.apk
+          rm dist/selkie-[0-9]*.apk
+          cp proot/proot-src-*.tar.gz dist/
+          cp droidc/DROIDC_COMMIT dist/DROIDC_COMMIT.txt
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -la dist
+      - name: Write release notes
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "Rolling build of \`main\`, replaced on every push that passes CI (unit tests and emulator E2E)."
+            echo
+            echo "- Commit: [\`${SHA::7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SHA}): $(git log -1 --format=%s)"
+            echo "- droidc: \`$(tr -d '[:space:]' < droidc.ref | cut -c1-7)\` (see \`DROIDC_COMMIT.txt\`)"
+            echo
+            echo "Not a versioned release. Install \`selkie-latest.apk\` (arm64-v8a + x86_64), signed with the public MVP test key (\`keystore/selkie-mvp.jks\`; for testing only)."
+            echo "\`proot-src-*.tar.gz\` is the corresponding source for the bundled proot (GPL-2). \`SHA256SUMS\` covers every asset."
+            echo
+            echo "Versioned prereleases are tagged \`v*\`."
+          } > notes.md
+          cat notes.md
+      - name: Replace the rolling release
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/* \
+            --target "$SHA" \
+            --prerelease \
+            --latest=false \
+            --title "Latest main (${SHA::7})" \
+            --notes-file notes.md
