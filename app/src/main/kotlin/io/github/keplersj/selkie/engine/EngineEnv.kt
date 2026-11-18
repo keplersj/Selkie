@@ -55,20 +55,20 @@ data class EngineEnv(
 object PipeWireServices {
     // Temporary diagnostics: what PipeWire exposes to a manager and to a normal client, 25 s in.
     private const val DIAG =
-        "( sleep 25; { ls -la \"\${XDG_RUNTIME_DIR:-/tmp}\" 2>&1 | grep -i pipewire; pgrep -a pipewire; pgrep -a wireplumber; " +
+        "( sleep 15; { ls -la \"\${XDG_RUNTIME_DIR:-/tmp}\" 2>&1 | grep -i pipewire; pgrep -a pipewire; pgrep -a wireplumber; " +
         "for o in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do [ -r \$o ] && { echo \"orig=\$o\"; " +
         "diff \$o \"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\" | head -40; break; }; done; " +
         "for r in pipewire-0-manager pipewire-0; do echo \"remote=\$r\"; " +
-        "for k in Factory Client Node; do PIPEWIRE_REMOTE=\$r timeout 10 pw-cli ls \$k 2>&1 | " +
+        "for k in Factory Client Node; do PIPEWIRE_REMOTE=\$r timeout 3 pw-cli ls \$k 2>&1 | " +
         "grep -E 'factory.name|application.name|pipewire.access|node.name|rror|ailed'; done; done; } 2>&1 | " +
-        "sed 's/^/PWDIAG /' ) & "
+        "sed -u 's/^/PWDIAG /' ) & "
 
     private const val SCRIPT = DIAG +
         "for f in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do " +
         "[ -r \"\$f\" ] || continue; c=\"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\"; " +
         "awk 'skip{n+=gsub(/\\{/,\"{\");n-=gsub(/\\}/,\"}\");if(n<=0)skip=0;next} " +
         "/libpipewire-module-access/{n=gsub(/\\{/,\"{\")-gsub(/\\}/,\"}\");skip=(n>0);next} 1' \"\$f\" > \"\$c\" " +
-        "&& [ -s \"\$c\" ] && exec pipewire -c \"\$c\"; done; exec pipewire"
+        "&& [ -s \"\$c\" ] && { pipewire -c \"\$c\"; echo \"PWDIAG pipewire exit=\$?\"; exit; }; done; exec pipewire"
 
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
