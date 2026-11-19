@@ -76,7 +76,7 @@ refused, so use the Developer options toggle.
   Tab S11 and the Razr, but `flatpak` itself was not tried there.
 - No GPU, audio or Steam.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
-  only.** The emulator GUI test (`emulator-gui` job) passes on x86_64; real arm64 devices have not been tried. No GPU (llvmpipe),
+  only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
   no audio, no Steam.
 - The terminal UI was used by hand only, and the foreground service's survival when the activity is
   closed has not been tested.
@@ -246,7 +246,7 @@ nested mode).
 | A GTK 4 app (Nautilus) nested directly in Selkie's compositor | Works (wl_shm, Mesa swrast) | Same |
 | Compositor protocol (configure, shm, frame pacing, input, resize) | Works | `cargo test` with a real Wayland client |
 | GNOME → bridge → compositor on Android, through the app (frames in ~6-10 s, tap, Escape, Super) | Works on the x86_64 emulator; PipeWire needs `access.socket` unrestricted (Android hides `/proc/<pid>/root`); injected hardware keys reached the view on some runs only (test falls back to the view and logs `key_path`) | `DesktopE2ETest` (`emulator-gui` job) |
-| proot instead of bwrap | Works (GNOME and Nautilus run under proot on the emulator) | `emulator-gui` job; real arm64 devices not tried |
+| proot instead of bwrap | Works (GNOME and Nautilus run under proot on the emulator) | `emulator-gui` job; also seen on a Galaxy Tab S11 (manual, PR #7 comment) |
 
 Known gaps: popups are dismissed and subsurfaces are not drawn (fine for full-screen session compositors
 and the bridge, not for single apps with menus); no clipboard; US keymap only; the session size is fixed
