@@ -79,6 +79,7 @@ class ProotCommandBuilder(
         val diag = if (BuildConfig.DEBUG) mapOf(
             "DROIDC_JOURNAL" to "stderr", "DROIDC_SYSTEMD_STDIO" to "inherit",
             "DROIDC_SYSTEMD_LOG_LEVEL" to "debug",
+            "CGSHIM_TRACE" to "1",
         ) else emptyMap()
         return inv.copy(env = inv.env + diag + mapOf(
             "WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY,
