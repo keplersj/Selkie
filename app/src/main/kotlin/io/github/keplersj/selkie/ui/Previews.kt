@@ -17,8 +17,10 @@ import io.github.keplersj.selkie.engine.DeployStats
 import io.github.keplersj.selkie.engine.Deployment
 import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.engine.GraphicalSession
 import io.github.keplersj.selkie.engine.Signature
 import io.github.keplersj.selkie.engine.StatusData
+import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.OpKind
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
@@ -64,11 +66,17 @@ object Fixtures {
         stats = DeployStats(files = 61_022, bytesOnDisk = 2_208_374_784, hardlinks = 3_911, linkStrategy = "hardlink"),
     )
 
+    val gnome = GraphicalSession(name = "GNOME", renderer = "screencast",
+        exec = listOf("gnome-shell", "--headless", "--virtual-monitor", "{width}x{height}"),
+        configured = true, source = "label")
+    val noSession = GraphicalSession(configured = false)
+
     val homeInstalled = ServiceState(
         status = StatusData(current = bluefin, previous = bluefinOld), statusLoaded = true,
         sessions = listOf(SessionInfo("1", "bash", true), SessionInfo("2", "htop", true)),
+        graphical = gnome, desktop = DesktopState.Running(2560, 1600),
     )
-    val homeInsecure = ServiceState(status = StatusData(current = centos), statusLoaded = true)
+    val homeInsecure = ServiceState(status = StatusData(current = centos), statusLoaded = true, graphical = noSession)
     val homeEmpty = ServiceState(statusLoaded = true)
     val homeError = ServiceState(statusLoaded = true,
         statusError = "droidc exited with code 101: state.json: unexpected end of file")
@@ -92,21 +100,27 @@ private val noop: () -> Unit = {}
 
 // --- Home ---
 
+@Composable
+private fun Home(state: ServiceState) = PreviewFrame {
+    HomeScreen(state, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop, onUpgrade = noop,
+        onRollback = noop, onSwitch = noop, onAbout = noop, onRefresh = noop)
+}
+
 @PhonePreviews @TabletPreview
 @Composable
-fun HomeInstalledPreview() = PreviewFrame { HomeScreen(Fixtures.homeInstalled, noop, noop, noop, noop, noop, noop) }
+fun HomeInstalledPreview() = Home(Fixtures.homeInstalled)
 
 @PhonePreviews
 @Composable
-fun HomeInsecurePreview() = PreviewFrame { HomeScreen(Fixtures.homeInsecure, noop, noop, noop, noop, noop, noop) }
+fun HomeInsecurePreview() = Home(Fixtures.homeInsecure)
 
 @PhonePreviews
 @Composable
-fun HomeEmptyPreview() = PreviewFrame { HomeScreen(Fixtures.homeEmpty, noop, noop, noop, noop, noop, noop) }
+fun HomeEmptyPreview() = Home(Fixtures.homeEmpty)
 
 @PhonePreviews
 @Composable
-fun HomeErrorPreview() = PreviewFrame { HomeScreen(Fixtures.homeError, noop, noop, noop, noop, noop, noop) }
+fun HomeErrorPreview() = Home(Fixtures.homeError)
 
 // --- Setup ---
 
@@ -121,6 +135,22 @@ fun SetupFirstRunPreview() = PreviewFrame {
 fun SetupCustomPreview() = PreviewFrame {
     SetupScreen("Switch image", initialRef = "ghcr.io/example/my-bootc:latest", onStart = { _, _ -> },
         onBack = noop, free = 6_442_450_944)
+}
+
+// --- Desktop session settings (DesktopScreen itself needs a live SessionService) ---
+
+@PhonePreviews
+@Composable
+fun SessionConfigNonePreview() = PreviewFrame {
+    SessionConfigScreen(Fixtures.noSession, onSave = { _, _, _, _, _ -> }, onClear = noop, onBack = noop)
+}
+
+@PhonePreviews
+@Composable
+fun SessionConfigOverridePreview() = PreviewFrame {
+    SessionConfigScreen(Fixtures.gnome.copy(source = "override",
+        services = listOf(listOf("pipewire"), listOf("wireplumber"))),
+        onSave = { _, _, _, _, _ -> }, onClear = noop, onBack = noop)
 }
 
 // --- Progress ---
