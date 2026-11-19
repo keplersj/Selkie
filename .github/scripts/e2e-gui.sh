@@ -48,6 +48,11 @@ if [ $rc -ne 0 ]; then
     grep -a -n -i -E "exit|stopp|died|killed|signal|abort|segfault|core dump|critical|fatal|Failed with|Main process|entered failed|shutdown" "$f" | grep -a -v -E "Vulkan|Tracker|GVFS|cap_last_cap|nr_open|ManagedOOM|root.mount|Failed to get cgroup ID|unit_file_build_name_map" | head -120
     echo "---- last 80 lines"; tail -80 "$f"
     echo "::endgroup::"
+    echo "::group::$(basename "$f") (droidc / bridge lines, then the last 150 lines without the shell's dock-extension and cgroup noise)"
+    grep -a -n -E "droidc|bridge|supervise|screencast|ScreenCast|RemoteDesktop|pw-link|pipewire.*(error|fail)|Wayland" "$f" | grep -a -v -E "Vulkan|cgshim:" | head -80
+    echo "---- filtered tail"
+    grep -a -v -E "St-CRITICAL|GLib-GObject-CRITICAL|libecal|Vulkan|cgshim: /proc|cgshim: open|ManagedOOM|dmi/id|cgroup ID|root.mount|cap_last_cap|nr_open|Tracker|GVFS" "$f" | tail -150
+    echo "::endgroup::"
     echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
     grep -i -E "PWDIAG|pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -250
     echo "::endgroup::"
