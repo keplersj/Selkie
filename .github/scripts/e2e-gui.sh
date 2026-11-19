@@ -39,7 +39,7 @@ adb shell df -h /data | tee "$OUT/df-after.txt"
 sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
 echo "::group::desktop.log (systemd --user, journal)"
-grep -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
+grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
   for f in "$OUT"/screenshots/*-session-failed.log; do
