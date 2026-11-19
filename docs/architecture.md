@@ -41,8 +41,8 @@ host paths that must resolve the same way for both.
 binds from `droidc shell-spec`). Environment is built from scratch (shell-spec env plus `PROOT_LOADER`,
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
-Sessions run `droidc supervise --systemd auto`: with the shim bound in and systemd in the image, the real
-`systemd --user` runs on a fake cgroup tree; otherwise (or on failure) droidc falls back to `dbus-daemon`.
+The shim is bound in so `droidc supervise --systemd auto|on` can run the image's real `systemd --user` on a fake
+cgroup tree, but sessions do not pass it yet: on the CI emulator it produced no session bus.
 Debuggable builds also set `DROIDC_LOGCAT=auto`, so the guest's journal and unit output show up in `adb logcat`
 (`droidc log` writes a line from a script); release builds leave it off because logs can hold paths and user names.
 
