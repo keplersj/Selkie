@@ -8,7 +8,11 @@ plugins {
 
 val selkieVersion = "0.1.0-mvp.1"
 val abis = listOf("arm64-v8a", "x86_64")
-val nativeLibs = listOf("libdroidc.so", "libdroidc-guest.so", "libproot.so", "libproot-loader.so")
+val nativeLibs = listOf(
+    "libdroidc.so", "libdroidc-guest.so", "libproot.so", "libproot-loader.so",
+    // native/selkie-compositor (cargo ndk), the in-app Wayland compositor.
+    "libselkie_compositor.so",
+)
 
 // Native binaries are not committed. They are copied into src/main/jniLibs/<abi>/ from
 //   -Pselkie.nativeBinDir=<dir>   (layout <dir>/<abi>/lib*.so)   or   third_party/bin/<abi>/

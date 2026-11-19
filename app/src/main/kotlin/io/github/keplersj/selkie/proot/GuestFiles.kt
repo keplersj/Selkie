@@ -27,6 +27,11 @@ object GuestFiles {
             File(env.guestRun, b.guest.removePrefix("/run/")).mkdirs()
         }
         File(env.guestRun, "droidc").mkdirs()
+        // XDG_RUNTIME_DIR: created here (0700) so the compositor can listen in it before the guest starts.
+        env.guestRuntimeDir.mkdirs()
+        env.guestRuntimeDir.setReadable(false, false); env.guestRuntimeDir.setReadable(true, true)
+        env.guestRuntimeDir.setWritable(false, false); env.guestRuntimeDir.setWritable(true, true)
+        env.guestRuntimeDir.setExecutable(false, false); env.guestRuntimeDir.setExecutable(true, true)
         env.guestTmp.setWritable(true, false)
         File(env.guestGenerated, "resolv.conf").writeText(resolvConf(env.dns))
 

@@ -31,4 +31,37 @@ data class EngineEnv(
     val guestRun: File get() = File(filesDir, "guest/run")
     val guestShm: File get() = File(filesDir, "guest/shm")
     val guestGenerated: File get() = File(filesDir, "guest/generated")
+
+    /** The guest's `XDG_RUNTIME_DIR` (`/run/user/<uid>`), where droidc supervise puts its sockets. */
+    val guestRuntimeDir: File get() = File(guestRun, "user/$uid")
+    /** Selkie's Wayland compositor listens here; guest clients see `$XDG_RUNTIME_DIR/wayland-0`. */
+    val waylandSocket: File get() = File(guestRuntimeDir, WAYLAND_DISPLAY)
+    /** Output of the proot process running the graphical session. */
+    val desktopLog: File get() = File(cacheDir, "desktop.log")
+
+    companion object {
+        const val WAYLAND_DISPLAY = "wayland-0"
+    }
+}
+
+/**
+ * `containers.droidc.session.services` JSON that starts PipeWire and WirePlumber for a graphical session.
+ *
+ * PipeWire's access module runs a Flatpak check on each client through `/proc/<pid>/root`, which
+ * Android hides: the check fails and every client (Mutter's screen-cast stream, WirePlumber, the portal)
+ * is restricted to nothing. `PIPEWIRE_REMOTE=pipewire-0-manager` was not enough in the emulator, because
+ * not every client uses it. PipeWire therefore starts from a copy of its own configuration whose
+ * `access.socket` makes the default socket `unrestricted` too.
+ */
+object PipeWireServices {
+    private const val SCRIPT =
+        "for f in /etc/pipewire/pipewire.conf /usr/share/pipewire/pipewire.conf; do " +
+        "[ -r \"\$f\" ] || continue; c=\"\${XDG_RUNTIME_DIR:-/tmp}/pipewire-selkie.conf\"; " +
+        "sed 's/^\\([[:space:]]*\\)#access\\.socket = .*/\\1access.socket = { pipewire-0 = \"unrestricted\", pipewire-0-manager = \"unrestricted\" }/' " +
+        "\"\$f\" > \"\$c\" " +
+        "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && exec pipewire -c \"\$c\"; done; exec pipewire"
+
+    /** The services value for `containers.droidc.session.services` (JSON argv list). */
+    val JSON: String =
+        """[["sh","-c","${SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"")}"],["wireplumber"]]"""
 }

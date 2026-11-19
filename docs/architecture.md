@@ -4,6 +4,7 @@
 MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
                                     |-- DroidcClient  --ProcessBuilder--> libdroidc.so (bionic) --json (NDJSON)
                                     |-- terminal sessions: TerminalSession(libproot.so ... droidc supervise -- bash -l)
+                                    |-- desktop: NativeCompositor (libselkie_compositor.so) + libproot.so ... droidc supervise --session
                                     '-- StateFlow<ServiceState>  (operation, status, sessions)
 ```
 
@@ -13,7 +14,9 @@ MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
 - `proot/` `ProotCommandBuilder` (pure argv/env, unit-tested) and `GuestFiles` (creates the host dirs/files that binds refer to: writable `/tmp`, `/run`, `/dev/shm`, generated `resolv.conf`, fake `/proc/{stat,version,loadavg,uptime}` only when unreadable).
 - `platform/PhantomProcessCheck` the one class that decides whether "Disable child process restrictions" is on.
 - `service/` `SessionService`, `ServiceState`/`Operation` state.
-- `ui/` Compose screens: phantom explainer, setup, progress/error cards, home, terminal, about.
+- `display/` `NativeCompositor` (JNI to the Rust compositor), `CompositorView` (SurfaceView + touch/mouse/key input),
+  `KeyMap` (Android key codes and US-layout characters to evdev codes).
+- `ui/` Compose screens: phantom explainer, setup, progress/error cards, home, terminal, desktop, session settings, about.
 
 ## droidc contract
 
@@ -38,6 +41,30 @@ host paths that must resolve the same way for both.
 binds from `droidc shell-spec`). Environment is built from scratch (shell-spec env plus `PROOT_LOADER`,
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
+
+## Graphical session
+
+```
+SurfaceView <- libselkie_compositor.so (in the app process) <- filesDir/guest/run/user/<uid>/wayland-0
+                                                                  = guest $XDG_RUNTIME_DIR/wayland-0
+   proot: droidc supervise --session --width W --height H
+            renderer=wayland:    the image's compositor runs nested as a Wayland client
+            renderer=screencast: headless compositor (gnome-shell) + droidc bridge as the client
+```
+
+`DesktopScreen` measures its view and asks `SessionService.startDesktop(w, h)`: the compositor starts
+listening first (`GuestFiles` creates the 0700 runtime dir), then proot runs `droidc supervise --session`
+with `WAYLAND_DISPLAY=wayland-0` and `LIBGL_ALWAYS_SOFTWARE=1` (no GPU path yet: Mesa llvmpipe). Output goes to
+`cacheDir/desktop.log`, whose tail is shown if the session exits with an error. The compositor shows the most
+recently mapped toplevel full screen: it copies each committed `wl_shm` buffer into the window
+(RGBX at the client's size, scaled by SurfaceFlinger) and completes frame callbacks after that, so the
+session pauses while no Surface exists (activity in the background). Input arrives in view pixels and is
+scaled onto the client. The session belongs to the foreground service, like terminals, and keeps running
+when the screen is left; Stop ends it.
+
+Which session runs is the image's business (`containers.droidc.session.renderer|exec|services` labels,
+see droidc's design doc). For images without them the session settings screen writes droidc's override
+(`droidc session set`); there is no table of desktops in Selkie or droidc.
 
 ## Service lifecycle
 
