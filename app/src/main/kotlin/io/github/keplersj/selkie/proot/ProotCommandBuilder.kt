@@ -78,7 +78,7 @@ class ProotCommandBuilder(
         // droidc's own diagnostics for the user manager (its messages, units' output) in desktop.log.
         val diag = if (BuildConfig.DEBUG) mapOf(
             "DROIDC_JOURNAL" to "stderr", "DROIDC_SYSTEMD_STDIO" to "inherit",
-            "DROIDC_SYSTEMD_LOG_LEVEL" to "debug",
+            "DROIDC_SYSTEMD_LOG_LEVEL" to "info",
             "CGSHIM_TRACE" to "1",
         ) else emptyMap()
         return inv.copy(env = inv.env + diag + mapOf(

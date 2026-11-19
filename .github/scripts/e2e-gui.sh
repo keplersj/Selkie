@@ -44,6 +44,10 @@ if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
   for f in "$OUT"/screenshots/*-session-failed.log; do
     [ -f "$f" ] || continue
+    echo "::group::$(basename "$f") (why the session ended: exit/stop/died/signal lines, then the last 80 lines)"
+    grep -a -n -i -E "exit|stopp|died|killed|signal|abort|segfault|core dump|critical|fatal|Failed with|Main process|entered failed|shutdown" "$f" | grep -a -v -E "Vulkan|Tracker|GVFS|cap_last_cap|nr_open|ManagedOOM|root.mount|Failed to get cgroup ID|unit_file_build_name_map" | head -120
+    echo "---- last 80 lines"; tail -80 "$f"
+    echo "::endgroup::"
     echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
     grep -i -E "PWDIAG|pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -250
     echo "::endgroup::"
