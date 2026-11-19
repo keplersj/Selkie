@@ -10,6 +10,7 @@ import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -119,21 +120,18 @@ fun TerminalScreen(service: SessionService, onBack: () -> Unit) {
     LaunchedEffect(Unit) { if (current == null) open() }
 
     Column(Modifier.fillMaxSize().imePadding().statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Back") }
-            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(sessions) { s ->
-                    FilterChip(selected = s === current, onClick = { current = s },
-                        label = { Text((s.title ?: s.mSessionName ?: "Session").take(24)) })
-                }
-            }
-            TextButton(onClick = { open() }) { Text("+") }
-            TextButton(onClick = {
+        SessionBar(
+            titles = sessions.map { it.title ?: it.mSessionName ?: "Session" },
+            selected = sessions.indexOf(current),
+            onSelect = { current = sessions[it] },
+            onBack = onBack,
+            onNew = { open() },
+            onClose = {
                 current?.let { service.closeSession(it) }
                 sessions = service.terminalSessions(); current = sessions.firstOrNull()
                 if (current == null) onBack()
-            }) { Text("Close") }
-        }
+            },
+        )
         error?.let { Text("Cannot start session: $it", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(8.dp)) }
         AndroidView(
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -163,10 +161,25 @@ fun TerminalScreen(service: SessionService, onBack: () -> Unit) {
     }
 }
 
+@Composable
+internal fun SessionBar(titles: List<String>, selected: Int, onSelect: (Int) -> Unit,
+                        onBack: () -> Unit, onNew: () -> Unit, onClose: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        TextButton(onClick = onBack) { Text("Back") }
+        LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            itemsIndexed(titles) { i, t ->
+                FilterChip(selected = i == selected, onClick = { onSelect(i) }, label = { Text(t.take(24)) })
+            }
+        }
+        TextButton(onClick = onNew) { Text("+") }
+        TextButton(onClick = onClose) { Text("Close") }
+    }
+}
+
 private fun TerminalSession.write(s: String) { val b = s.toByteArray(); write(b, 0, b.size) }
 
 @Composable
-private fun ExtraKeys(ctrlOn: Boolean, altOn: Boolean, onCtrl: () -> Unit, onAlt: () -> Unit,
+internal fun ExtraKeys(ctrlOn: Boolean, altOn: Boolean, onCtrl: () -> Unit, onAlt: () -> Unit,
                       send: (String) -> Unit, paste: () -> Unit, appCursor: () -> Boolean) {
     fun arrow(c: Char) = if (appCursor()) "\u001bO$c" else "\u001b[$c"
     val keys: List<Pair<String, () -> Unit>> = listOf(

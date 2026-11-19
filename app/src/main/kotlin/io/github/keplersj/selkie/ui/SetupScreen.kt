@@ -1,6 +1,5 @@
 package io.github.keplersj.selkie.ui
 
-import android.os.StatFs
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,7 +10,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
@@ -21,9 +19,8 @@ fun SetupScreen(
     initialRef: String? = null,
     onStart: (ref: String, insecure: Boolean) -> Unit,
     onBack: (() -> Unit)?,
+    free: Long = freeBytes(),
 ) {
-    val ctx = LocalContext.current
-    val free = remember { runCatching { StatFs(ctx.filesDir.path).availableBytes }.getOrDefault(0L) }
     var choice by rememberSaveable { mutableStateOf(
         when { initialRef == null || initialRef == Images.BLUEFIN -> "bluefin"
                initialRef == Images.CENTOS -> "centos" else -> "custom" }) }

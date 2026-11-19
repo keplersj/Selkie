@@ -36,6 +36,11 @@ fun AboutScreen(onBack: () -> Unit) {
             }
         }
     }
+    AboutContent(droidc, proot, platform, onOpenSource = { uri.openUri(BuildConfig.PROOT_SOURCE_URL) }, onBack)
+}
+
+@Composable
+fun AboutContent(droidc: String, proot: String, platform: String, onOpenSource: () -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("About Selkie", style = MaterialTheme.typography.headlineMedium)
@@ -53,7 +58,7 @@ fun AboutScreen(onBack: () -> Unit) {
         Text("Selkie: MIT.")
         Text("Termux terminal-view / terminal-emulator: Apache-2.0 (Termux terminal library exception).")
         Text("proot: GPL-2.0-or-later. Corresponding source is attached to the Selkie GitHub release.")
-        TextButton(onClick = { uri.openUri(BuildConfig.PROOT_SOURCE_URL) }) { Text("proot source (GPL-2, on this release)") }
+        TextButton(onClick = onOpenSource) { Text("proot source (GPL-2, on this release)") }
         Text("Terminal font: JetBrains Mono Nerd Font Mono (no ligatures), SIL Open Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors; patched by Nerd Fonts.")
         Text("kotlinx.serialization, kotlinx.coroutines, AndroidX, Jetpack Compose: Apache-2.0.")
         Spacer(Modifier.height(8.dp))

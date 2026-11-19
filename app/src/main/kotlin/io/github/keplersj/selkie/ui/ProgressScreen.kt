@@ -1,14 +1,11 @@
 package io.github.keplersj.selkie.ui
 
-import android.os.StatFs
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.ErrorKind
 import io.github.keplersj.selkie.service.Operation
@@ -20,6 +17,7 @@ fun ProgressScreen(
     onRetry: (Operation.Failed) -> Unit,
     onRetryInsecure: (Operation.Failed) -> Unit,
     onDismiss: () -> Unit,
+    free: Long = if ((op as? Operation.Failed)?.error?.kind == ErrorKind.STORAGE) freeBytes() else 0L,
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -44,7 +42,7 @@ fun ProgressScreen(
                     style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = onCancel) { Text("Cancel") }
             }
-            is Operation.Failed -> ErrorCard(op, onRetry, onRetryInsecure, onDismiss)
+            is Operation.Failed -> ErrorCard(op, free, onRetry, onRetryInsecure, onDismiss)
             is Operation.Done -> {
                 Text("Done", style = MaterialTheme.typography.headlineMedium)
                 Text(op.summary)
@@ -61,20 +59,17 @@ fun ProgressScreen(
 }
 
 @Composable
-private fun ErrorCard(op: Operation.Failed, onRetry: (Operation.Failed) -> Unit,
+private fun ErrorCard(op: Operation.Failed, free: Long, onRetry: (Operation.Failed) -> Unit,
                       onRetryInsecure: (Operation.Failed) -> Unit, onDismiss: () -> Unit) {
-    val ctx = LocalContext.current
     val e = op.error
     val (title, help) = when (e.kind) {
         ErrorKind.NETWORK -> "Network problem" to
             "Check your connection (and that Wi-Fi or data works), then retry. Downloads resume from cached layers."
         ErrorKind.SIGNATURE -> "Signature verification failed" to
             "The image's signature could not be verified against the built-in trust policy, so it was not installed."
-        ErrorKind.STORAGE -> {
-            val free = remember { runCatching { StatFs(ctx.filesDir.path).availableBytes }.getOrDefault(0L) }
+        ErrorKind.STORAGE ->
             "Not enough storage" to "Free space available: ${formatBytes(free)}. Free up space and retry. " +
                 "Details from droidc: ${e.message}"
-        }
         ErrorKind.NOT_FOUND -> "Not found" to "The image or tag was not found. Check the reference."
         ErrorKind.INVALID -> "Invalid request" to "droidc rejected the request."
         ErrorKind.LOCKED -> "Busy" to "Another droidc operation holds the lock. Wait for it to finish, then retry."
