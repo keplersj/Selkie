@@ -40,6 +40,8 @@ sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
+  echo "::group::desktop.log (systemd --user, journal)"
+  grep -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
   for f in "$OUT"/screenshots/*-session-failed.log; do
     [ -f "$f" ] || continue
     echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
