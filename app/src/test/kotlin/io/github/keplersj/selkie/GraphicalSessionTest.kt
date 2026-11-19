@@ -18,8 +18,8 @@ class GraphicalSessionTest {
 
     @Test fun graphicalSessionInvocation() {
         val inv = ProotCommandBuilder(TestEnv.env(), spec).graphicalSession(1920, 1200)
-        assertEquals(listOf("/usr/bin/droidc", "supervise", "--session", "--width", "1920", "--height", "1200",
-            "--scale", "1.0"), inv.argv.takeLast(9))
+        assertEquals(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto", "--width", "1920", "--height", "1200",
+            "--scale", "1.0"), inv.argv.takeLast(11))
         assertEquals("wayland-0", inv.env["WAYLAND_DISPLAY"])
         assertEquals("1", inv.env["LIBGL_ALWAYS_SOFTWARE"])
         assertEquals("pipewire-0-manager", inv.env["PIPEWIRE_REMOTE"])

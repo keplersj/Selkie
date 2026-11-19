@@ -24,11 +24,12 @@ class ProotCommandBuilderTest {
             "-r", "/files/droidc/current/rootfs", "-w", "/root",
             "-b", "/dev:/dev", "-b", "/proc:/proc", "-b", "/sys:/sys",
             "-b", "/lib/libdroidc-guest.so:/usr/bin/droidc",
+            "-b", "/lib/libcgshim.so:/usr/lib/droidc/cgshim.so",
             "-b", "/files/guest/tmp:/tmp", "-b", "/files/guest/run:/run", "-b", "/files/guest/shm:/dev/shm",
             "-b", "/files/guest/generated/resolv.conf:/etc/resolv.conf",
             "-b", "/files/guest/generated/proc_stat:/proc/stat",
             "-b", "/files/droidc/var:/var", "-b", "/files/droidc:/run/droidc/root",
-            "/usr/bin/droidc", "supervise", "--", "/bin/bash", "-l"), inv.argv)
+            "/usr/bin/droidc", "supervise", "--systemd", "auto", "--", "/bin/bash", "-l"), inv.argv)
         assertEquals("/lib/libproot-loader.so", inv.env["PROOT_LOADER"])
         assertEquals("/cache/proot-tmp", inv.env["PROOT_TMP_DIR"])
         assertEquals("/run/droidc/root", inv.env["DROIDC_ROOT"])

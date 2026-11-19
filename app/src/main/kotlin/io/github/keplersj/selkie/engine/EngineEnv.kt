@@ -18,6 +18,8 @@ data class EngineEnv(
     val droidcBin: File get() = File(nativeLibDir, "libdroidc.so")
     /** Static musl build of droidc: bound into the guest as /usr/bin/droidc (proot handles that side). */
     val droidcGuestBin: File get() = File(nativeLibDir, "libdroidc-guest.so")
+    /** glibc LD_PRELOAD shim that lets the guest's `systemd --user` run without a cgroup filesystem. */
+    val cgshimLib: File get() = File(nativeLibDir, "libcgshim.so")
     val prootBin: File get() = File(nativeLibDir, "libproot.so")
     val prootLoader: File get() = File(nativeLibDir, "libproot-loader.so")
 
