@@ -1,0 +1,30 @@
+[package]
+name = "selkie-compositor"
+description = "Selkie's in-app Wayland compositor: guest clients under proot draw into an Android Surface"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wayland-server = "0.31"
+wayland-protocols = { version = "0.32", features = ["server"] }
+rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net", "use-libc"] }
+
+[dev-dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "server"] }
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3

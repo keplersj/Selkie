@@ -1,6 +1,7 @@
 package io.github.keplersj.selkie.service
 
 import io.github.keplersj.selkie.engine.DroidcError
+import io.github.keplersj.selkie.engine.GraphicalSession
 import io.github.keplersj.selkie.engine.StatusData
 
 enum class OpKind(val label: String) {
@@ -31,6 +32,14 @@ sealed interface Operation {
 
 data class SessionInfo(val id: String, val title: String, val running: Boolean)
 
+/** The graphical session: Selkie's compositor plus `droidc supervise --session` under proot. */
+sealed interface DesktopState {
+    data object Stopped : DesktopState
+    data object Starting : DesktopState
+    data class Running(val width: Int, val height: Int) : DesktopState
+    data class Failed(val message: String, val logTail: String) : DesktopState
+}
+
 data class ServiceState(
     val operation: Operation = Operation.Idle,
     val status: StatusData? = null,
@@ -38,4 +47,7 @@ data class ServiceState(
     val statusError: String? = null,
     val statusLoaded: Boolean = false,
     val sessions: List<SessionInfo> = emptyList(),
+    /** The current deployment's graphical session (from `shell-spec`); null until known. */
+    val graphical: GraphicalSession? = null,
+    val desktop: DesktopState = DesktopState.Stopped,
 )

@@ -134,6 +134,22 @@ data class StatusData(
 @Serializable
 data class Bind(val host: String, val guest: String)
 
+/**
+ * How the deployment's graphical session starts (droidc `shell-spec` `session`, also `droidc session
+ * show`): from the image's `containers.droidc.session.*` labels or the user's override.
+ */
+@Serializable
+data class GraphicalSession(
+    val name: String? = null,
+    /** `wayland` (nested in Selkie's compositor) or `screencast` (headless, shown by droidc bridge). */
+    val renderer: String? = null,
+    val exec: List<String>? = null,
+    val services: List<List<String>> = emptyList(),
+    val configured: Boolean = false,
+    /** `label` or `override`. */
+    val source: String? = null,
+)
+
 @Serializable
 data class ShellSpec(
     val rootfs: String,
@@ -141,6 +157,7 @@ data class ShellSpec(
     val env: Map<String, String> = emptyMap(),
     val cwd: String = "/root",
     @SerialName("session_label") val sessionLabel: String? = null,
+    val session: GraphicalSession? = null,
 )
 
 /** Final outcome of a droidc invocation. */
@@ -151,5 +168,7 @@ sealed interface DroidcOutcome {
 
 fun DroidcOutcome.Success.status(): StatusData =
     SelkieJson.decodeFromJsonElement(data ?: JsonObject(emptyMap()))
+fun DroidcOutcome.Success.graphicalSession(): GraphicalSession =
+    SelkieJson.decodeFromJsonElement(data ?: error("session returned no data"))
 fun DroidcOutcome.Success.shellSpec(): ShellSpec =
     SelkieJson.decodeFromJsonElement(data ?: error("shell-spec returned no data"))

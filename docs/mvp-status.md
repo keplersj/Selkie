@@ -74,8 +74,10 @@ refused, so use the Developer options toggle.
 - **`flatpak --version` inside Selkie's terminal is unverified.** Flatpak 1.18.0 is in the Bluefin
   LTS image and runs there natively (arm64 runner, chroot), but Bluefin now runs under proot on the
   Tab S11 and the Razr, but `flatpak` itself was not tried there.
-- No graphical session, GPU, audio, Steam (out of scope). The llvmpipe Wayland stretch goal was not
-  attempted, because the MVP isn't proven on hardware yet.
+- No GPU, audio or Steam.
+- **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
+  only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
+  no audio, no Steam.
 - The terminal UI was used by hand only, and the foreground service's survival when the activity is
   closed has not been tested.
 - Upgrade on a real tag change was not observed, and Upgrade/Rollback were not run on the devices;
@@ -212,13 +214,10 @@ From Samsung's own pages, retrieved 2026-11-17 (the US spec table renders only i
   driver. The route is Venus: forward guest Vulkan to the tablet's Android Vulkan driver (DroidDeck's
   `docs/development/mali-venus.md`, `tools/venus`), then Zink for GL. Needs a guest-side Venus ICD
   and a host-side renderer bound in from the APK, not written into the deployment.
-- **What a GNOME session needs.** Bluefin LTS ships gnome-shell 50. gnome-session removed its
-  non-systemd `--builtin` mode in GNOME 49, and `systemd --user` can't run under proot, so a GNOME
-  session needs either a systemd-user-compatible service manager (droidc's supervisor would have to
-  grow to start gnome-session's units), or starting gnome-shell directly
-  (`--wayland`/`--headless` with a nested or in-app compositor), plus stand-ins for logind (gnome-shell
-  falls back to a dummy login manager when `/run/systemd/seats` is absent), accounts-daemon,
-  polkit, upower and a system bus. An in-app Wayland compositor is also needed to show anything.
+- **What a GNOME session needs** (answered, see "Graphical sessions"): gnome-shell 50 started
+  directly, headless, with a session bus and a system bus from `dbus-daemon`, PipeWire, and
+  `droidc bridge` to show it. No logind, accounts-daemon, polkit or upower stand-ins were needed to
+  reach a working desktop; their absence only produces warnings.
 - **Settled decisions that turned out wrong or partly wrong:** #6 (keyless, not a public key),
   #1's "arm64 is testing-only" (no longer true), and the "Android won't run binaries from writable
   storage" rule needed a refinement: the guest rootfs does live in writable storage and runs fine,
@@ -228,3 +227,28 @@ From Samsung's own pages, retrieved 2026-11-17 (the US spec table renders only i
   `process_vm`, seccomp acceleration, link2symlink renames)? Answered for what the app does: a full
   install and a login shell with a session bus work on both devices. Whether proot's `process_vm`
   and seccomp acceleration are actually in use there was not measured.
+
+## Graphical sessions (follow-up to the MVP)
+
+Selkie has its own Wayland compositor (`native/selkie-compositor`, Rust) and a full-screen desktop
+screen. droidc starts the image's session (`droidc supervise --session`) from the image's
+`containers.droidc.session.*` labels, or from a user override for images without them. There are two
+renderers. `wayland`: the session's compositor runs nested as a client of Selkie's (KWin, cosmic-comp,
+gamescope, ...). `screencast`: it runs headless and `droidc bridge` shows it (GNOME 49+, which has no
+nested mode).
+
+| What | Status | How tested |
+| --- | --- | --- |
+| Bluefin LTS GNOME 50 headless on llvmpipe (no GPU), no systemd | Works | Linux x86_64, unprivileged bwrap sandbox; droidc arm64 CI step `measure-bluefin` captures a frame (added, not run yet) |
+| GNOME → `droidc bridge` → Selkie's compositor | Works, ~50 fps on cursor motion at 1280x800; GNOME's blur and animations a few fps on llvmpipe | Linux with the compositor's headless build |
+| Keyboard, touch, pointer into GNOME (RemoteDesktop) | Works | Same; Super and Escape toggle overview and dialogs |
+| D-Bus-activated apps open inside GNOME, not on Selkie's screen | Works | Same (Nautilus via `gapplication launch`) |
+| A GTK 4 app (Nautilus) nested directly in Selkie's compositor | Works (wl_shm, Mesa swrast) | Same |
+| Compositor protocol (configure, shm, frame pacing, input, resize) | Works | `cargo test` with a real Wayland client |
+| GNOME → bridge → compositor on Android, through the app (frames in ~6-10 s, tap, Escape, Super) | Works on the x86_64 emulator; PipeWire needs `access.socket` unrestricted (Android hides `/proc/<pid>/root`); injected hardware keys reached the view on some runs only (test falls back to the view and logs `key_path`) | `DesktopE2ETest` (`emulator-gui` job) |
+| proot instead of bwrap | Works (GNOME and Nautilus run under proot on the emulator) | `emulator-gui` job; also seen on a Galaxy Tab S11 (manual, PR #7 comment) |
+
+Known gaps: popups are dismissed and subsurfaces are not drawn (fine for full-screen session compositors
+and the bridge, not for single apps with menus); no clipboard; US keymap only; the session size is fixed
+at start (rotation does not resize GNOME's monitor); images with only dbus-broker (CentOS Stream 10 bootc)
+get no D-Bus activation.
