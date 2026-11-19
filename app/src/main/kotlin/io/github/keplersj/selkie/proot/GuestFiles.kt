@@ -20,7 +20,7 @@ object GuestFiles {
         uptimeSeconds: Double = SystemClock.elapsedRealtime() / 1000.0,
         cpus: Int = Runtime.getRuntime().availableProcessors(),
     ): Map<String, File> {
-        listOf(env.guestTmp, env.guestRun, env.guestShm, env.guestGenerated, env.prootTmp)
+        listOf(env.guestTmp, env.guestRun, env.guestShm, env.guestCgroup, env.guestGenerated, env.prootTmp)
             .forEach { it.mkdirs() }
         // Binds whose guest path is under /run need their mount point to exist in the writable dir.
         for (b in spec.binds) if (b.guest.startsWith("/run/")) {

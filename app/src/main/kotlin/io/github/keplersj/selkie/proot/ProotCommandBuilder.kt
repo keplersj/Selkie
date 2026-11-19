@@ -41,6 +41,7 @@ class ProotCommandBuilder(
         bind("/sys", "/sys")
         bind(env.droidcGuestBin.path, "/usr/bin/droidc")
         bind(env.cgshimLib.path, CGSHIM_GUEST_PATH)
+        bind(env.guestCgroup.path, "/sys/fs/cgroup")
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
         bind(env.guestShm.path, "/dev/shm")
