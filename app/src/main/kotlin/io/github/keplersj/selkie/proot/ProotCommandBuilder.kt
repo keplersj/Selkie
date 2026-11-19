@@ -1,5 +1,6 @@
 package io.github.keplersj.selkie.proot
 
+import io.github.keplersj.selkie.BuildConfig
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ShellSpec
 import java.io.File
@@ -39,6 +40,7 @@ class ProotCommandBuilder(
         bind("/proc", "/proc")
         bind("/sys", "/sys")
         bind(env.droidcGuestBin.path, "/usr/bin/droidc")
+        bind(env.cgshimLib.path, CGSHIM_GUEST_PATH)
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
         bind(env.guestShm.path, "/dev/shm")
@@ -50,6 +52,9 @@ class ProotCommandBuilder(
     /** Environment for the proot process; proot passes it through to the guest command. */
     fun environment(): Map<String, String> = LinkedHashMap<String, String>().apply {
         putAll(spec.env)
+        // Guest journal and unit output to `adb logcat`. Opt-in upstream (logs can hold paths and user
+        // names, and logcat lands in bug reports), so only debuggable builds turn it on.
+        if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
         put("PROOT_LOADER", env.prootLoader.path)
         put("PROOT_TMP_DIR", env.prootTmp.path)
     }
@@ -80,5 +85,10 @@ class ProotCommandBuilder(
             // and keep using the checked socket.
             "PIPEWIRE_REMOTE" to "pipewire-0-manager",
         ))
+    }
+
+    companion object {
+        /** Where `droidc supervise --systemd` looks for the cgroup shim (DROIDC_CGSHIM's default). */
+        const val CGSHIM_GUEST_PATH = "/usr/lib/droidc/cgshim.so"
     }
 }
