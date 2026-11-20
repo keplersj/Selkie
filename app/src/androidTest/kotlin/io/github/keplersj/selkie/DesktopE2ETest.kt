@@ -11,7 +11,10 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.ServiceTestRule
-import io.github.keplersj.selkie.engine.PipeWireServices
+import io.github.keplersj.selkie.engine.*
+import io.github.keplersj.selkie.proot.GuestFiles
+import io.github.keplersj.selkie.proot.ProotCommandBuilder
+import kotlinx.coroutines.runBlocking
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.SessionService
@@ -188,6 +191,27 @@ class DesktopE2ETest {
         }
     }
 
+    /**
+     * Runs [script] in a second proot against the live session (same /run, so the user bus and the
+     * display are there) and logs its output as SELKIE_GUEST lines.
+     */
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90) {
+        try {
+            val env = engineEnvFrom(ctx)
+            val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
+            val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
+            val inv = b.command(listOf("/bin/sh", "-c", script))
+            val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
+            pb.environment().apply { clear(); putAll(inv.env) }
+            val p = pb.start()
+            val text = StringBuilder()
+            val t = Thread { text.append(p.inputStream.bufferedReader().readText()) }.also { it.start() }
+            if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
+            t.join(5000)
+            text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
+        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
+    }
+
     /** Logs the command lines of the session's processes matching [pattern] (the instrumentation shares the app's uid). */
     private fun logProcs(label: String, pattern: String) {
         val re = Regex(pattern, RegexOption.IGNORE_CASE)
@@ -269,7 +293,26 @@ class DesktopE2ETest {
         logProcs("after-enter", "ptyxis|terminal|gnome-console|kgx|xterm|konsole|foot|alacritty")
         typeText("touch /tmp/selkie-terminal-ok\n")
         try {
-            waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
+            try {
+                waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
+            } catch (t: AssertionError) {
+                // The shell's search/launch did not start a terminal. Ask the guest directly: is the
+                // session bus there, which terminal apps are installed, and does one run if started by hand?
+                guestProbe("direct-launch", """
+                    uid=${'$'}(id -u)
+                    export XDG_RUNTIME_DIR=/run/user/${'$'}uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${'$'}uid/bus
+                    ls /run/user/${'$'}uid 2>&1 | head -30
+                    ls /usr/share/applications 2>&1 | grep -i -E 'ptyxis|terminal|console'
+                    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames 2>&1 | head -c 700; echo
+                    for w in wayland-0 wayland-1; do [ -S /run/user/${'$'}uid/${'$'}w ] && echo "display ${'$'}w"; done
+                    export WAYLAND_DISPLAY=${'$'}(ls /run/user/${'$'}uid | grep -m1 '^wayland-[0-9]*${'$'}')
+                    echo "using ${'$'}WAYLAND_DISPLAY"
+                    timeout 40 ptyxis --new-window -x 'touch /tmp/selkie-terminal-ok' 2>&1 | head -60
+                    echo "ptyxis exit=${'$'}?"
+                    ls -l /tmp/selkie-terminal-ok 2>&1
+                """.trimIndent())
+                throw t
+            }
         } finally {
             settle(s, 3000, 30_000)
             screenshot("terminal-3-after-command.png")
