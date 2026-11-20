@@ -180,6 +180,7 @@ class DesktopE2ETest {
                 '/' -> KeyEvent.KEYCODE_SLASH
                 ' ' -> KeyEvent.KEYCODE_SPACE
                 '\n' -> KeyEvent.KEYCODE_ENTER
+                '\u001b' -> KeyEvent.KEYCODE_ESCAPE
                 else -> error("no key for '$c'")
             }
             inst.runOnMainSync {
@@ -210,6 +211,35 @@ class DesktopE2ETest {
             t.join(5000)
             text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
         } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
+    }
+
+    private val terminalProcs = "ptyxis|gnome-console|kgx|xterm|konsole|alacritty"
+
+    private fun countProcs(pattern: String): Int {
+        val re = Regex(pattern, RegexOption.IGNORE_CASE)
+        return java.io.File("/proc").listFiles { f -> f.name.all { it.isDigit() } }.orEmpty().count { d ->
+            try { re.containsMatchIn(java.io.File(d, "cmdline").readText().replace('\u0000', ' ')) } catch (e: Exception) { false }
+        }
+    }
+
+    /** Types [query] into the open overview, presses Enter, and reports whether a terminal process appeared. */
+    private fun launchFromOverview(s: SessionService, query: String, shot: String): Boolean {
+        val h0 = hash(s)
+        typeText(query)
+        settle(s, 3000, 30_000)
+        log("SELKIE_STEP typed '$query': hash $h0 -> ${hash(s)}, colors=${colors(s)}")
+        screenshot("$shot-search.png")
+        val h1 = hash(s)
+        typeText("\n")
+        settle(s, 5000, 60_000)
+        log("SELKIE_STEP enter: hash $h1 -> ${hash(s)}, colors=${colors(s)}")
+        screenshot("$shot-launched.png")
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline && countProcs(terminalProcs) == 0) {
+            rule.mainClock.advanceTimeBy(500); Thread.sleep(500)
+        }
+        logProcs("after-enter-$query", "ptyxis|terminal|gnome-console|kgx|xterm|konsole|alacritty")
+        return countProcs(terminalProcs) > 0
     }
 
     /** Logs the command lines of the session's processes matching [pattern] (the instrumentation shares the app's uid). */
@@ -284,13 +314,17 @@ class DesktopE2ETest {
         // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it).
         val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal-ok")
         marker.delete()
-        typeText("terminal")
-        settle(s, 3000, 30_000)
-        screenshot("terminal-1-search.png")
-        typeText("\n")
-        settle(s, 8000, 120_000)
-        screenshot("terminal-2-launched.png")
-        logProcs("after-enter", "ptyxis|terminal|gnome-console|kgx|xterm|konsole|foot|alacritty")
+        // Try the search twice (the second with the app's own name, after closing and reopening the
+        // overview), logging what the frame does at each step: a terminal process is the evidence.
+        var launched = launchFromOverview(s, "terminal", "terminal-1")
+        if (!launched) {
+            typeText("\u001b\u001b")
+            settle(s, 3000, 30_000)
+            rule.onAllNodes(hasText("Super")).onFirst().performClick()
+            settle(s, 3000, 30_000)
+            launched = launchFromOverview(s, "ptyxis", "terminal-1b")
+        }
+        log("SELKIE_METRIC terminal_launched_from_overview=$launched")
         typeText("touch /tmp/selkie-terminal-ok\n")
         try {
             try {
