@@ -41,7 +41,7 @@ grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
 if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
   g="$OUT/screenshots/desktop-gnome.log"
   echo "::group::desktop-gnome.log (the GNOME session): terminal / agent / droidc lines"
-  grep -a -i -E "ptyxis|agent|terminal|^note:|^warn:|droidc" "$g" | grep -a -v -E "Vulkan|cgshim:" | cut -c1-400 | head -150; echo "::endgroup::"
+  grep -a -i -E "ptyxis|agent|terminal|scope|transient|launch|app-gnome|StartTransient|^note:|^warn:|droidc" "$g" | grep -a -v -E "Vulkan|cgshim:" | cut -c1-400 | head -150; echo "::endgroup::"
   echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
   grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
 fi
