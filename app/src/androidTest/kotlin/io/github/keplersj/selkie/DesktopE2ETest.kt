@@ -259,6 +259,11 @@ class DesktopE2ETest {
         } finally {
             settle(s, 3000, 30_000)
             screenshot("terminal-3-after-command.png")
+            // The next session overwrites desktop.log; keep this one's.
+            try {
+                java.io.File(inst.targetContext.cacheDir, "desktop.log").copyTo(
+                    java.io.File(rule.activity.getExternalFilesDir(null), "desktop-gnome.log"), overwrite = true)
+            } catch (e: Exception) { log("could not keep desktop.log: $e") }
         }
         log("SELKIE_METRIC terminal_command_ran=true")
         stop(s)

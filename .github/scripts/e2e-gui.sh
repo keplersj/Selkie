@@ -38,6 +38,13 @@ adb shell run-as $PKG cat cache/droidc.log > "$OUT/droidc.log" 2>&1 || true
 adb shell df -h /data | tee "$OUT/df-after.txt"
 sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
+if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
+  g="$OUT/screenshots/desktop-gnome.log"
+  echo "::group::desktop-gnome.log (the GNOME session): terminal / agent / droidc lines"
+  grep -a -i -E "ptyxis|agent|terminal|^note:|^warn:|droidc" "$g" | grep -a -v -E "Vulkan|cgshim:" | cut -c1-400 | head -150; echo "::endgroup::"
+  echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
+  grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
+fi
 echo "::group::desktop.log (systemd --user, journal)"
 grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 if [ $rc -ne 0 ]; then
