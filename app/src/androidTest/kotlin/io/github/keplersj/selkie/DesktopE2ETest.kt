@@ -167,6 +167,27 @@ class DesktopE2ETest {
         rule.waitForIdle()
     }
 
+    /** Types [text] with key events delivered straight to the compositor view (letters, digits, - / space, \n). */
+    private fun typeText(text: String) {
+        for (c in text) {
+            val code = when (c) {
+                in 'a'..'z' -> KeyEvent.KEYCODE_A + (c - 'a')
+                in '0'..'9' -> KeyEvent.KEYCODE_0 + (c - '0')
+                '-' -> KeyEvent.KEYCODE_MINUS
+                '/' -> KeyEvent.KEYCODE_SLASH
+                ' ' -> KeyEvent.KEYCODE_SPACE
+                '\n' -> KeyEvent.KEYCODE_ENTER
+                else -> error("no key for '$c'")
+            }
+            inst.runOnMainSync {
+                val v = findCompositorView(rule.activity.window.decorView)
+                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+            }
+            rule.mainClock.advanceTimeBy(80); Thread.sleep(80)
+        }
+    }
+
     @Test fun gnomeHeadless() {
         val s = service()
         ensureBluefin(s)
@@ -219,6 +240,27 @@ class DesktopE2ETest {
         settle(s)
         log("SELKIE_METRIC gnome_after_super stats=${stats(s)}")
         screenshot("gnome-3-super.png")
+
+        // The overview is up: typing searches the installed apps, Enter launches the first result
+        // (Bluefin's terminal), and a command typed afterwards runs in its shell. Done in this first
+        // session of the run, which does not depend on reopening the desktop.
+        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it).
+        val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal-ok")
+        marker.delete()
+        typeText("terminal")
+        settle(s, 3000, 30_000)
+        screenshot("terminal-1-search.png")
+        typeText("\n")
+        settle(s, 8000, 120_000)
+        screenshot("terminal-2-launched.png")
+        typeText("touch /tmp/selkie-terminal-ok\n")
+        try {
+            waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
+        } finally {
+            settle(s, 3000, 30_000)
+            screenshot("terminal-3-after-command.png")
+        }
+        log("SELKIE_METRIC terminal_command_ran=true")
         stop(s)
     }
 
@@ -236,67 +278,6 @@ class DesktopE2ETest {
         inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, view.width * 0.5f, view.height * 0.5f, 0))
         inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, view.width * 0.5f, view.height * 0.5f, 0))
         waitFor("touch to reach the app", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
-        stop(s)
-    }
-
-    /** Types [text] with key events delivered straight to the compositor view (letters, digits, - / space, \n). */
-    private fun typeText(text: String) {
-        for (c in text) {
-            val code = when (c) {
-                in 'a'..'z' -> KeyEvent.KEYCODE_A + (c - 'a')
-                in '0'..'9' -> KeyEvent.KEYCODE_0 + (c - '0')
-                '-' -> KeyEvent.KEYCODE_MINUS
-                '/' -> KeyEvent.KEYCODE_SLASH
-                ' ' -> KeyEvent.KEYCODE_SPACE
-                '\n' -> KeyEvent.KEYCODE_ENTER
-                else -> error("no key for '$c'")
-            }
-            inst.runOnMainSync {
-                val v = findCompositorView(rule.activity.window.decorView)
-                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
-                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
-            }
-            rule.mainClock.advanceTimeBy(80); Thread.sleep(80)
-        }
-    }
-
-    @Test fun terminalInGnome() {
-        val s = service()
-        ensureBluefin(s)
-        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it).
-        val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal-ok")
-        marker.delete()
-        configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
-            PipeWireServices.JSON, "GNOME")
-        openDesktop(s, 50, "terminal_gnome")
-        settle(s)
-        screenshot("terminal-0-desktop.png")
-
-        // Super opens the overview; typing searches the installed apps.
-        val before = hash(s)
-        val inputs0 = long(s, "inputs")
-        rule.onAllNodes(hasText("Super")).onFirst().performClick()
-        waitFor("Super to reach the compositor", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
-        waitFor("GNOME to show the overview", 60_000, 500) { hash(s) != before }
-        settle(s)
-        typeText("terminal")
-        settle(s, 3000, 30_000)
-        screenshot("terminal-1-search.png")
-
-        // Enter launches the first result: Bluefin's terminal.
-        typeText("\n")
-        settle(s, 8000, 120_000)
-        screenshot("terminal-2-launched.png")
-
-        // A command typed into whatever has focus now. If the terminal is up, its shell runs it.
-        typeText("touch /tmp/selkie-terminal-ok\n")
-        try {
-            waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
-        } finally {
-            settle(s, 3000, 30_000)
-            screenshot("terminal-3-after-command.png")
-        }
-        log("SELKIE_METRIC terminal_command_ran=true")
         stop(s)
     }
 }
