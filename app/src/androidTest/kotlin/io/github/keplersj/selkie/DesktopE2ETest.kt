@@ -30,9 +30,9 @@ import java.io.File
  *   (overlay button) changes what GNOME shows.
  * - [gtkAppNested]: `renderer=wayland`, a GTK 4 app (Nautilus) as a direct client of Selkie's
  *   compositor, the path nested session compositors (KWin, cosmic-comp, gamescope) take.
- * - [terminalNested]: `renderer=wayland`, Bluefin's terminal (Ptyxis) as the session's client. The terminal runs a
- *   shell command that writes a marker file in the guest's /tmp, which the test reads from the host side, so
- *   a window on screen is not the only evidence that a shell started inside the session.
+ * - [terminalInGnome]: the GNOME desktop as above, then what a user does: Super, type "terminal", Enter, and a command
+ *   typed into the terminal that opens. The command creates a file in the guest's /tmp, which the test
+ *   reads from the host side, so a window on screen is not the only evidence that a shell ran.
  *
  * Screenshots go to the app's external files dir.
  */
@@ -239,33 +239,64 @@ class DesktopE2ETest {
         stop(s)
     }
 
-    @Test fun terminalNested() {
+    /** Types [text] with key events delivered straight to the compositor view (letters, digits, - / space, \n). */
+    private fun typeText(text: String) {
+        for (c in text) {
+            val code = when (c) {
+                in 'a'..'z' -> KeyEvent.KEYCODE_A + (c - 'a')
+                in '0'..'9' -> KeyEvent.KEYCODE_0 + (c - '0')
+                '-' -> KeyEvent.KEYCODE_MINUS
+                '/' -> KeyEvent.KEYCODE_SLASH
+                ' ' -> KeyEvent.KEYCODE_SPACE
+                '\n' -> KeyEvent.KEYCODE_ENTER
+                else -> error("no key for '$c'")
+            }
+            inst.runOnMainSync {
+                val v = findCompositorView(rule.activity.window.decorView)
+                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+            }
+            rule.mainClock.advanceTimeBy(80); Thread.sleep(80)
+        }
+    }
+
+    @Test fun terminalInGnome() {
         val s = service()
         ensureBluefin(s)
-        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it), so what the terminal's
-        // shell writes can be read here.
-        val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal.out")
-        val info = File(ctx.filesDir, "guest/tmp/selkie-ptyxis-info.out")
-        marker.delete(); info.delete()
-        // Before Ptyxis starts, record what is installed (its helper agent, its version), and run it with GLib's
-        // debug output on, so a failure says where.
-        val script = "{ ls -l /usr/libexec/ptyxis-agent /usr/bin/ptyxis /usr/bin/ptyxis-agent; ptyxis --version; } " +
-            "> /tmp/selkie-ptyxis-info.out 2>&1; exec env G_MESSAGES_DEBUG=all ptyxis -- sh -c " +
-            "'echo SELKIE_TERMINAL_OK pid=\$\$ tty=\$(tty) > /tmp/selkie-terminal.out; exec sleep 3600'"
-        configure(s, "wayland", JsonArray(listOf("sh", "-c", script).map { JsonPrimitive(it) }).toString(), null, "Terminal")
+        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it).
+        val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal-ok")
+        marker.delete()
+        configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
+            PipeWireServices.JSON, "GNOME")
+        openDesktop(s, 50, "terminal_gnome")
+        settle(s)
+        screenshot("terminal-0-desktop.png")
+
+        // Super opens the overview; typing searches the installed apps.
+        val before = hash(s)
+        val inputs0 = long(s, "inputs")
+        rule.onAllNodes(hasText("Super")).onFirst().performClick()
+        waitFor("Super to reach the compositor", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
+        waitFor("GNOME to show the overview", 60_000, 500) { hash(s) != before }
+        settle(s)
+        typeText("terminal")
+        settle(s, 3000, 30_000)
+        screenshot("terminal-1-search.png")
+
+        // Enter launches the first result: Bluefin's terminal.
+        typeText("\n")
+        settle(s, 8000, 120_000)
+        screenshot("terminal-2-launched.png")
+
+        // A command typed into whatever has focus now. If the terminal is up, its shell runs it.
+        typeText("touch /tmp/selkie-terminal-ok\n")
         try {
-            openDesktop(s, 5, "terminal")
-            assertTrue("the terminal is a client of the compositor: ${stats(s)}", long(s, "clients") >= 1)
-            waitFor("the terminal's shell to run a command", 3 * 60_000L, 1000) { marker.isFile && marker.readText().isNotBlank() }
-            val said = marker.readText().trim()
-            log("SELKIE_METRIC terminal_marker=$said")
-            assertTrue("the terminal ran the command: $said", said.startsWith("SELKIE_TERMINAL_OK"))
-            assertFalse("the command ran on a pty, as in a terminal: $said", said.contains("tty=not a tty"))
-            settle(s)
-            screenshot("terminal.png")
+            waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
         } finally {
-            if (info.isFile) log("SELKIE_METRIC ptyxis_info=" + info.readText().trim().replace("\n", " | "))
+            settle(s, 3000, 30_000)
+            screenshot("terminal-3-after-command.png")
         }
+        log("SELKIE_METRIC terminal_command_ran=true")
         stop(s)
     }
 }
