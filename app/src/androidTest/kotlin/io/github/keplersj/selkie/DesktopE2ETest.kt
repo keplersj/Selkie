@@ -30,6 +30,9 @@ import java.io.File
  *   (overlay button) changes what GNOME shows.
  * - [gtkAppNested]: `renderer=wayland`, a GTK 4 app (Nautilus) as a direct client of Selkie's
  *   compositor, the path nested session compositors (KWin, cosmic-comp, gamescope) take.
+ * - [terminalNested]: `renderer=wayland`, Bluefin's terminal (Ptyxis) as the session's client. The terminal runs a
+ *   shell command that writes a marker file in the guest's /tmp, which the test reads from the host side, so
+ *   a window on screen is not the only evidence that a shell started inside the session.
  *
  * Screenshots go to the app's external files dir.
  */
@@ -233,6 +236,28 @@ class DesktopE2ETest {
         inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, view.width * 0.5f, view.height * 0.5f, 0))
         inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, view.width * 0.5f, view.height * 0.5f, 0))
         waitFor("touch to reach the app", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
+        stop(s)
+    }
+
+    @Test fun terminalNested() {
+        val s = service()
+        ensureBluefin(s)
+        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it), so the marker the
+        // terminal's shell writes can be read here.
+        val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal.out")
+        marker.delete()
+        configure(s, "wayland",
+            """["ptyxis","--","sh","-c","echo SELKIE_TERMINAL_OK pid=$$ tty=$(tty) > /tmp/selkie-terminal.out; exec sleep 3600"]""",
+            null, "Terminal")
+        openDesktop(s, 5, "terminal")
+        assertTrue("the terminal is a client of the compositor: ${stats(s)}", long(s, "clients") >= 1)
+        waitFor("the terminal's shell to run a command", 3 * 60_000L, 1000) { marker.isFile && marker.readText().isNotBlank() }
+        val said = marker.readText().trim()
+        log("SELKIE_METRIC terminal_marker=$said")
+        assertTrue("the terminal ran the command: $said", said.startsWith("SELKIE_TERMINAL_OK"))
+        assertFalse("the command ran on a pty, as in a terminal: $said", said.contains("tty=not a tty"))
+        settle(s)
+        screenshot("terminal.png")
         stop(s)
     }
 }
