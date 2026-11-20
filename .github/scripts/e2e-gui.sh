@@ -42,8 +42,24 @@ echo "::group::desktop.log (systemd --user, journal)"
 grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
-  echo "::group::ld.so traces that report a failed preload (guest /tmp/lddebug.*)"
-  adb shell run-as $PKG sh -c 'cd files/guest/tmp 2>/dev/null && for f in $(grep -l -E "cannot|error" lddebug.* 2>/dev/null | head -6); do echo "=== $f"; head -40 "$f"; done' || true
+  echo "::group::ld.so traces (guest /tmp/lddebug.*): files that looked for the shim but never initialised it"
+  cat > "$OUT/lddbg.sh" <<'LDEOF'
+cd files/guest/tmp 2>/dev/null || { echo "no files/guest/tmp"; exit 0; }
+echo "lddebug files: $(ls lddebug.* 2>/dev/null | wc -l)"
+echo "that mention the shim: $(grep -l 'cgshim' lddebug.* 2>/dev/null | wc -l)"
+bad=""
+for f in $(grep -l 'cgshim' lddebug.* 2>/dev/null); do
+  grep -q 'calling init: /usr/lib/droidc/cgshim.so' "$f" || bad="$bad $f"
+done
+echo "that looked for it but never initialised it: $(echo $bad | wc -w)"
+n=0
+for f in $bad; do
+  n=$((n+1)); [ $n -gt 4 ] && break
+  echo "=== $f"; head -50 "$f"
+done
+LDEOF
+  adb push "$OUT/lddbg.sh" /data/local/tmp/lddbg.sh >/dev/null 2>&1 || true
+  adb shell run-as $PKG sh /data/local/tmp/lddbg.sh 2>&1 | head -260 || true
   echo "::endgroup::"
   for f in "$OUT"/screenshots/*-session-failed.log; do
     [ -f "$f" ] || continue
