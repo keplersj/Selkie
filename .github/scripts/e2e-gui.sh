@@ -42,6 +42,9 @@ echo "::group::desktop.log (systemd --user, journal)"
 grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
+  echo "::group::ld.so traces that report a failed preload (guest /tmp/lddebug.*)"
+  adb shell run-as $PKG sh -c 'cd files/guest/tmp 2>/dev/null && for f in $(grep -l -E "cannot|error" lddebug.* 2>/dev/null | head -6); do echo "=== $f"; head -40 "$f"; done' || true
+  echo "::endgroup::"
   for f in "$OUT"/screenshots/*-session-failed.log; do
     [ -f "$f" ] || continue
     echo "::group::$(basename "$f") (why the session ended: exit/stop/died/signal lines, then the last 80 lines)"
