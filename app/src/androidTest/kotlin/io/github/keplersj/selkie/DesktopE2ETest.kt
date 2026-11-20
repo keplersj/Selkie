@@ -242,22 +242,30 @@ class DesktopE2ETest {
     @Test fun terminalNested() {
         val s = service()
         ensureBluefin(s)
-        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it), so the marker the
-        // terminal's shell writes can be read here.
+        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it), so what the terminal's
+        // shell writes can be read here.
         val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal.out")
-        marker.delete()
-        configure(s, "wayland",
-            """["ptyxis","--","sh","-c","echo SELKIE_TERMINAL_OK pid=$$ tty=$(tty) > /tmp/selkie-terminal.out; exec sleep 3600"]""",
-            null, "Terminal")
-        openDesktop(s, 5, "terminal")
-        assertTrue("the terminal is a client of the compositor: ${stats(s)}", long(s, "clients") >= 1)
-        waitFor("the terminal's shell to run a command", 3 * 60_000L, 1000) { marker.isFile && marker.readText().isNotBlank() }
-        val said = marker.readText().trim()
-        log("SELKIE_METRIC terminal_marker=$said")
-        assertTrue("the terminal ran the command: $said", said.startsWith("SELKIE_TERMINAL_OK"))
-        assertFalse("the command ran on a pty, as in a terminal: $said", said.contains("tty=not a tty"))
-        settle(s)
-        screenshot("terminal.png")
+        val info = File(ctx.filesDir, "guest/tmp/selkie-ptyxis-info.out")
+        marker.delete(); info.delete()
+        // Before Ptyxis starts, record what is installed (its helper agent, its version), and run it with GLib's
+        // debug output on, so a failure says where.
+        val script = "{ ls -l /usr/libexec/ptyxis-agent /usr/bin/ptyxis /usr/bin/ptyxis-agent; ptyxis --version; } " +
+            "> /tmp/selkie-ptyxis-info.out 2>&1; exec env G_MESSAGES_DEBUG=all ptyxis -- sh -c " +
+            "'echo SELKIE_TERMINAL_OK pid=\$\$ tty=\$(tty) > /tmp/selkie-terminal.out; exec sleep 3600'"
+        configure(s, "wayland", JsonArray(listOf("sh", "-c", script).map { JsonPrimitive(it) }).toString(), null, "Terminal")
+        try {
+            openDesktop(s, 5, "terminal")
+            assertTrue("the terminal is a client of the compositor: ${stats(s)}", long(s, "clients") >= 1)
+            waitFor("the terminal's shell to run a command", 3 * 60_000L, 1000) { marker.isFile && marker.readText().isNotBlank() }
+            val said = marker.readText().trim()
+            log("SELKIE_METRIC terminal_marker=$said")
+            assertTrue("the terminal ran the command: $said", said.startsWith("SELKIE_TERMINAL_OK"))
+            assertFalse("the command ran on a pty, as in a terminal: $said", said.contains("tty=not a tty"))
+            settle(s)
+            screenshot("terminal.png")
+        } finally {
+            if (info.isFile) log("SELKIE_METRIC ptyxis_info=" + info.readText().trim().replace("\n", " | "))
+        }
         stop(s)
     }
 }

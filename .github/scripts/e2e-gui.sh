@@ -53,6 +53,9 @@ if [ $rc -ne 0 ]; then
     echo "---- filtered tail"
     grep -a -v -E "St-CRITICAL|GLib-GObject-CRITICAL|libecal|Vulkan|cgshim: /proc|cgshim: open|ManagedOOM|dmi/id|cgroup ID|root.mount|cap_last_cap|nr_open|Tracker|GVFS" "$f" | tail -150
     echo "::endgroup::"
+    echo "::group::$(basename "$f") (ptyxis lines)"
+    grep -a -i -E "ptyxis|agent" "$f" | grep -a -v -E "Vulkan|cgshim:" | head -200
+    echo "::endgroup::"
     echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
     grep -i -E "PWDIAG|pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -250
     echo "::endgroup::"
