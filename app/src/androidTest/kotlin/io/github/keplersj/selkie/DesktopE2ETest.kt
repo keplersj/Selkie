@@ -188,6 +188,19 @@ class DesktopE2ETest {
         }
     }
 
+    /** Logs the command lines of the session's processes matching [pattern] (the instrumentation shares the app's uid). */
+    private fun logProcs(label: String, pattern: String) {
+        val re = Regex(pattern, RegexOption.IGNORE_CASE)
+        val hits = java.io.File("/proc").listFiles { f -> f.name.all { it.isDigit() } }.orEmpty().mapNotNull { d ->
+            try {
+                val c = java.io.File(d, "cmdline").readText().replace('\u0000', ' ').trim()
+                if (c.isNotEmpty() && re.containsMatchIn(c)) "${d.name}: ${c.take(160)}" else null
+            } catch (e: Exception) { null }
+        }
+        log("SELKIE_PROCS $label count=${hits.size}")
+        hits.take(40).forEach { log("SELKIE_PROCS $label $it") }
+    }
+
     @Test fun gnomeHeadless() {
         val s = service()
         ensureBluefin(s)
@@ -253,12 +266,14 @@ class DesktopE2ETest {
         typeText("\n")
         settle(s, 8000, 120_000)
         screenshot("terminal-2-launched.png")
+        logProcs("after-enter", "ptyxis|terminal|gnome-console|kgx|xterm|konsole|foot|alacritty")
         typeText("touch /tmp/selkie-terminal-ok\n")
         try {
             waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
         } finally {
             settle(s, 3000, 30_000)
             screenshot("terminal-3-after-command.png")
+            logProcs("final", "ptyxis|terminal|gnome-console|kgx|xterm|bash|gnome-shell|nautilus")
             // The next session overwrites desktop.log; keep this one's.
             try {
                 java.io.File(inst.targetContext.cacheDir, "desktop.log").copyTo(
