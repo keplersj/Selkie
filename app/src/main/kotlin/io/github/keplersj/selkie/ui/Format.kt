@@ -1,6 +1,17 @@
 package io.github.keplersj.selkie.ui
 
+import android.os.StatFs
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+
+/** Free bytes in app storage, read once per composition. */
+@Composable
+fun freeBytes(): Long {
+    val ctx = LocalContext.current
+    return remember { runCatching { StatFs(ctx.filesDir.path).availableBytes }.getOrDefault(0L) }
+}
 
 fun formatBytes(b: Long): String {
     if (b < 1024) return "$b B"

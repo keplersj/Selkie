@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.roborazzi)
 }
 
 val selkieVersion = "0.1.0-mvp.1"
@@ -96,7 +97,28 @@ android {
         buildConfig = true
     }
     sourceSets.getByName("main").kotlin.srcDir("src/main/kotlin")
-    testOptions { unitTests.isReturnDefaultValues = true }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperties["robolectric.pixelCopyRenderMode"] = "hardware"
+            it.maxHeapSize = "4096m"
+        }
+    }
+}
+
+// Every @Preview in ui/ becomes a Robolectric screenshot test (see docs/ui-previews.md).
+//   ./gradlew recordRoborazziDebug    writes PNGs to app/screenshots/
+//   ./gradlew compareRoborazziDebug   writes diffs against them to build/outputs/roborazzi/
+roborazzi {
+    outputDir.set(layout.projectDirectory.dir("screenshots"))
+    compare { outputDir.set(layout.buildDirectory.dir("outputs/roborazzi")) }
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    generateComposePreviewRobolectricTests {
+        enable = true
+        packages = listOf("io.github.keplersj.selkie.ui")
+        robolectricConfig = mapOf("sdk" to "[35]")
+    }
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -109,6 +131,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.compose.icons)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.termux.terminal.view)
@@ -116,6 +140,13 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.preview.scanner.support)
+    testImplementation(libs.composable.preview.scanner)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)

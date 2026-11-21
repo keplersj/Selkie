@@ -112,6 +112,15 @@ jobs:
         run: find third_party/bin -type f | sort
       - name: Build release APK + unit tests, debug + androidTest APKs
         run: ./gradlew --no-daemon assembleRelease testReleaseUnitTest assembleDebug assembleDebugAndroidTest
+      - name: Verify UI screenshots
+        # Renders every @Preview with Robolectric and compares it to app/screenshots/ (docs/ui-previews.md).
+        # If a change is intended, re-record with recordRoborazziDebug and commit the new PNGs.
+        run: ./gradlew --no-daemon verifyRoborazziDebug
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screenshot-diffs
+          path: app/build/outputs/roborazzi
       - name: Name the APK
         run: |
           VERSION=$(sed -n 's/^val selkieVersion = "\(.*\)"/\1/p' app/build.gradle.kts)
