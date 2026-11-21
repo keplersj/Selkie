@@ -1,0 +1,79 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":semanticCommitTypeAll(chore)",
+    ":maintainLockFilesWeekly"
+  ],
+  "timezone": "America/Los_Angeles",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "dependencyDashboard": true,
+  "vulnerabilityAlerts": {
+    "schedule": ["at any time"],
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "customManagers": [
+    {
+      "description": "droidc.ref pins a keplersj/droidc commit; track main",
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)droidc\\.ref$/"],
+      "matchStrings": ["^(?<currentDigest>[a-f0-9]{40})\\s*$"],
+      "datasourceTemplate": "git-refs",
+      "packageNameTemplate": "https://github.com/keplersj/droidc",
+      "depNameTemplate": "keplersj/droidc",
+      "currentValueTemplate": "main"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge non-major updates once CI passes",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchCurrentVersion": "!/^0\\./",
+      "automerge": true
+    },
+    {
+      "description": "Automerge GitHub Actions digest/minor/patch bumps",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "automerge": true,
+      "groupName": "github actions"
+    },
+    {
+      "description": "droidc is first-party: no release-age wait, never automerge (the APK build needs a human look)",
+      "matchDepNames": ["keplersj/droidc"],
+      "minimumReleaseAge": null,
+      "automerge": false,
+      "semanticCommitType": "feat",
+      "commitMessageTopic": "droidc",
+      "schedule": ["at any time"]
+    },
+    {
+      "description": "Kotlin plugins share one version and must move together",
+      "matchPackageNames": ["org.jetbrains.kotlin{/,}**"],
+      "groupName": "kotlin"
+    },
+    {
+      "description": "Roborazzi and its preview scanner are version-coupled",
+      "matchPackageNames": ["io.github.takahirom.roborazzi{/,}**", "io.github.sergio-sastre.ComposablePreviewScanner{/,}**"],
+      "groupName": "roborazzi"
+    },
+    {
+      "description": "ComposablePreviewScanner 0.10 changed ComposablePreview.invoke; Roborazzi 1.79 is built against 0.9.x (see gradle/libs.versions.toml)",
+      "matchPackageNames": ["io.github.sergio-sastre.ComposablePreviewScanner{/,}**"],
+      "allowedVersions": "<0.10"
+    },
+    {
+      "description": "AGP, Kotlin and Compose BOM majors/minors need manual review",
+      "matchPackageNames": ["com.android.application", "androidx.compose:compose-bom", "org.jetbrains.kotlin{/,}**"],
+      "matchUpdateTypes": ["major", "minor"],
+      "automerge": false
+    }
+  ]
+}
