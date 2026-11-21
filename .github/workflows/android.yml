@@ -24,7 +24,7 @@ jobs:
           path: droidc-src
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl,aarch64-linux-android,x86_64-linux-android
+          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl,aarch64-linux-android,x86_64-linux-android,aarch64-unknown-linux-gnu,x86_64-unknown-linux-gnu
       - uses: actions/cache@v4
         with:
           path: |
@@ -51,14 +51,13 @@ jobs:
           # If droidc's README documents different commands, prefer those.
           cargo zigbuild --release --bin droidc --target aarch64-unknown-linux-musl
           cargo zigbuild --release --bin droidc --target x86_64-unknown-linux-musl
-      - name: Build the cgroup shim (glibc, for the guest's systemd --user)
+      - name: Build the cgroup shim (Rust, glibc, for the guest's systemd --user)
         working-directory: droidc-src
         run: |
-          # The guest is glibc, so this is not built against bionic or musl (see droidc's ci.yml).
-          mkdir -p dist
+          # The guest is glibc, so this is not built against bionic or musl; glibc 2.28 is the floor.
           for arch in aarch64 x86_64; do
-            python3 -m ziglang cc -target $arch-linux-gnu.2.28 -shared -fPIC -O2 -Wall \
-              -o dist/cgshim-$arch.so shim/cgshim.c -ldl
+            cargo zigbuild --release --target $arch-unknown-linux-gnu.2.28 -p cgshim
+            ! objdump -T target/$arch-unknown-linux-gnu/release/libcgshim.so | grep -E 'GLIBC_2\.(29|[3-9][0-9])'
           done
       - name: Build Android (bionic) binaries
         working-directory: droidc-src
@@ -79,8 +78,8 @@ jobs:
           cp droidc-src/target/aarch64-unknown-linux-musl/release/droidc out/arm64-v8a/libdroidc-guest.so
           cp droidc-src/target/x86_64-unknown-linux-musl/release/droidc out/x86_64/libdroidc-guest.so
           file out/*/*.so
-          cp droidc-src/dist/cgshim-aarch64.so out/arm64-v8a/libcgshim.so
-          cp droidc-src/dist/cgshim-x86_64.so out/x86_64/libcgshim.so
+          cp droidc-src/target/aarch64-unknown-linux-gnu/release/libcgshim.so out/arm64-v8a/libcgshim.so
+          cp droidc-src/target/x86_64-unknown-linux-gnu/release/libcgshim.so out/x86_64/libcgshim.so
           echo "$(git -C droidc-src rev-parse HEAD)" > out/DROIDC_COMMIT
       - uses: actions/upload-artifact@v4
         with:

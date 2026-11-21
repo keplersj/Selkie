@@ -32,6 +32,12 @@ data class EngineEnv(
     val guestTmp: File get() = File(filesDir, "guest/tmp")
     val guestRun: File get() = File(filesDir, "guest/run")
     val guestShm: File get() = File(filesDir, "guest/shm")
+    /**
+     * Bound over the guest's /sys/fs/cgroup. Android's own cgroup2 mount there is read-only to an app,
+     * so `systemd --user` fails with "Failed to create /init.scope control group"; a plain directory
+     * lets droidc build the fake tree its cgroup shim expects.
+     */
+    val guestCgroup: File get() = File(filesDir, "guest/cgroup")
     val guestGenerated: File get() = File(filesDir, "guest/generated")
 
     /** The guest's `XDG_RUNTIME_DIR` (`/run/user/<uid>`), where droidc supervise puts its sockets. */

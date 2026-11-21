@@ -11,7 +11,10 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.ServiceTestRule
-import io.github.keplersj.selkie.engine.PipeWireServices
+import io.github.keplersj.selkie.engine.*
+import io.github.keplersj.selkie.proot.GuestFiles
+import io.github.keplersj.selkie.proot.ProotCommandBuilder
+import kotlinx.coroutines.runBlocking
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.SessionService
@@ -30,6 +33,9 @@ import java.io.File
  *   (overlay button) changes what GNOME shows.
  * - [gtkAppNested]: `renderer=wayland`, a GTK 4 app (Nautilus) as a direct client of Selkie's
  *   compositor, the path nested session compositors (KWin, cosmic-comp, gamescope) take.
+ * - [terminalInGnome]: the GNOME desktop as above, then what a user does: Super, type "terminal", Enter, and a command
+ *   typed into the terminal that opens. The command creates a file in the guest's /tmp, which the test
+ *   reads from the host side, so a window on screen is not the only evidence that a shell ran.
  *
  * Screenshots go to the app's external files dir.
  */
@@ -164,6 +170,91 @@ class DesktopE2ETest {
         rule.waitForIdle()
     }
 
+    /** Types [text] with key events delivered straight to the compositor view (letters, digits, - / space, \n). */
+    private fun typeText(text: String) {
+        for (c in text) {
+            val code = when (c) {
+                in 'a'..'z' -> KeyEvent.KEYCODE_A + (c - 'a')
+                in '0'..'9' -> KeyEvent.KEYCODE_0 + (c - '0')
+                '-' -> KeyEvent.KEYCODE_MINUS
+                '/' -> KeyEvent.KEYCODE_SLASH
+                ' ' -> KeyEvent.KEYCODE_SPACE
+                '\n' -> KeyEvent.KEYCODE_ENTER
+                '\u001b' -> KeyEvent.KEYCODE_ESCAPE
+                else -> error("no key for '$c'")
+            }
+            inst.runOnMainSync {
+                val v = findCompositorView(rule.activity.window.decorView)
+                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+                v?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+            }
+            rule.mainClock.advanceTimeBy(80); Thread.sleep(80)
+        }
+    }
+
+    /**
+     * Runs [script] in a second proot against the live session (same /run, so the user bus and the
+     * display are there) and logs its output as SELKIE_GUEST lines.
+     */
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90) {
+        try {
+            val env = engineEnvFrom(ctx)
+            val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
+            val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
+            val inv = b.command(listOf("/bin/sh", "-c", script))
+            val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
+            pb.environment().apply { clear(); putAll(inv.env) }
+            val p = pb.start()
+            val text = StringBuilder()
+            val t = Thread { text.append(p.inputStream.bufferedReader().readText()) }.also { it.start() }
+            if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
+            t.join(5000)
+            text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
+        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
+    }
+
+    private val terminalProcs = "ptyxis|gnome-console|kgx|xterm|konsole|alacritty"
+
+    private fun countProcs(pattern: String): Int {
+        val re = Regex(pattern, RegexOption.IGNORE_CASE)
+        return java.io.File("/proc").listFiles { f -> f.name.all { it.isDigit() } }.orEmpty().count { d ->
+            try { re.containsMatchIn(java.io.File(d, "cmdline").readText().replace('\u0000', ' ')) } catch (e: Exception) { false }
+        }
+    }
+
+    /** Types [query] into the open overview, presses Enter, and reports whether a terminal process appeared. */
+    private fun launchFromOverview(s: SessionService, query: String, shot: String): Boolean {
+        val h0 = hash(s)
+        typeText(query)
+        settle(s, 3000, 30_000)
+        log("SELKIE_STEP typed '$query': hash $h0 -> ${hash(s)}, colors=${colors(s)}")
+        screenshot("$shot-search.png")
+        val h1 = hash(s)
+        typeText("\n")
+        settle(s, 5000, 60_000)
+        log("SELKIE_STEP enter: hash $h1 -> ${hash(s)}, colors=${colors(s)}")
+        screenshot("$shot-launched.png")
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline && countProcs(terminalProcs) == 0) {
+            rule.mainClock.advanceTimeBy(500); Thread.sleep(500)
+        }
+        logProcs("after-enter-$query", "ptyxis|terminal|gnome-console|kgx|xterm|konsole|alacritty")
+        return countProcs(terminalProcs) > 0
+    }
+
+    /** Logs the command lines of the session's processes matching [pattern] (the instrumentation shares the app's uid). */
+    private fun logProcs(label: String, pattern: String) {
+        val re = Regex(pattern, RegexOption.IGNORE_CASE)
+        val hits = java.io.File("/proc").listFiles { f -> f.name.all { it.isDigit() } }.orEmpty().mapNotNull { d ->
+            try {
+                val c = java.io.File(d, "cmdline").readText().replace('\u0000', ' ').trim()
+                if (c.isNotEmpty() && re.containsMatchIn(c)) "${d.name}: ${c.take(160)}" else null
+            } catch (e: Exception) { null }
+        }
+        log("SELKIE_PROCS $label count=${hits.size}")
+        hits.take(40).forEach { log("SELKIE_PROCS $label $it") }
+    }
+
     @Test fun gnomeHeadless() {
         val s = service()
         ensureBluefin(s)
@@ -216,6 +307,57 @@ class DesktopE2ETest {
         settle(s)
         log("SELKIE_METRIC gnome_after_super stats=${stats(s)}")
         screenshot("gnome-3-super.png")
+
+        // The overview is up: typing searches the installed apps, Enter launches the first result
+        // (Bluefin's terminal), and a command typed afterwards runs in its shell. Done in this first
+        // session of the run, which does not depend on reopening the desktop.
+        // The guest's /tmp is files/guest/tmp on the host (ProotCommandBuilder binds it).
+        val marker = File(ctx.filesDir, "guest/tmp/selkie-terminal-ok")
+        marker.delete()
+        // Try the search twice (the second with the app's own name, after closing and reopening the
+        // overview), logging what the frame does at each step: a terminal process is the evidence.
+        var launched = launchFromOverview(s, "terminal", "terminal-1")
+        if (!launched) {
+            typeText("\u001b\u001b")
+            settle(s, 3000, 30_000)
+            rule.onAllNodes(hasText("Super")).onFirst().performClick()
+            settle(s, 3000, 30_000)
+            launched = launchFromOverview(s, "ptyxis", "terminal-1b")
+        }
+        log("SELKIE_METRIC terminal_launched_from_overview=$launched")
+        typeText("touch /tmp/selkie-terminal-ok\n")
+        try {
+            try {
+                waitFor("a command typed into the terminal to run", 120_000, 1000) { marker.exists() }
+            } catch (t: AssertionError) {
+                // The shell's search/launch did not start a terminal. Ask the guest directly: is the
+                // session bus there, which terminal apps are installed, and does one run if started by hand?
+                guestProbe("direct-launch", """
+                    uid=${'$'}(id -u)
+                    export XDG_RUNTIME_DIR=/run/user/${'$'}uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${'$'}uid/bus
+                    ls /run/user/${'$'}uid 2>&1 | head -30
+                    ls /usr/share/applications 2>&1 | grep -i -E 'ptyxis|terminal|console'
+                    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames 2>&1 | head -c 700; echo
+                    for w in wayland-0 wayland-1; do [ -S /run/user/${'$'}uid/${'$'}w ] && echo "display ${'$'}w"; done
+                    export WAYLAND_DISPLAY=${'$'}(ls /run/user/${'$'}uid | grep -m1 '^wayland-[0-9]*${'$'}')
+                    echo "using ${'$'}WAYLAND_DISPLAY"
+                    timeout 40 ptyxis --new-window -x 'touch /tmp/selkie-terminal-ok' 2>&1 | head -60
+                    echo "ptyxis exit=${'$'}?"
+                    ls -l /tmp/selkie-terminal-ok 2>&1
+                """.trimIndent())
+                throw t
+            }
+        } finally {
+            settle(s, 3000, 30_000)
+            screenshot("terminal-3-after-command.png")
+            logProcs("final", "ptyxis|terminal|gnome-console|kgx|xterm|bash|gnome-shell|nautilus")
+            // The next session overwrites desktop.log; keep this one's.
+            try {
+                java.io.File(inst.targetContext.cacheDir, "desktop.log").copyTo(
+                    java.io.File(rule.activity.getExternalFilesDir(null), "desktop-gnome.log"), overwrite = true)
+            } catch (e: Exception) { log("could not keep desktop.log: $e") }
+        }
+        log("SELKIE_METRIC terminal_command_ran=true")
         stop(s)
     }
 

@@ -41,6 +41,7 @@ class ProotCommandBuilder(
         bind("/sys", "/sys")
         bind(env.droidcGuestBin.path, "/usr/bin/droidc")
         bind(env.cgshimLib.path, CGSHIM_GUEST_PATH)
+        bind(env.guestCgroup.path, "/sys/fs/cgroup")
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
         bind(env.guestShm.path, "/dev/shm")
@@ -72,9 +73,15 @@ class ProotCommandBuilder(
      * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels.
      */
     fun graphicalSession(width: Int, height: Int, scale: Float = 1f): Invocation {
-        val inv = command(listOf("/usr/bin/droidc", "supervise", "--session",
+        val inv = command(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto",
             "--width", width.toString(), "--height", height.toString(), "--scale", scale.toString()))
-        return inv.copy(env = inv.env + mapOf(
+        // droidc's own diagnostics for the user manager (its messages, units' output) in desktop.log.
+        val diag = if (BuildConfig.DEBUG) mapOf(
+            "DROIDC_JOURNAL" to "stderr", "DROIDC_SYSTEMD_STDIO" to "inherit",
+            "DROIDC_SYSTEMD_LOG_LEVEL" to "info",
+            "CGSHIM_TRACE" to "1",
+        ) else emptyMap()
+        return inv.copy(env = inv.env + diag + mapOf(
             "WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY,
             // No GPU is passed through yet: guest GL is Mesa's llvmpipe.
             "LIBGL_ALWAYS_SOFTWARE" to "1",

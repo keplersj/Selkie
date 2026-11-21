@@ -38,10 +38,50 @@ adb shell run-as $PKG cat cache/droidc.log > "$OUT/droidc.log" 2>&1 || true
 adb shell df -h /data | tee "$OUT/df-after.txt"
 sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
+if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
+  g="$OUT/screenshots/desktop-gnome.log"
+  echo "::group::desktop-gnome.log (the GNOME session): terminal / agent / droidc lines"
+  grep -a -i -E "ptyxis|agent|terminal|scope|transient|launch|app-gnome|StartTransient|^note:|^warn:|droidc" "$g" | grep -a -v -E "Vulkan|cgshim:" | cut -c1-400 | head -150; echo "::endgroup::"
+  echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
+  grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
+fi
+echo "::group::desktop.log (systemd --user, journal)"
+grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 if [ $rc -ne 0 ]; then
   echo "::group::desktop.log (tail)"; tail -120 "$OUT/desktop.log"; echo "::endgroup::"
+  echo "::group::ld.so traces (guest /tmp/lddebug.*): files that looked for the shim but never initialised it"
+  cat > "$OUT/lddbg.sh" <<'LDEOF'
+cd files/guest/tmp 2>/dev/null || { echo "no files/guest/tmp"; exit 0; }
+echo "lddebug files: $(ls lddebug.* 2>/dev/null | wc -l)"
+echo "that mention the shim: $(grep -l 'cgshim' lddebug.* 2>/dev/null | wc -l)"
+bad=""
+for f in $(grep -l 'cgshim' lddebug.* 2>/dev/null); do
+  grep -q 'calling init: /usr/lib/droidc/cgshim.so' "$f" || bad="$bad $f"
+done
+echo "that looked for it but never initialised it: $(echo $bad | wc -w)"
+n=0
+for f in $bad; do
+  n=$((n+1)); [ $n -gt 4 ] && break
+  echo "=== $f"; head -50 "$f"
+done
+LDEOF
+  adb push "$OUT/lddbg.sh" /data/local/tmp/lddbg.sh >/dev/null 2>&1 || true
+  adb shell run-as $PKG sh /data/local/tmp/lddbg.sh 2>&1 | head -260 || true
+  echo "::endgroup::"
   for f in "$OUT"/screenshots/*-session-failed.log; do
     [ -f "$f" ] || continue
+    echo "::group::$(basename "$f") (why the session ended: exit/stop/died/signal lines, then the last 80 lines)"
+    grep -a -n -i -E "exit|stopp|died|killed|signal|abort|segfault|core dump|critical|fatal|Failed with|Main process|entered failed|shutdown" "$f" | grep -a -v -E "Vulkan|Tracker|GVFS|cap_last_cap|nr_open|ManagedOOM|root.mount|Failed to get cgroup ID|unit_file_build_name_map" | head -120
+    echo "---- last 80 lines"; tail -80 "$f"
+    echo "::endgroup::"
+    echo "::group::$(basename "$f") (droidc / bridge lines, then the last 150 lines without the shell's dock-extension and cgroup noise)"
+    grep -a -n -E "droidc|bridge|supervise|screencast|ScreenCast|RemoteDesktop|pw-link|pipewire.*(error|fail)|Wayland" "$f" | grep -a -v -E "Vulkan|cgshim:" | head -80
+    echo "---- filtered tail"
+    grep -a -v -E "St-CRITICAL|GLib-GObject-CRITICAL|libecal|Vulkan|cgshim: /proc|cgshim: open|ManagedOOM|dmi/id|cgroup ID|root.mount|cap_last_cap|nr_open|Tracker|GVFS" "$f" | tail -150
+    echo "::endgroup::"
+    echo "::group::$(basename "$f") (ptyxis lines)"
+    grep -a -i -E "ptyxis|agent" "$f" | grep -a -v -E "Vulkan|cgshim:" | head -200
+    echo "::endgroup::"
     echo "::group::$(basename "$f") (pipewire, mutter, shell, bridge, droidc lines)"
     grep -i -E "PWDIAG|pipewire|pw-|wireplumber|mutter|gnome-shell|screencast|bridge|droidc|error|fail" "$f" | grep -v -E "Vulkan|Tracker|GVFS|landlock" | head -250
     echo "::endgroup::"
