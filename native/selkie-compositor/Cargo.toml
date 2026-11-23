@@ -19,9 +19,9 @@ jni = "0.21"
 rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net", "use-libc"] }
 
 [dev-dependencies]
-wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client", "server"] }
-tempfile = "3"
+wayland-client = "=0.31.15"
+wayland-protocols = { version = "=0.32.13", features = ["client", "server"] }
+tempfile = "=3.27.0"
 
 [profile.release]
 lto = true
