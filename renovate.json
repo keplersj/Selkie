@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "timezone": "America/Denver",
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "dependencyDashboard": true,
+  "platformAutomerge": false,
+  "vulnerabilityAlerts": {
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["at any time"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track the droidc commit Selkie builds against (droidc.ref) on droidc's main branch",
+      "managerFilePatterns": ["/^droidc\\.ref$/"],
+      "matchStrings": ["(?<currentDigest>[0-9a-f]{40})"],
+      "currentValueTemplate": "main",
+      "depNameTemplate": "droidc",
+      "packageNameTemplate": "https://github.com/keplersj/droidc",
+      "datasourceTemplate": "git-refs"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge non-major updates once CI passes",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchCurrentVersion": "!/^0\\./",
+      "automerge": true
+    },
+    {
+      "description": "Automerge GitHub Actions digest/minor/patch bumps",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "automerge": true,
+      "groupName": "github actions"
+    },
+    {
+      "description": "droidc.ref: bump as soon as droidc's main moves and automerge once Selkie's CI (which builds droidc at that ref) passes",
+      "matchDepNames": ["droidc"],
+      "matchDatasources": ["git-refs"],
+      "minimumReleaseAge": null,
+      "automerge": true,
+      "commitMessageTopic": "droidc",
+      "labels": ["droidc"]
+    }
+  ]
+}
