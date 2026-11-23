@@ -88,6 +88,65 @@ class ProotCommandBuilderTest {
         assertTrue("/files/guest/generated/group:/etc/group" in a)
     }
 
+    @Test fun deviceEnvFillsGapsButImageWins() {
+        val image = spec.copy(env = spec.env + ("LANG" to "de_DE.UTF-8"))
+        val e = ProotCommandBuilder(TestEnv.env(), image,
+            guestEnv = mapOf("TZ" to "America/Denver", "LANG" to "en_US.UTF-8")).environment()
+        assertEquals("America/Denver", e["TZ"])
+        assertEquals("de_DE.UTF-8", e["LANG"])
+    }
+
+    @Test fun guestLangNeedsTheLocaleInTheImage() {
+        val root = Files.createTempDirectory("rootfs").toFile()
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, "en_US"))
+        File(root, "usr/lib/locale/en_US.utf8").mkdirs()
+        assertEquals("en_US.UTF-8", GuestFiles.guestLang(root, "en_US"))
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, "fr_FR"))
+        File(root, "usr/lib/locale/locale-archive").writeText("")
+        assertEquals("fr_FR.UTF-8", GuestFiles.guestLang(root, "fr_FR"))
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, ""))
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, "en_US.UTF-8;rm"))
+        root.deleteRecursively()
+    }
+
+    @Test fun zoneIdsStayInsideZoneinfo() {
+        assertTrue(GuestFiles.isZoneId("America/Denver"))
+        assertTrue(GuestFiles.isZoneId("Etc/GMT+7"))
+        assertTrue(GuestFiles.isZoneId("UTC"))
+        assertFalse(GuestFiles.isZoneId("../../etc/shadow"))
+        assertFalse(GuestFiles.isZoneId("/etc/passwd"))
+        assertFalse(GuestFiles.isZoneId(""))
+    }
+
+    @Test fun identityAddsHostnameAndLocaltime() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val rootfs = File(dir, "rootfs").apply { File(this, "etc").mkdirs() }
+        File(rootfs, "usr/share/zoneinfo/America").mkdirs()
+        File(rootfs, "usr/share/zoneinfo/America/Denver").writeText("TZif-denver")
+        val s = spec.copy(rootfs = rootfs.path)
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"),
+            timeZone = "America/Denver")
+        val m = GuestFiles.prepareIdentity(env, s)
+        assertEquals("selkie\n", m.getValue("/etc/hostname").readText())
+        assertEquals("TZif-denver", m.getValue("/etc/localtime").readText())
+        val work = GuestFiles.prepareIdentity(env.forContainer("work").copy(timeZone = "Mars/Olympus"), s)
+        assertEquals("work\n", work.getValue("/etc/hostname").readText())
+        assertFalse("no tzdata for it" , "/etc/localtime" in work)
+        assertEquals(mapOf("TZ" to "Mars/Olympus", "LANG" to "C.UTF-8"),
+            GuestFiles.guestEnv(env.forContainer("work").copy(timeZone = "Mars/Olympus"), s))
+        dir.deleteRecursively()
+    }
+
+    @Test fun tmpAndShmGetTheStickyBit() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"))
+        val modes = mutableMapOf<File, Int>()
+        GuestFiles.prepare(env, spec, readable = { true }, uptimeSeconds = 1.0, cpus = 1,
+            chmod = { f, m -> modes[f] = m })
+        assertEquals(mapOf(env.guestTmp to "1777".toInt(8), env.guestShm to "1777".toInt(8)), modes)
+        dir.deleteRecursively()
+    }
+
     @Test fun phantomEvaluate() {
         val skip = PhantomProcessCheck.PropRead.Skipped
         fun v(x: String) = PhantomProcessCheck.PropRead.Value(x)

@@ -276,7 +276,9 @@ class SessionService : Service() {
             ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
         val inv = withContext(Dispatchers.IO) {
             val fake = GuestFiles.prepare(env, spec)
-            ProotCommandBuilder(env, spec, fake, overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env)).interactiveShell()
+            ProotCommandBuilder(env, spec, fake,
+                overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
+                guestEnv = GuestFiles.guestEnv(env, spec)).interactiveShell()
         }
         val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
             inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)
@@ -340,7 +342,8 @@ class SessionService : Service() {
                     if (spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")
                     val fake = GuestFiles.prepare(env, spec)
                     val inv = ProotCommandBuilder(env, spec, fake,
-                        overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env))
+                        overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
+                        guestEnv = GuestFiles.guestEnv(env, spec))
                         .graphicalSession(width, height)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)

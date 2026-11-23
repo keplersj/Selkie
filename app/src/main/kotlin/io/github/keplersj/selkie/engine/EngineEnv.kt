@@ -15,6 +15,10 @@ data class EngineEnv(
     val dns: List<String> = emptyList(),
     /** droidc container this env acts on (`droidc --container`). See [forContainer]. */
     val container: String = DEFAULT_CONTAINER,
+    /** The device's time zone id (`America/Denver`), passed to the guest as `TZ` and `/etc/localtime`. */
+    val timeZone: String = "UTC",
+    /** The device's locale as `ll` or `ll_CC` (`en_US`), the base of the guest's `LANG`. Empty: unknown. */
+    val locale: String = "",
 ) {
     init { require(isValidContainerName(container)) { "invalid container name: $container" } }
 
@@ -64,6 +68,12 @@ data class EngineEnv(
     val waylandSocket: File get() = File(guestRuntimeDir, WAYLAND_DISPLAY)
     /** Output of the proot process running the graphical session. */
     val desktopLog: File get() = File(cacheDir, logName("desktop"))
+
+    /**
+     * The guest's `/etc/hostname`. A named container is called by its name; the default one, which has
+     * no name the user chose, is `selkie`.
+     */
+    val hostname: String get() = if (isDefaultContainer) "selkie" else container
 
     private fun logName(base: String) = if (isDefaultContainer) "$base.log" else "$base-$container.log"
 

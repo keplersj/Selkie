@@ -11,7 +11,7 @@ MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
 ## Packages (`io.github.keplersj.selkie`)
 
 - `engine/` `EngineEnv` (paths, uid, DNS), `DroidcClient` (command line, process, ring buffer, `Flow<DroidcEvent>`), `Models.kt` (sealed events, `NdjsonParser`, status/shell-spec models).
-- `proot/` `ProotCommandBuilder` (pure argv/env, unit-tested) and `GuestFiles` (creates the host dirs/files that binds refer to: writable `/tmp`, `/run`, `/dev/shm`, generated `resolv.conf`, fake `/proc/{stat,version,loadavg,uptime}` only when unreadable).
+- `proot/` `ProotCommandBuilder` (pure argv/env, unit-tested) and `GuestFiles` (creates the host dirs/files that binds refer to: writable `/tmp`, `/run`, `/dev/shm` (`/tmp` and `/dev/shm` 1777), generated `resolv.conf`, `/etc/passwd`, `/etc/group`, `/etc/hostname` (the container's name, `selkie` for the default one) and `/etc/localtime` (the image's zoneinfo file for the device's time zone), fake `/proc/{stat,version,loadavg,uptime}` only when unreadable). Every guest process also gets `TZ` and `LANG` from the device unless the image sets them; `LANG` falls back to `C.UTF-8` when the image lacks the device's locale.
 - `platform/PhantomProcessCheck` the one class that decides whether "Disable child process restrictions" is on.
 - `service/` `SessionService`, `ServiceState`/`Operation` state.
 - `display/` `NativeCompositor` (JNI to the Rust compositor), `CompositorView` (SurfaceView + touch/mouse/key input),

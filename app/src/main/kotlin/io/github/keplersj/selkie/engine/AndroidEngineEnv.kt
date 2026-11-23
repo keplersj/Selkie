@@ -17,6 +17,8 @@ fun engineEnvFrom(context: Context, dns: List<String> = currentDns(context)): En
         uid = uid,
         gid = uid,
         dns = dns,
+        timeZone = java.util.TimeZone.getDefault().id,
+        locale = java.util.Locale.getDefault().let { if (it.country.isEmpty()) it.language else "${it.language}_${it.country}" },
     )
 }
 
