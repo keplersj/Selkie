@@ -13,7 +13,16 @@ data class EngineEnv(
     val uid: Int,
     val gid: Int,
     val dns: List<String> = emptyList(),
+    /** droidc container this env acts on (`droidc --container`). See [forContainer]. */
+    val container: String = DEFAULT_CONTAINER,
 ) {
+    init { require(isValidContainerName(container)) { "invalid container name: $container" } }
+
+    val isDefaultContainer: Boolean get() = container == DEFAULT_CONTAINER
+
+    /** The same app, acting on another container. */
+    fun forContainer(name: String): EngineEnv = copy(container = name)
+
     /** Android (bionic) build of droidc: run by Selkie. Static musl builds hit Android's seccomp allowlist (SIGSYS). */
     val droidcBin: File get() = File(nativeLibDir, "libdroidc.so")
     /** Static musl build of droidc: bound into the guest as /usr/bin/droidc (proot handles that side). */
@@ -26,29 +35,56 @@ data class EngineEnv(
     /** droidc `--root`. */
     val droidcRoot: File get() = File(filesDir, "droidc")
     val prootTmp: File get() = File(cacheDir, "proot-tmp")
-    val droidcLog: File get() = File(cacheDir, "droidc.log")
+    val droidcLog: File get() = File(cacheDir, logName("droidc"))
+
+    /**
+     * Host side of each container's writable guest dirs. The default container keeps the paths it had
+     * before containers existed; a named one gets `c/<name>`. Kept short on purpose: guest sockets such
+     * as `/run/user/<uid>/pipewire-0-manager` are host paths under here, and a Unix socket path must
+     * fit in 108 bytes (hence also [MAX_CONTAINER_NAME]).
+     */
+    val guestBase: File get() =
+        if (isDefaultContainer) File(filesDir, "guest") else File(filesDir, "c/$container")
 
     // Writable guest dirs bound over /tmp, /run, /dev/shm.
-    val guestTmp: File get() = File(filesDir, "guest/tmp")
-    val guestRun: File get() = File(filesDir, "guest/run")
-    val guestShm: File get() = File(filesDir, "guest/shm")
+    val guestTmp: File get() = File(guestBase, "tmp")
+    val guestRun: File get() = File(guestBase, "run")
+    val guestShm: File get() = File(guestBase, "shm")
     /**
      * Bound over the guest's /sys/fs/cgroup. Android's own cgroup2 mount there is read-only to an app,
      * so `systemd --user` fails with "Failed to create /init.scope control group"; a plain directory
      * lets droidc build the fake tree its cgroup shim expects.
      */
-    val guestCgroup: File get() = File(filesDir, "guest/cgroup")
-    val guestGenerated: File get() = File(filesDir, "guest/generated")
+    val guestCgroup: File get() = File(guestBase, "cgroup")
+    val guestGenerated: File get() = File(guestBase, "generated")
 
     /** The guest's `XDG_RUNTIME_DIR` (`/run/user/<uid>`), where droidc supervise puts its sockets. */
     val guestRuntimeDir: File get() = File(guestRun, "user/$uid")
     /** Selkie's Wayland compositor listens here; guest clients see `$XDG_RUNTIME_DIR/wayland-0`. */
     val waylandSocket: File get() = File(guestRuntimeDir, WAYLAND_DISPLAY)
     /** Output of the proot process running the graphical session. */
-    val desktopLog: File get() = File(cacheDir, "desktop.log")
+    val desktopLog: File get() = File(cacheDir, logName("desktop"))
+
+    private fun logName(base: String) = if (isDefaultContainer) "$base.log" else "$base-$container.log"
 
     companion object {
         const val WAYLAND_DISPLAY = "wayland-0"
+        /** droidc's own default container: the top of the root. */
+        const val DEFAULT_CONTAINER = "default"
+        /**
+         * Selkie's limit; droidc allows 63. Keeps the longest guest socket path, from the `c/<name>`
+         * guest dir, inside the 108-byte Unix socket limit (see [guestBase]).
+         */
+        const val MAX_CONTAINER_NAME = 20
+
+        /** droidc's rule (1-63 of a-z, 0-9, `-`, `_`, `.`, starting with a letter or digit), within [MAX_CONTAINER_NAME]. */
+        fun isValidContainerName(name: String): Boolean =
+            name.length in 1..MAX_CONTAINER_NAME &&
+                (name[0].isAsciiLowerLetter() || name[0].isAsciiDigit()) &&
+                name.all { it.isAsciiLowerLetter() || it.isAsciiDigit() || it in "-_." }
+
+        private fun Char.isAsciiLowerLetter() = this in 'a'..'z'
+        private fun Char.isAsciiDigit() = this in '0'..'9'
     }
 }
 

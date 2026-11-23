@@ -74,6 +74,8 @@ class MainActivity : ComponentActivity() {
         var acknowledged by remember { mutableStateOf(prefs.getBoolean("phantom_ack", false)) }
         var screen by rememberSaveable { mutableStateOf("auto") }
         var switchRef by rememberSaveable { mutableStateOf<String?>(null) }
+        /** Name of the container being made, while its image is chosen. */
+        var newContainer by rememberSaveable { mutableStateOf<String?>(null) }
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
@@ -87,8 +89,8 @@ class MainActivity : ComponentActivity() {
                     onContinueAnyway = { prefs.edit().putBoolean("phantom_ack", true).apply(); acknowledged = true })
                 op !is Operation.Idle -> ProgressScreen(op,
                     onCancel = { service.cancelOperation() },
-                    onRetry = { f -> service.dismissOperation(); retry(service, f, f.insecure) },
-                    onRetryInsecure = { f -> service.dismissOperation(); retry(service, f, true) },
+                    onRetry = { f -> service.retry(f, f.insecure) },
+                    onRetryInsecure = { f -> service.retry(f, true) },
                     onDismiss = { service.dismissOperation(); screen = "auto" })
                 screen == "terminal" -> {
                     BackHandler { screen = "auto" }
@@ -106,12 +108,21 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = "auto" })
                 }
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
+                screen == "setup" && newContainer != null -> {
+                    val name = newContainer!!
+                    BackHandler { newContainer = null; screen = "auto" }
+                    SetupScreen(
+                        title = "Choose an image for $name",
+                        initialRef = null,
+                        onStart = { ref, insecure -> screen = "auto"; newContainer = null; service.createContainer(name, ref, insecure) },
+                        onBack = { newContainer = null; screen = "auto" })
+                }
                 screen == "setup" || (screen == "auto" && state.statusLoaded && state.status?.current == null
-                        && state.statusError == null) -> SetupScreen(
+                        && state.statusError == null && state.containers.size == 1) -> SetupScreen(
                     title = if (state.status?.current == null) "Choose an image" else "Switch image",
                     initialRef = switchRef,
                     onStart = { ref, insecure -> screen = "auto"; service.switchTo(ref, insecure) },
-                    onBack = if (state.status?.current != null) ({ screen = "auto" }) else null)
+                    onBack = if (state.status?.current != null || state.containers.size > 1) ({ screen = "auto" }) else null)
                 !state.statusLoaded -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 else -> HomeScreen(state,
                     onOpenTerminal = { screen = "terminal" },
@@ -121,16 +132,11 @@ class MainActivity : ComponentActivity() {
                     onRollback = { service.rollback() },
                     onSwitch = { switchRef = state.status?.current?.imageRef; screen = "setup" },
                     onAbout = { screen = "about" },
-                    onRefresh = { service.refreshStatus() })
+                    onRefresh = { service.refreshStatus() },
+                    onSelectContainer = { service.selectContainer(it) },
+                    onNewContainer = { newContainer = it; screen = "setup" },
+                    onRemoveContainer = { name, done -> service.removeContainer(name, done) })
             }
-        }
-    }
-
-    private fun retry(service: SessionService, f: Operation.Failed, insecure: Boolean) {
-        when (f.kind) {
-            io.github.keplersj.selkie.service.OpKind.SWITCH -> service.switchTo(f.ref ?: return, insecure)
-            io.github.keplersj.selkie.service.OpKind.UPGRADE -> service.upgrade()
-            io.github.keplersj.selkie.service.OpKind.ROLLBACK -> service.rollback()
         }
     }
 }

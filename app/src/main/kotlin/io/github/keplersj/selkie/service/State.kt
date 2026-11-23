@@ -1,6 +1,8 @@
 package io.github.keplersj.selkie.service
 
+import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DroidcError
+import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.GraphicalSession
 import io.github.keplersj.selkie.engine.StatusData
 
@@ -25,12 +27,19 @@ sealed interface Operation {
         val insecure: Boolean,
         val error: DroidcError,
         val stderrTail: String,
+        /** Container the operation acted on, so a retry goes to the same one. */
+        val container: String = EngineEnv.DEFAULT_CONTAINER,
     ) : Operation
     data class Done(val kind: OpKind, val summary: String) : Operation
     data class Cancelled(val kind: OpKind) : Operation
 }
 
-data class SessionInfo(val id: String, val title: String, val running: Boolean)
+data class SessionInfo(
+    val id: String,
+    val title: String,
+    val running: Boolean,
+    val container: String = EngineEnv.DEFAULT_CONTAINER,
+)
 
 /** The graphical session: Selkie's compositor plus `droidc supervise --session` under proot. */
 sealed interface DesktopState {
@@ -41,6 +50,13 @@ sealed interface DesktopState {
 }
 
 data class ServiceState(
+    /** The container Home shows and new operations, terminals and the desktop act on. */
+    val container: String = EngineEnv.DEFAULT_CONTAINER,
+    /**
+     * Containers under the droidc root, `default` always first. The default one is listed even before
+     * anything is installed in it.
+     */
+    val containers: List<ContainerInfo> = listOf(ContainerInfo(EngineEnv.DEFAULT_CONTAINER)),
     val operation: Operation = Operation.Idle,
     val status: StatusData? = null,
     /** null = not loaded yet. */
@@ -50,4 +66,14 @@ data class ServiceState(
     /** The current deployment's graphical session (from `shell-spec`); null until known. */
     val graphical: GraphicalSession? = null,
     val desktop: DesktopState = DesktopState.Stopped,
+    /** Container the desktop belongs to while it is starting or running. One desktop at a time. */
+    val desktopContainer: String? = null,
 )
+
+/** `default` first, then the rest by name; [selected] is kept even before droidc lists it. */
+fun mergeContainers(listed: List<ContainerInfo>, selected: String): List<ContainerInfo> {
+    val byName = listed.associateBy { it.name }.toMutableMap()
+    byName.getOrPut(EngineEnv.DEFAULT_CONTAINER) { ContainerInfo(EngineEnv.DEFAULT_CONTAINER) }
+    byName.getOrPut(selected) { ContainerInfo(selected) }
+    return byName.values.sortedWith(compareBy({ it.name != EngineEnv.DEFAULT_CONTAINER }, { it.name }))
+}

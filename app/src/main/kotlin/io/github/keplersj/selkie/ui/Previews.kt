@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.keplersj.selkie.engine.ContainerDeployment
+import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DeployStats
 import io.github.keplersj.selkie.engine.Deployment
 import io.github.keplersj.selkie.engine.DroidcError
@@ -76,6 +78,18 @@ object Fixtures {
         sessions = listOf(SessionInfo("1", "bash", true), SessionInfo("2", "htop", true)),
         graphical = gnome, desktop = DesktopState.Running(2560, 1600),
     )
+    /** A named container selected while the default one runs the desktop. */
+    val homeContainers = ServiceState(
+        container = "dev",
+        containers = listOf(
+            ContainerInfo("default", current = ContainerDeployment("d1", bluefin.imageRef)),
+            ContainerInfo("dev", current = ContainerDeployment("d3", centos.imageRef)),
+            ContainerInfo("scratch"),
+        ),
+        status = StatusData(current = centos), statusLoaded = true,
+        sessions = listOf(SessionInfo("1", "bash", true), SessionInfo("2", "bash", true, container = "dev")),
+        graphical = gnome, desktop = DesktopState.Running(2560, 1600), desktopContainer = "default",
+    )
     val homeInsecure = ServiceState(status = StatusData(current = centos), statusLoaded = true, graphical = noSession)
     val homeEmpty = ServiceState(statusLoaded = true)
     val homeError = ServiceState(statusLoaded = true,
@@ -109,6 +123,10 @@ private fun Home(state: ServiceState) = PreviewFrame {
 @PhonePreviews @TabletPreview
 @Composable
 fun HomeInstalledPreview() = Home(Fixtures.homeInstalled)
+
+@PhonePreviews @TabletPreview
+@Composable
+fun HomeContainersPreview() = Home(Fixtures.homeContainers)
 
 @PhonePreviews
 @Composable

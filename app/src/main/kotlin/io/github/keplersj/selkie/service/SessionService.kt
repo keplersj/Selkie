@@ -23,6 +23,7 @@ import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
 import io.github.keplersj.selkie.display.NativeCompositor
+import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.engine.status
@@ -57,7 +58,9 @@ class SessionService : Service() {
     private var foreground = false
     private var lastNotify = 0L
 
-    private val terminals = LinkedHashMap<String, TerminalSession>()
+    /** A terminal and the container it runs in. */
+    private class Term(val container: String, val session: TerminalSession)
+    private val terminals = LinkedHashMap<String, Term>()
     /** UI plugs its client in here; null while the activity is gone. */
     @Volatile var uiSessionClient: TerminalSessionClient? = null
 
@@ -80,14 +83,19 @@ class SessionService : Service() {
         override fun logStackTrace(tag: String?, e: Exception?) {}
     }
 
-    private fun newEnv(): EngineEnv = engineEnvFrom(this)
-    private fun client(): DroidcClient = DroidcClient(newEnv())
+    private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
+
+    private fun newEnv(container: String = _state.value.container): EngineEnv =
+        engineEnvFrom(this).forContainer(container)
+    private fun client(container: String = _state.value.container): DroidcClient = DroidcClient(newEnv(container))
 
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
+        val saved = prefs.getString(KEY_CONTAINER, null)?.takeIf { EngineEnv.isValidContainerName(it) }
+        if (saved != null) _state.update { it.copy(container = saved) }
         refreshStatus()
     }
 
@@ -100,7 +108,7 @@ class SessionService : Service() {
 
     override fun onDestroy() {
         stopDesktop()
-        terminals.values.forEach { it.finishIfRunning() }
+        terminals.values.forEach { it.session.finishIfRunning() }
         scope.cancel()
         super.onDestroy()
     }
@@ -109,8 +117,22 @@ class SessionService : Service() {
 
     fun refreshStatus() {
         scope.launch {
-            val c = client()
+            val container = _state.value.container
+            val c = client(container)
+            val listed = withContext(Dispatchers.IO) { c.listContainers() }
+            // A droidc from before containers has no `container list`: then only the selected one is known.
+            val containers = (listed as? DroidcOutcome.Success)?.let { runCatching { it.containers() }.getOrNull() }
+            if (containers != null && container != EngineEnv.DEFAULT_CONTAINER && containers.none { it.name == container }
+                && _state.value.operation !is Operation.Running) {
+                // Removed elsewhere, or its first install failed before anything was deployed.
+                selectContainer(EngineEnv.DEFAULT_CONTAINER)
+                return@launch
+            }
+            _state.update { st ->
+                st.copy(containers = mergeContainers(containers ?: st.containers.filter { it.name == container }, container))
+            }
             val outcome = withContext(Dispatchers.IO) { c.status() }
+            if (_state.value.container != container) return@launch
             _state.update {
                 when (outcome) {
                     is DroidcOutcome.Success -> it.copy(
@@ -123,12 +145,57 @@ class SessionService : Service() {
             if (_state.value.status?.current != null) {
                 val spec = withContext(Dispatchers.IO) { c.shellSpec() }
                 val session = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec().session }.getOrNull() }
+                if (_state.value.container != container) return@launch
                 _state.update { it.copy(graphical = session) }
             } else {
                 _state.update { it.copy(graphical = null) }
             }
         }
     }
+
+    // ---------------- containers ----------------
+
+    /** Shows [name] on Home; new operations, terminals and the desktop act on it. Not while an operation runs. */
+    fun selectContainer(name: String) {
+        if (!EngineEnv.isValidContainerName(name) || _state.value.operation is Operation.Running) return
+        if (_state.value.container == name && _state.value.statusLoaded) return
+        showContainer(name)
+        refreshStatus()
+    }
+
+    private fun showContainer(name: String) {
+        prefs.edit().putString(KEY_CONTAINER, name).apply()
+        _state.update { it.copy(container = name, status = null, statusError = null, statusLoaded = false, graphical = null) }
+    }
+
+    /**
+     * Makes container [name] by installing [ref] into it. It shares downloaded images with the others,
+     * and gets its own deployments, /var, /home and desktop session. If the first install fails the
+     * container never appears, and Home goes back to the default one.
+     */
+    fun createContainer(name: String, ref: String, insecure: Boolean) {
+        if (!EngineEnv.isValidContainerName(name) || _state.value.operation is Operation.Running) return
+        showContainer(name)
+        switchTo(ref, insecure)
+    }
+
+    /**
+     * Deletes named container [name] after closing its terminals and desktop. Images no other container
+     * uses are freed. [onDone] gets an error message, or null.
+     */
+    fun removeContainer(name: String, onDone: (String?) -> Unit = {}) {
+        if (name == EngineEnv.DEFAULT_CONTAINER || _state.value.operation is Operation.Running) return
+        terminals.values.filter { it.container == name }.forEach { closeSession(it.session) }
+        if (_state.value.desktopContainer == name) stopDesktop()
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) { client(EngineEnv.DEFAULT_CONTAINER).removeContainer(name) }
+            onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
+            if (_state.value.container == name) selectContainer(EngineEnv.DEFAULT_CONTAINER) else refreshStatus()
+        }
+    }
+
+    /** The container a terminal runs in. */
+    fun containerOf(s: TerminalSession): String? = terminals.values.firstOrNull { it.session === s }?.container
 
     // ---------------- operations ----------------
 
@@ -138,15 +205,28 @@ class SessionService : Service() {
     fun upgrade() = start(OpKind.UPGRADE, _state.value.status?.current?.imageRef, false) { it.upgrade() }
     fun rollback() = start(OpKind.ROLLBACK, null, false) { it.rollback() }
 
+    /** Runs a failed operation again, on the container it failed on. */
+    fun retry(f: Operation.Failed, insecure: Boolean) {
+        if (_state.value.operation is Operation.Running) return
+        _state.update { it.copy(operation = Operation.Idle) }
+        if (_state.value.container != f.container) showContainer(f.container)
+        when (f.kind) {
+            OpKind.SWITCH -> switchTo(f.ref ?: return, insecure)
+            OpKind.UPGRADE -> start(OpKind.UPGRADE, f.ref, false) { it.upgrade() }
+            OpKind.ROLLBACK -> rollback()
+        }
+    }
+
     private fun start(
         kind: OpKind, ref: String?, insecure: Boolean,
         flow: (DroidcClient) -> kotlinx.coroutines.flow.Flow<DroidcEvent>,
     ) {
         if (_state.value.operation is Operation.Running) return
+        val container = _state.value.container
         _state.update { it.copy(operation = Operation.Running(kind, ref)) }
         startForegroundService(Intent(this, SessionService::class.java))
         updateForeground(force = true)
-        val c = client()
+        val c = client(container)
         opJob = scope.launch {
             var result: DroidcEvent.Result? = null
             try {
@@ -171,7 +251,7 @@ class SessionService : Service() {
             _state.update {
                 it.copy(operation = if (r?.ok == true) Operation.Done(kind, "${kind.label} finished")
                 else Operation.Failed(kind, ref, insecure,
-                    r?.error ?: DroidcError(ErrorKind.INTERNAL, "no result"), c.stderrTail()))
+                    r?.error ?: DroidcError(ErrorKind.INTERNAL, "no result"), c.stderrTail(), container))
             }
             updateForeground(force = true)
             refreshStatus()
@@ -190,6 +270,7 @@ class SessionService : Service() {
     /** Starts a new proot shell session. Runs `shell-spec` first, so call off the main thread's critical path. */
     suspend fun openSession(): TerminalSession {
         val env = newEnv()
+        val container = env.container
         val outcome = withContext(Dispatchers.IO) { DroidcClient(env).shellSpec() }
         val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
             ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
@@ -200,32 +281,34 @@ class SessionService : Service() {
         val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
             inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)
         val id = UUID.randomUUID().toString()
-        terminals[id] = session
-        session.mSessionName = "Session ${terminals.size}"
+        terminals[id] = Term(container, session)
+        val n = terminals.values.count { it.container == container }
+        session.mSessionName = if (env.isDefaultContainer) "Session $n" else "$container $n"
         startForegroundService(Intent(this, SessionService::class.java))
         publishSessions()
         updateForeground(force = true)
         return session
     }
 
-    fun terminalSessions(): List<TerminalSession> = terminals.values.toList()
+    fun terminalSessions(): List<TerminalSession> = terminals.values.map { it.session }
 
     fun closeSession(s: TerminalSession) {
         s.finishIfRunning()
-        terminals.values.remove(s)
+        terminals.values.removeAll { it.session === s }
         publishSessions()
         updateForeground(force = true)
     }
 
     private fun publishSessions() {
-        val infos = terminals.entries.map { (id, s) ->
-            SessionInfo(id, s.title ?: s.mSessionName ?: "Session", s.isRunning)
+        val infos = terminals.entries.map { (id, t) ->
+            val s = t.session
+            SessionInfo(id, s.title ?: s.mSessionName ?: "Session", s.isRunning, t.container)
         }
         _state.update { it.copy(sessions = infos) }
         updateForeground()
     }
 
-    private fun runningSessions() = terminals.values.count { it.isRunning }
+    private fun runningSessions() = terminals.values.count { it.session.isRunning }
 
     // ---------------- graphical session ----------------
 
@@ -244,10 +327,10 @@ class SessionService : Service() {
     fun startDesktop(width: Int, height: Int) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
-        _state.update { it.copy(desktop = DesktopState.Starting) }
+        val env = newEnv()
+        _state.update { it.copy(desktop = DesktopState.Starting, desktopContainer = env.container) }
         startForegroundService(Intent(this, SessionService::class.java))
         updateForeground(force = true)
-        val env = newEnv()
         desktopJob = scope.launch {
             val p = try {
                 withContext(Dispatchers.IO) {
@@ -270,7 +353,8 @@ class SessionService : Service() {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w(TAG, "desktop failed to start", e)
                 stopCompositor()
-                _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env))) }
+                _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
+                    desktopContainer = null) }
                 updateForeground(force = true)
                 return@launch
             }
@@ -285,7 +369,8 @@ class SessionService : Service() {
                 stopCompositor()
                 _state.update { it.copy(desktop =
                     if (code == 0) DesktopState.Stopped
-                    else DesktopState.Failed("The session exited with status $code", logTail(env))) }
+                    else DesktopState.Failed("The session exited with status $code", logTail(env)),
+                    desktopContainer = null) }
                 updateForeground(force = true)
             }
         }
@@ -302,7 +387,7 @@ class SessionService : Service() {
             Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
         }
         stopCompositor()
-        _state.update { it.copy(desktop = DesktopState.Stopped) }
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null) }
         updateForeground(force = true)
     }
 
@@ -345,7 +430,7 @@ class SessionService : Service() {
     private fun stopEverything() {
         opJob?.cancel()
         stopDesktop()
-        terminals.values.forEach { it.finishIfRunning() }
+        terminals.values.forEach { it.session.finishIfRunning() }
         terminals.clear()
         publishSessions()
         foreground = false
@@ -404,6 +489,8 @@ class SessionService : Service() {
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"
         private const val NOTIF_ID = 1
+        private const val PREFS = "selkie"
+        private const val KEY_CONTAINER = "container"
 
         fun intent(context: Context) = Intent(context, SessionService::class.java)
     }
