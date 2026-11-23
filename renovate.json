@@ -2,18 +2,21 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:best-practices",
-    ":semanticCommitTypeAll(chore)",
-    ":maintainLockFilesWeekly"
+    ":semanticCommitTypeAll(chore)"
   ],
   "timezone": "America/Denver",
-  "schedule": ["before 6am on monday"],
   "prConcurrentLimit": 5,
   "minimumReleaseAge": "3 days",
   "internalChecksFilter": "strict",
   "dependencyDashboard": true,
+  "platformAutomerge": false,
   "vulnerabilityAlerts": {
-    "schedule": ["at any time"],
     "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["at any time"]
   },
   "customManagers": [
     {
@@ -42,12 +45,11 @@
       "groupName": "github actions"
     },
     {
-      "description": "droidc.ref: a bump PR as soon as droidc's main moves, reviewed by hand",
+      "description": "droidc.ref: bump as soon as droidc's main moves and automerge once Selkie's CI (which builds droidc at that ref) passes",
       "matchDepNames": ["droidc"],
       "matchDatasources": ["git-refs"],
-      "schedule": ["at any time"],
       "minimumReleaseAge": null,
-      "automerge": false,
+      "automerge": true,
       "commitMessageTopic": "droidc",
       "labels": ["droidc"]
     }
