@@ -13,19 +13,19 @@ jobs:
     name: Build droidc (bionic + static musl) and the compositor
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Read droidc ref
         id: ref
         run: echo "ref=$(tr -d '[:space:]' < droidc.ref)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: keplersj/droidc
           ref: ${{ steps.ref.outputs.ref }}
           path: droidc-src
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl,aarch64-linux-android,x86_64-linux-android,aarch64-unknown-linux-gnu,x86_64-unknown-linux-gnu
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -81,7 +81,7 @@ jobs:
           cp droidc-src/target/aarch64-unknown-linux-gnu/release/libcgshim.so out/arm64-v8a/libcgshim.so
           cp droidc-src/target/x86_64-unknown-linux-gnu/release/libcgshim.so out/x86_64/libcgshim.so
           echo "$(git -C droidc-src rev-parse HEAD)" > out/DROIDC_COMMIT
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: droidc-android
           path: out
@@ -94,17 +94,17 @@ jobs:
     needs: [droidc, proot]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: actions/download-artifact@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: droidc-android
           path: third_party/bin
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: proot-android
           path: third_party/bin
@@ -116,7 +116,7 @@ jobs:
         # Renders every @Preview with Robolectric and compares it to app/screenshots/ (docs/ui-previews.md).
         # If a change is intended, re-record with recordRoborazziDebug and commit the new PNGs.
         run: ./gradlew --no-daemon verifyRoborazziDebug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: screenshot-diffs
@@ -128,17 +128,17 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "dist/selkie-${VERSION}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk dist/
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: selkie-apk
           path: dist/selkie-*.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-apks
           path: |
             dist/app-debug.apk
             dist/app-debug-androidTest.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: unit-test-reports
@@ -150,8 +150,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: test-apks
           path: apks
@@ -161,7 +161,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run instrumented tests
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -174,7 +174,7 @@ jobs:
           disable-animations: true
           # CentOS Stream 10 glibc requires x86-64-v3; the default emulator CPU model lacks it.
           script: bash .github/scripts/e2e.sh apks out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: e2e-results
@@ -186,8 +186,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: test-apks
           path: apks
@@ -204,7 +204,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run the desktop test
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -218,7 +218,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -qemu -cpu host
           disable-animations: true
           script: bash .github/scripts/e2e-gui.sh apks out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: gui-results
@@ -234,16 +234,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: selkie-apk
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: proot-android
           path: proot
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: droidc-android
           path: droidc
@@ -253,7 +253,7 @@ jobs:
           cp droidc/DROIDC_COMMIT dist/DROIDC_COMMIT.txt
           (cd dist && sha256sum * > SHA256SUMS)
           ls -la dist
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           prerelease: true
           make_latest: false
@@ -276,16 +276,16 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: selkie-apk
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: proot-android
           path: proot
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: droidc-android
           path: droidc
