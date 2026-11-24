@@ -41,6 +41,7 @@ class ProotCommandBuilder(
         bind("/sys", "/sys")
         bind(env.droidcGuestBin.path, "/usr/bin/droidc")
         bind(env.cgshimLib.path, CGSHIM_GUEST_PATH)
+        bind(env.ifshimLib.path, IFSHIM_GUEST_PATH)
         bind(env.guestCgroup.path, "/sys/fs/cgroup")
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
@@ -97,5 +98,7 @@ class ProotCommandBuilder(
     companion object {
         /** Where `droidc supervise --systemd` looks for the cgroup shim (DROIDC_CGSHIM's default). */
         const val CGSHIM_GUEST_PATH = "/usr/lib/droidc/cgshim.so"
+        /** Where `droidc supervise` looks for the network-interface shim (DROIDC_IFSHIM's default). */
+        const val IFSHIM_GUEST_PATH = "/usr/lib/droidc/ifshim.so"
     }
 }

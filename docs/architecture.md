@@ -57,7 +57,7 @@ host paths that must resolve the same way for both.
 ## proot session
 
 `libproot.so --kill-on-exit --link2symlink -i <uid>:<gid> -r <rootfs> -w <cwd>` + binds
-(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, `libcgshim.so:/usr/lib/droidc/cgshim.so`, writable tmp/run/shm, resolv.conf, fake proc files, then the
+(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, `libcgshim.so:/usr/lib/droidc/cgshim.so`, `libifshim.so:/usr/lib/droidc/ifshim.so`, writable tmp/run/shm, resolv.conf, fake proc files, then the
 binds from `droidc shell-spec`). Environment is built from scratch (shell-spec env plus `PROOT_LOADER`,
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
