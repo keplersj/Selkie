@@ -1,6 +1,8 @@
 package io.github.keplersj.selkie.proot
 
 import android.os.SystemClock
+import android.system.ErrnoException
+import android.system.Os
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ShellSpec
 import java.io.File
@@ -19,6 +21,7 @@ object GuestFiles {
         readable: (String) -> Boolean = { canRead(it) },
         uptimeSeconds: Double = SystemClock.elapsedRealtime() / 1000.0,
         cpus: Int = Runtime.getRuntime().availableProcessors(),
+        chmod: (File, Int) -> Unit = { f, mode -> Os.chmod(f.path, mode) },
     ): Map<String, File> {
         listOf(env.guestTmp, env.guestRun, env.guestShm, env.guestCgroup, env.guestGenerated, env.prootTmp)
             .forEach { it.mkdirs() }
@@ -32,7 +35,13 @@ object GuestFiles {
         env.guestRuntimeDir.setReadable(false, false); env.guestRuntimeDir.setReadable(true, true)
         env.guestRuntimeDir.setWritable(false, false); env.guestRuntimeDir.setWritable(true, true)
         env.guestRuntimeDir.setExecutable(false, false); env.guestRuntimeDir.setExecutable(true, true)
-        env.guestTmp.setWritable(true, false)
+        // /tmp and /dev/shm are 1777 on any Linux host. java.io.File cannot set the sticky bit (setWritable
+        // only adds w bits, which made /tmp 0722), so Os.chmod; 0777 if the filesystem refuses S_ISVTX.
+        for (d in listOf(env.guestTmp, env.guestShm)) {
+            try { chmod(d, STICKY_WORLD) } catch (_: ErrnoException) {
+                try { chmod(d, 0x1ff) } catch (_: ErrnoException) {}
+            }
+        }
         File(env.guestGenerated, "resolv.conf").writeText(resolvConf(env.dns))
 
         val out = linkedMapOf<String, File>()
@@ -86,8 +95,48 @@ object GuestFiles {
         val group = File(env.guestGenerated, "group")
         passwd.writeText(passwdWithUser(readOrEmpty(File(etc, "passwd")), env.uid, env.gid, home))
         group.writeText(groupWithGid(readOrEmpty(File(etc, "group")), env.gid))
-        return linkedMapOf("/etc/passwd" to passwd, "/etc/group" to group)
+        val hostname = File(env.guestGenerated, "hostname").apply { writeText(env.hostname + "\n") }
+        val out = linkedMapOf("/etc/passwd" to passwd, "/etc/group" to group, "/etc/hostname" to hostname)
+        localtime(env, spec)?.let { out["/etc/localtime"] = it }
+        return out
     }
+
+    /**
+     * The guest's `/etc/localtime`: a copy of the image's own zoneinfo file for the device's time zone.
+     * bootc images ship without one (first boot or `timedatectl` makes it), and glib, GNOME and Java read
+     * the file rather than `$TZ`. A copy, not a symlink, because the bind is resolved on the host. Null
+     * when the id is not a plain zoneinfo path or the image has no tzdata for it; `TZ` still applies.
+     */
+    fun localtime(env: EngineEnv, spec: ShellSpec): File? {
+        if (!isZoneId(env.timeZone)) return null
+        val zone = File(spec.rootfs, "usr/share/zoneinfo/${env.timeZone}")
+        if (!zone.isFile) return null
+        val out = File(env.guestGenerated, "localtime")
+        return try { zone.copyTo(out, overwrite = true) } catch (_: Exception) { null }
+    }
+
+    /**
+     * Environment from the device for every guest process: `TZ` and `LANG`. The image's own values win
+     * (see [ProotCommandBuilder.environment]). `LANG` is the device locale when the image has it (a
+     * `/usr/lib/locale/<ll_CC>.utf8` directory, as Fedora's langpacks install, or a locale archive) and
+     * `C.UTF-8`, which glibc always has, otherwise, so programs never fall back to ASCII.
+     */
+    fun guestEnv(env: EngineEnv, spec: ShellSpec): Map<String, String> = buildMap {
+        if (isZoneId(env.timeZone)) put("TZ", env.timeZone)
+        put("LANG", guestLang(File(spec.rootfs), env.locale))
+    }
+
+    fun guestLang(rootfs: File, locale: String): String {
+        if (!Regex("[a-z]{2,3}(_[A-Z]{2})?").matches(locale)) return "C.UTF-8"
+        val dir = File(rootfs, "usr/lib/locale")
+        val have = File(dir, "$locale.utf8").isDirectory || File(dir, "locale-archive").isFile
+        return if (have) "$locale.UTF-8" else "C.UTF-8"
+    }
+
+    /** `Area/City` style ids only: no `..`, no leading `/`, nothing the zoneinfo tree could not hold. */
+    fun isZoneId(id: String): Boolean = Regex("[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*").matches(id)
+
+    private const val STICKY_WORLD = 0x3ff // 01777
 
     /** [base] plus `selkie:x:<uid>:<gid>:Selkie:<home>:/bin/bash`, unless the uid is already present. */
     fun passwdWithUser(base: String, uid: Int, gid: Int, home: String): String =

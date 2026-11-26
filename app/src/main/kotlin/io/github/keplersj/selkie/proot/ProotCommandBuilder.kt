@@ -27,6 +27,8 @@ class ProotCommandBuilder(
     private val resolvConf: File = File(env.guestGenerated, "resolv.conf"),
     /** guest path -> generated host file bound over the image's: /etc/passwd, /etc/group, /proc/filesystems. */
     private val overlays: Map<String, File> = emptyMap(),
+    /** Device settings for the guest (`TZ`, `LANG`, from [GuestFiles.guestEnv]); the image's own values win. */
+    private val guestEnv: Map<String, String> = emptyMap(),
 ) {
     fun prootArgs(rootMode: Boolean = false): List<String> = buildList {
         add(env.prootBin.path)
@@ -54,6 +56,7 @@ class ProotCommandBuilder(
     /** Environment for the proot process; proot passes it through to the guest command. */
     fun environment(): Map<String, String> = LinkedHashMap<String, String>().apply {
         putAll(spec.env)
+        for ((k, v) in guestEnv) putIfAbsent(k, v)
         // Guest journal and unit output to `adb logcat`. Opt-in upstream (logs can hold paths and user
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
