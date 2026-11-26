@@ -151,13 +151,31 @@ class EngineE2ETest {
         assertTrue("ifshim not preloaded: $ifs", ifs.contains("/usr/lib/droidc/ifshim.so"))
         if (ifs.contains("names=")) assertTrue("no loopback listed: $ifs", Regex("names=.*\\blo\\b").containsMatchIn(ifs))
 
-        // sudo (droidc's spawner): the shim asks Selkie's host spawn-server, which runs proot -0.
+        // sudo and bwrap (droidc's spawner): the shims ask Selkie's host spawn-server, which runs proot -0.
         assertTrue("shell-spec lists no sudo/su/pkexec shims", spec.shims.isNotEmpty())
         val spawner = startHost(b.spawnServer(), File(env.cacheDir, "e2e-spawner.log"))
         try {
             val (c7, sudoId) = inGuest(b.command(listOf("/usr/bin/sudo", "/usr/bin/id", "-u")))
             log("sudo id -u exit=$c7 output=$sudoId")
             assertEquals("sudo output: $sudoId", 0, c7); assertEquals("0", sudoId.trim().lines().last())
+
+            // bwrap (droidc's shim, what Flatpak runs apps with): the spawn-server lays out the sandbox
+            // and starts a sibling proot. Only /usr is bound, so the guest's /etc must not show.
+            val (c10, ver) = inGuest(b.command(listOf("/usr/bin/bwrap", "--version")))
+            log("bwrap --version exit=$c10 output=$ver")
+            assertEquals("bwrap --version: $ver", 0, c10)
+            val sandbox = listOf("/usr/bin/bwrap", "--unshare-all", "--die-with-parent",
+                "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib",
+                "--symlink", "usr/lib64", "/lib64", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+                "--dir", "/run/sandbox", "--setenv", "SANDBOX", "yes", "--chdir", "/tmp", "--")
+            val script = "echo sandbox=\$SANDBOX; echo cwd=\$(pwd); " +
+                "if [ -e /etc/os-release ]; then echo etc=visible; else echo etc=hidden; fi; " +
+                "[ -d /run/sandbox ] && echo dir=ok; exit 3"
+            val (c11, sb) = inGuest(b.command(sandbox + listOf("/usr/bin/sh", "-c", script)))
+            log("bwrap sandbox exit=$c11 output=$sb")
+            assertEquals("bwrap sandbox exit (the command's own): $sb", 3, c11)
+            for (want in listOf("sandbox=yes", "cwd=/tmp", "etc=hidden", "dir=ok"))
+                assertTrue("bwrap sandbox missing $want: $sb", sb.lines().any { it.trim() == want })
         } finally { stopHost(spawner) }
 
         // One session bus per container (droidc user-services): Selkie's keeper, which two sessions join.
