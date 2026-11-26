@@ -140,19 +140,51 @@ fun HomeEmptyPreview() = Home(Fixtures.homeEmpty)
 @Composable
 fun HomeErrorPreview() = Home(Fixtures.homeError)
 
-// --- Setup ---
+// --- New container and change image ---
+
+/** Harbor and Monk as if published, to show the design's preselection. */
+private val publishedVariants = ImageCatalog.tuned.map {
+    when (it.name) {
+        "Harbor" -> it.copy(ref = "ghcr.io/droidc-dev/harbor:stable")
+        "Monk" -> it.copy(ref = "ghcr.io/droidc-dev/monk:stable")
+        else -> it
+    }
+}
 
 @PhonePreviews @TabletPreview
 @Composable
-fun SetupFirstRunPreview() = PreviewFrame {
-    SetupScreen("Welcome to Selkie", onStart = { _, _ -> }, onBack = null, free = 48_318_382_080)
+fun NewContainerPreview() = PreviewFrame {
+    NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = noop, free = 96_636_764_160,
+        device = deviceClassForWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp))
+}
+
+@PhonePreviews @TabletPreview
+@Composable
+fun NewContainerPublishedPreview() = PreviewFrame {
+    NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = noop, free = 96_636_764_160,
+        device = deviceClassForWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp),
+        variants = publishedVariants)
 }
 
 @PhonePreviews
 @Composable
-fun SetupCustomPreview() = PreviewFrame {
-    SetupScreen("Switch image", initialRef = "ghcr.io/example/my-bootc:latest", onStart = { _, _ -> },
-        onBack = noop, free = 6_442_450_944)
+fun FirstContainerPreview() = PreviewFrame {
+    NewContainerScreen(existing = emptyList(), fixedName = "default", onCreate = { _, _, _ -> }, onClose = null,
+        free = 48_318_382_080, device = DeviceClass.Phone)
+}
+
+@PhonePreviews @TabletPreview
+@Composable
+fun ChangeImagePreview() = PreviewFrame {
+    ChangeImageScreen("default", Images.BLUEFIN, onChange = { _, _ -> }, onBack = noop,
+        device = deviceClassForWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp))
+}
+
+@PhonePreviews
+@Composable
+fun ChangeImageCustomPreview() = PreviewFrame {
+    ChangeImageScreen("dev", "ghcr.io/example/my-bootc:latest", onChange = { _, _ -> }, onBack = noop,
+        device = DeviceClass.Phone)
 }
 
 // --- Desktop session settings (DesktopScreen itself needs a live SessionService) ---

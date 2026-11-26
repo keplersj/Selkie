@@ -26,13 +26,12 @@ fun HomeScreen(
     onAbout: () -> Unit,
     onRefresh: () -> Unit,
     onSelectContainer: (String) -> Unit = {},
-    /** A valid name for a container that doesn't exist yet; the caller asks for its image. */
-    onNewContainer: (String) -> Unit = {},
+    /** Opens the new container screen. */
+    onNewContainer: () -> Unit = {},
     onRemoveContainer: (name: String, onDone: (String?) -> Unit) -> Unit = { _, _ -> },
     onRootMode: (Boolean) -> Unit = {},
 ) {
     var confirmRollback by remember { mutableStateOf(false) }
-    var askName by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var removeError by remember { mutableStateOf<String?>(null) }
     val cur = state.status?.current
@@ -40,7 +39,7 @@ fun HomeScreen(
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Selkie", style = MaterialTheme.typography.headlineMedium)
-        ContainerRow(state, onSelectContainer, onNew = { askName = true })
+        ContainerRow(state, onSelectContainer, onNew = onNewContainer)
         removeError?.let {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Text("Could not remove the container: $it", Modifier.padding(12.dp))
@@ -79,7 +78,7 @@ fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onUpgrade, enabled = cur != null) { Text("Upgrade") }
             OutlinedButton(onClick = { confirmRollback = true }, enabled = prev != null) { Text("Rollback") }
-            OutlinedButton(onClick = onSwitch) { Text("Switch image") }
+            OutlinedButton(onClick = onSwitch) { Text("Change image") }
         }
         if (state.suFound || state.rootMode) RootModeCard(state, onRootMode)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -89,11 +88,6 @@ fun HomeScreen(
                 TextButton(onClick = { confirmRemove = true }) { Text("Remove container") }
             }
         }
-    }
-    if (askName) {
-        NewContainerDialog(existing = state.containers.map { it.name },
-            onDismiss = { askName = false },
-            onCreate = { askName = false; onNewContainer(it) })
     }
     if (confirmRemove) {
         val name = state.container
@@ -194,33 +188,4 @@ private fun ContainerRow(state: ServiceState, onSelect: (String) -> Unit, onNew:
         }
         AssistChip(onClick = onNew, label = { Text("New container") })
     }
-}
-
-@Composable
-private fun NewContainerDialog(existing: List<String>, onDismiss: () -> Unit, onCreate: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    val trimmed = name.trim()
-    val problem = when {
-        trimmed.isEmpty() -> null
-        trimmed in existing -> "A container with this name already exists."
-        !EngineEnv.isValidContainerName(trimmed) ->
-            "Use up to ${EngineEnv.MAX_CONTAINER_NAME} of a-z, 0-9, '-', '_' and '.', starting with a letter or digit."
-        else -> null
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New container") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("A container has its own image, /home, /var and desktop session. Downloaded images are shared.")
-                OutlinedTextField(value = name, onValueChange = { name = it.lowercase() }, singleLine = true,
-                    label = { Text("Name") }, isError = problem != null,
-                    supportingText = problem?.let { { Text(it) } })
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onCreate(trimmed) }, enabled = trimmed.isNotEmpty() && problem == null) { Text("Next") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
