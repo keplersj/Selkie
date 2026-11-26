@@ -8,6 +8,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
@@ -16,6 +20,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.ContainerDeployment
+import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DeployStats
 import io.github.keplersj.selkie.engine.Deployment
@@ -128,9 +133,18 @@ private const val FREE = 96_636_764_160
 
 @Composable
 private fun Home(state: ServiceState, detail: Boolean = false, tab: ContainerTab = ContainerTab.Overview) = PreviewFrame {
-    HomeScreen(state, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop, onUpgrade = noop,
-        onRollback = noop, onSwitch = noop, onAbout = noop, onRefresh = noop,
-        initialDetail = detail, initialTab = tab, free = FREE)
+    HomeSection(state, detail, tab)
+}
+
+/** Home as the app shows it: with the navigation bar or rail, which steps aside for a phone's container screen. */
+@Composable
+private fun HomeSection(state: ServiceState, detail: Boolean = false, tab: ContainerTab = ContainerTab.Overview) {
+    var detailShown by remember { mutableStateOf(false) }
+    SectionScaffold(Section.Containers, onSection = {}, onNewContainer = noop, showNavigation = !detailShown) { rail ->
+        HomeScreen(state, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop, onUpgrade = noop,
+            onRollback = noop, onSwitch = noop, onRefresh = noop, newInList = !rail, onDetailShown = { detailShown = it },
+            initialDetail = detail, initialTab = tab, free = FREE)
+    }
 }
 
 /** Phone: the list. Tablet: the list beside the selected container. */
@@ -149,8 +163,7 @@ fun HomeContainersPreview() = Home(Fixtures.homeContainers)
 @Composable
 fun HomeBookPreview() = PreviewFrame {
     CompositionLocalProvider(LocalFold provides Fold(vertical = true, start = 408.dp, end = 432.dp, halfOpened = false)) {
-        HomeScreen(Fixtures.homeContainers, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop,
-            onUpgrade = noop, onRollback = noop, onSwitch = noop, onAbout = noop, onRefresh = noop, free = FREE)
+        HomeSection(Fixtures.homeContainers)
     }
 }
 
@@ -411,3 +424,59 @@ fun DesktopControlsPhonePreview() = DesktopControlsFrame(null)
 @PhonePreviews
 @Composable
 fun StopDesktopDialogPreview() = PreviewFrame { StopDesktopDialog("default", onDismiss = noop, onConfirm = noop) }
+
+// --- Images, Activity and Settings ---
+
+@Composable
+private fun InSection(section: Section, content: @Composable (rail: Boolean) -> Unit) = PreviewFrame {
+    SectionScaffold(section, onSection = {}, onNewContainer = noop, content = content)
+}
+
+/** Two containers share Bluefin LTS; the selected one runs CentOS, installed without a signature check. */
+private val imagesState = Fixtures.homeContainers.copy(containers = Fixtures.homeContainers.containers +
+    ContainerInfo("work", current = ContainerDeployment("d4", Images.BLUEFIN)))
+
+@PhonePreviews @TabletPreview
+@Composable
+fun ImagesPreview() = InSection(Section.Images) { rail -> ImagesScreen(imagesState, rail, onNewContainer = {}, onCleanUp = {}) }
+
+@PhonePreviews
+@Composable
+fun ImagesEmptyPreview() = InSection(Section.Images) { rail -> ImagesScreen(Fixtures.homeEmpty, rail, onNewContainer = {}, onCleanUp = {}) }
+
+private val activityState = Fixtures.homeInstalled.copy(sessions = listOf(
+    SessionInfo("1", "bash", true), SessionInfo("2", "htop", true), SessionInfo("3", "kepler@dev: ~/src", true, container = "dev")))
+
+@Composable
+private fun Activity(state: ServiceState) = InSection(Section.Activity) { rail ->
+    ActivityScreen(state, rail, onReturnToDesktop = {}, onStopDesktop = noop, onOpenTerminal = {}, onStopAll = noop,
+        onDismissDesktopError = noop)
+}
+
+@PhonePreviews @TabletPreview
+@Composable
+fun ActivityPreview() = Activity(activityState)
+
+@PhonePreviews
+@Composable
+fun ActivityEmptyPreview() = Activity(Fixtures.homeEmpty)
+
+@PhonePreviews
+@Composable
+fun ActivityDesktopFailedPreview() = Activity(Fixtures.homeEmpty.copy(
+    desktop = DesktopState.Failed("gnome-shell exited with status 1", "")))
+
+@Composable
+private fun SettingsSection(phantom: PhantomProcessCheck.State, suFound: Boolean, notifications: Boolean = true) =
+    InSection(Section.Settings) { rail ->
+        SettingsContent(rail, phantom, notifications, usedBytes = 19_756_849_152, freeBytes = FREE, suFound = suFound,
+            debugLogs = false, version = "0.2.0", onPhantomHelp = noop, onNotificationSettings = noop, onAbout = noop)
+    }
+
+@PhonePreviews @TabletPreview
+@Composable
+fun SettingsPreview() = SettingsSection(PhantomProcessCheck.State.OK, suFound = false)
+
+@PhonePreviews
+@Composable
+fun SettingsRestrictedPreview() = SettingsSection(PhantomProcessCheck.State.RESTRICTED, suFound = true, notifications = false)

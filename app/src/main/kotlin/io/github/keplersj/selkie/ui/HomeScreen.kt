@@ -109,13 +109,16 @@ fun HomeScreen(
     onUpgrade: () -> Unit,
     onRollback: () -> Unit,
     onSwitch: () -> Unit,
-    onAbout: () -> Unit,
     onRefresh: () -> Unit,
     onSelectContainer: (String) -> Unit = {},
     /** Opens the new container screen. */
     onNewContainer: () -> Unit = {},
     onRemoveContainer: (name: String, onDone: (String?) -> Unit) -> Unit = { _, _ -> },
     onRootMode: (Boolean) -> Unit = {},
+    /** False where the navigation rail carries the New container button instead. */
+    newInList: Boolean = true,
+    /** Told when a phone shows one container on its own screen, so the navigation bar steps aside. */
+    onDetailShown: (Boolean) -> Unit = {},
     /** Previews open a container or a tab with these; the app starts on the list. */
     initialDetail: Boolean = false,
     initialTab: ContainerTab = ContainerTab.Overview,
@@ -145,7 +148,7 @@ fun HomeScreen(
         val listPane: @Composable (Modifier, Boolean) -> Unit = { m, w ->
             ContainerList(list, state, wide = w, free = free, error = removeError,
                 onOpen = open, onTerminal = terminal, onDesktop = onOpenDesktop, onNew = onNewContainer,
-                onRemove = remove, onAbout = onAbout, modifier = m)
+                onRemove = remove, newButton = newInList, modifier = m)
         }
         val detailPanel: @Composable (Modifier) -> Unit = { m ->
             Surface(m, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -156,7 +159,7 @@ fun HomeScreen(
             }
         }
         when {
-            list.isEmpty() && state.statusError == null -> EmptyContainers(free, onNewContainer, onAbout)
+            list.isEmpty() && state.statusError == null -> EmptyContainers(free, onNewContainer)
             // Open like a book: the list on one half and the container on the other, nothing across the hinge.
             fold?.book == true -> HingePanes(fold,
                 first = { listPane(Modifier.fillMaxSize(), true) },
@@ -165,7 +168,10 @@ fun HomeScreen(
                 listPane(Modifier.width(392.dp).fillMaxHeight(), true)
                 detailPanel(Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp))
             }
-            detail -> ContainerDetail(state, tab, { tab = it }, actions, wide = false, onBack = { detail = false })
+            detail -> {
+                DisposableEffect(Unit) { onDetailShown(true); onDispose { onDetailShown(false) } }
+                ContainerDetail(state, tab, { tab = it }, actions, wide = false, onBack = { detail = false })
+            }
             else -> listPane(Modifier.fillMaxSize(), false)
         }
     }
@@ -217,7 +223,7 @@ private fun ContainerList(
     onDesktop: () -> Unit,
     onNew: () -> Unit,
     onRemove: (String) -> Unit,
-    onAbout: () -> Unit,
+    newButton: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val running = list.count { it.running }
@@ -227,16 +233,13 @@ private fun ContainerList(
                 .padding(start = 16.dp, end = if (wide) 12.dp else 16.dp, top = 8.dp, bottom = if (wide) 24.dp else 104.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f).padding(start = 4.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Containers", Modifier.semantics { heading() },
-                        style = if (wide) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall)
-                    MutedText(listOfNotNull(if (running > 0) "$running running" else null, "${formatBytes(free)} free")
-                        .joinToString(" · "))
-                }
-                IconButton(onClick = onAbout) { Icon(SelkieIcons.Info, contentDescription = "About Selkie") }
+            Column(Modifier.padding(start = 4.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Containers", Modifier.semantics { heading() },
+                    style = if (wide) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall)
+                MutedText(listOfNotNull(if (running > 0) "$running running" else null, "${formatBytes(free)} free")
+                    .joinToString(" · "))
             }
-            if (wide) {
+            if (wide && newButton) {
                 Button(onClick = onNew, Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
                     Icon(SelkieIcons.Plus, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -251,7 +254,7 @@ private fun ContainerList(
                     onRemove = { onRemove(c.name) })
             }
         }
-        if (!wide) {
+        if (!wide && newButton) {
             ExtendedFloatingActionButton(
                 onClick = onNew,
                 icon = { Icon(SelkieIcons.Plus, contentDescription = null) },
@@ -360,13 +363,10 @@ private fun Modifier.onSecondaryClick(onClick: () -> Unit): Modifier = composed 
 
 /** No container has an image yet: say what a container is, and make one. */
 @Composable
-private fun EmptyContainers(free: Long, onNew: () -> Unit, onAbout: () -> Unit) {
+private fun EmptyContainers(free: Long, onNew: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Containers", Modifier.weight(1f).padding(start = 4.dp, top = 8.dp).semantics { heading() },
-                style = MaterialTheme.typography.displaySmall)
-            IconButton(onClick = onAbout) { Icon(SelkieIcons.Info, contentDescription = "About Selkie") }
-        }
+        Text("Containers", Modifier.padding(start = 4.dp, top = 8.dp).semantics { heading() },
+            style = MaterialTheme.typography.displaySmall)
         Column(
             Modifier.widthIn(max = 480.dp).fillMaxWidth().align(Alignment.CenterHorizontally)
                 .padding(horizontal = 16.dp, vertical = 64.dp),

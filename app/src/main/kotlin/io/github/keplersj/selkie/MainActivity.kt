@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
         override fun onServiceDisconnected(name: ComponentName?) { serviceState.value = null }
     }
 
-    /** What Ctrl+T and Ctrl+N do while the containers list is showing; null on every other screen. */
+    /** What Ctrl+T, Ctrl+N and Ctrl+1 to 4 do while a section is showing; null on every other screen. */
     private var homeShortcuts: HomeShortcuts? = null
 
     private val notifPermission =
@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
         if (home != null && event.isCtrlPressed) when (shortcutFor(keyCode)) {
             Shortcut.NewTerminal -> { home.newTerminal(); return true }
             Shortcut.NewContainer -> { home.newContainer(); return true }
-            null -> {}
+            null -> sectionFor(keyCode)?.let { home.section(it); return true }
         }
         return super.onKeyShortcut(keyCode, event)
     }
@@ -80,6 +80,8 @@ class MainActivity : ComponentActivity() {
         if (homeShortcuts == null) return
         data.add(KeyboardShortcutGroup("Selkie", Shortcut.entries.map {
             KeyboardShortcutInfo(it.label, it.keyCode, KeyEvent.META_CTRL_ON)
+        } + Section.entries.mapIndexed { i, s ->
+            KeyboardShortcutInfo(s.label, SECTION_KEYS[i], KeyEvent.META_CTRL_ON)
         }))
     }
 
@@ -105,6 +107,12 @@ class MainActivity : ComponentActivity() {
         var screen by rememberSaveable { mutableStateOf("auto") }
         // After a failed create, choosing another image keeps the name that was typed.
         var retryName by rememberSaveable { mutableStateOf<String?>(null) }
+        var section by rememberSaveable { mutableStateOf(Section.Containers) }
+        // Images' Container button starts a new container from that image.
+        var newRef by rememberSaveable { mutableStateOf<String?>(null) }
+        // Activity opens a terminal on the session that was tapped.
+        var openSession by remember { mutableStateOf<String?>(null) }
+        var homeDetail by remember { mutableStateOf(false) }
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
@@ -131,8 +139,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onCleanUp = { done -> service.cleanUpImages(done) })
                 screen == "terminal" -> {
-                    BackHandler { screen = "auto" }
-                    TerminalScreen(service) { screen = "auto" }
+                    BackHandler { screen = "auto"; openSession = null }
+                    TerminalScreen(service, onBack = { screen = "auto"; openSession = null }, initialSession = openSession)
                 }
                 // The desktop handles Back itself: the first press shows its controls.
                 screen == "desktop" -> DesktopScreen(service,
@@ -149,6 +157,16 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = "auto" })
                 }
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
+                screen == "phantom" -> {
+                    BackHandler { screen = "auto" }
+                    PhantomScreen(phantom == PhantomProcessCheck.State.RESTRICTED,
+                        phantom == PhantomProcessCheck.State.UNVERIFIED,
+                        onRecheck = { phantom = check.check() },
+                        onContinueAnyway = { screen = "auto" },
+                        onFixWithRoot = if (state.suFound) ({
+                            service.disablePhantomKillerWithRoot { phantom = check.check() }
+                        }) else null)
+                }
                 screen == "new" -> {
                     BackHandler { screen = "auto" }
                     val existing = summaries(state).map { it.name }
@@ -156,8 +174,12 @@ class MainActivity : ComponentActivity() {
                         existing = existing,
                         // The first container takes droidc's default name, which the user can still change.
                         initialName = retryName ?: if (existing.isEmpty()) EngineEnv.DEFAULT_CONTAINER else "",
-                        onCreate = { name, ref, insecure -> screen = "auto"; retryName = null; service.createContainer(name, ref, insecure) },
-                        onClose = { screen = "auto"; retryName = null })
+                        initialRef = newRef,
+                        onCreate = { name, ref, insecure ->
+                            screen = "auto"; retryName = null; newRef = null; section = Section.Containers
+                            service.createContainer(name, ref, insecure)
+                        },
+                        onClose = { screen = "auto"; retryName = null; newRef = null })
                 }
                 screen == "change" -> {
                     BackHandler { screen = "auto" }
@@ -170,33 +192,59 @@ class MainActivity : ComponentActivity() {
                     Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 else -> {
                     val selected = state.container
+                    val newContainer = { newRef = null; screen = "new" }
                     DisposableEffect(selected) {
                         homeShortcuts = HomeShortcuts(
                             newTerminal = { if (selected != null) screen = "terminal" },
-                            newContainer = { screen = "new" },
+                            newContainer = newContainer,
+                            section = { section = it },
                         )
                         onDispose { homeShortcuts = null }
                     }
-                    HomeScreen(state,
-                    onOpenTerminal = { screen = "terminal" },
-                    onOpenDesktop = { screen = "desktop" },
-                    onConfigureDesktop = { screen = "session" },
-                    onUpgrade = { service.upgrade() },
-                    onRollback = { service.rollback() },
-                    onSwitch = { screen = "change" },
-                    onAbout = { screen = "about" },
-                    onRefresh = { service.refreshStatus() },
-                    onSelectContainer = { service.selectContainer(it) },
-                    onNewContainer = { screen = "new" },
-                    onRemoveContainer = { name, done -> service.removeContainer(name, done) },
-                    onRootMode = { service.setRootMode(it) })
+                    SectionScaffold(section, onSection = { section = it }, onNewContainer = newContainer,
+                        showNavigation = !(section == Section.Containers && homeDetail)) { rail ->
+                        when (section) {
+                            Section.Containers -> HomeScreen(state,
+                                onOpenTerminal = { screen = "terminal" },
+                                onOpenDesktop = { screen = "desktop" },
+                                onConfigureDesktop = { screen = "session" },
+                                onUpgrade = { service.upgrade() },
+                                onRollback = { service.rollback() },
+                                onSwitch = { screen = "change" },
+                                onRefresh = { service.refreshStatus() },
+                                onSelectContainer = { service.selectContainer(it) },
+                                onNewContainer = newContainer,
+                                onRemoveContainer = { name, done -> service.removeContainer(name, done) },
+                                onRootMode = { service.setRootMode(it) },
+                                newInList = !rail,
+                                onDetailShown = { homeDetail = it })
+                            Section.Images -> ImagesScreen(state, rail,
+                                onNewContainer = { ref -> newRef = ref; screen = "new" },
+                                onCleanUp = { done -> service.cleanUpImages(done) })
+                            Section.Activity -> ActivityScreen(state, rail,
+                                onReturnToDesktop = { c -> if (c != state.container) service.selectContainer(c); screen = "desktop" },
+                                onStopDesktop = { service.stopDesktop() },
+                                onOpenTerminal = { t ->
+                                    if (t.container != state.container) service.selectContainer(t.container)
+                                    openSession = t.id; screen = "terminal"
+                                },
+                                onStopAll = {
+                                    service.stopDesktop()
+                                    service.terminalSessions().forEach { service.closeSession(it) }
+                                },
+                                onDismissDesktopError = { service.dismissDesktopError() })
+                            Section.Settings -> SettingsScreen(rail, phantom, state.suFound,
+                                onPhantomHelp = { screen = "phantom" },
+                                onAbout = { screen = "about" })
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-private class HomeShortcuts(val newTerminal: () -> Unit, val newContainer: () -> Unit)
+private class HomeShortcuts(val newTerminal: () -> Unit, val newContainer: () -> Unit, val section: (Section) -> Unit)
 
 /** The app's Ctrl shortcuts, from the desktop window design. */
 internal enum class Shortcut(val keyCode: Int, val label: String) {
@@ -205,3 +253,8 @@ internal enum class Shortcut(val keyCode: Int, val label: String) {
 }
 
 internal fun shortcutFor(keyCode: Int): Shortcut? = Shortcut.entries.firstOrNull { it.keyCode == keyCode }
+
+/** Ctrl+1 to Ctrl+4 open the sections in the navigation's order. */
+internal val SECTION_KEYS = intArrayOf(KeyEvent.KEYCODE_1, KeyEvent.KEYCODE_2, KeyEvent.KEYCODE_3, KeyEvent.KEYCODE_4)
+
+internal fun sectionFor(keyCode: Int): Section? = SECTION_KEYS.indexOf(keyCode).takeIf { it >= 0 }?.let { Section.entries[it] }
