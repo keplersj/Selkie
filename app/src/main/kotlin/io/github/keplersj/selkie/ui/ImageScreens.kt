@@ -115,14 +115,17 @@ fun NewContainerScreen(
     fixedName: String? = null,
     /** Prefilled, still editable: "default" for the first container. */
     initialName: String = "",
+    /** An image to start from, as Images' Container button passes; null preselects for this device. */
+    initialRef: String? = null,
     free: Long = freeBytes(),
     device: DeviceClass = currentDeviceClass(),
     variants: List<TunedVariant> = ImageCatalog.tuned,
 ) {
     var name by rememberSaveable { mutableStateOf(fixedName ?: initialName) }
     val preselected = ImageCatalog.defaultSelection(device, variants)
-    var selection by rememberSaveable(stateSaver = SelectionSaver) { mutableStateOf(preselected) }
-    var custom by rememberSaveable { mutableStateOf("") }
+    val initial = if (initialRef != null) ImageCatalog.selectionFor(initialRef, device, variants) else preselected
+    var selection by rememberSaveable(stateSaver = SelectionSaver) { mutableStateOf(initial) }
+    var custom by rememberSaveable { mutableStateOf(if (initial == ImageSelection.Custom) initialRef.orEmpty() else "") }
     var confirmUnsigned by rememberSaveable { mutableStateOf(false) }
     val trimmed = name.trim()
     val problem = if (fixedName != null) null else containerNameProblem(trimmed, existing)
@@ -152,7 +155,7 @@ fun NewContainerScreen(
 
             ImagePicker(selection, { selection = it }, custom, { custom = it }, device = device, variants = variants)
 
-            if (selection == preselected) PreselectNote(preselected, variants)
+            if (initialRef == null && selection == preselected) PreselectNote(preselected, variants)
 
             SectionTitle("Space")
             SelkieCard(tone = CardTone.Low, shape = MaterialTheme.shapes.extraLarge) {

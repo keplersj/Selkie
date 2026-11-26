@@ -416,6 +416,9 @@ class SessionService : Service() {
 
     fun terminalSessions(): List<TerminalSession> = terminals.values.map { it.session }
 
+    /** The session that [SessionInfo.id] names, while it is open. */
+    fun terminalSession(id: String): TerminalSession? = terminals[id]?.session
+
     fun closeSession(s: TerminalSession) {
         s.finishIfRunning()
         terminals.entries.firstOrNull { it.value.session === s }?.key?.let { stopRoot(it) }
