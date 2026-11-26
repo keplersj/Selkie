@@ -116,10 +116,12 @@ class EngineE2ETest {
             putString("SELKIE_METRIC", metric)
         })
 
-        // 2. commands inside proot with the same argv builder the terminal uses
+        // 2. commands inside proot with the same argv builder and overlays the terminal uses (the SELinux
+        // hiding matters: without it systemd --user cannot label, so cannot create, the session bus socket)
         val spec = (client.shellSpec() as DroidcOutcome.Success).shellSpec()
         val fake = GuestFiles.prepare(env, spec)
-        val b = ProotCommandBuilder(env, spec, fake)
+        val b = ProotCommandBuilder(env, spec, fake,
+            overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env))
         log("proot argv: ${b.command(listOf("/bin/true")).argv}")
         log("proot env: ${b.environment()}")
         for (probe in listOf(listOf("/usr/bin/droidc", "--version"), listOf("/bin/sh", "-c", "echo probe-ok"))) {
