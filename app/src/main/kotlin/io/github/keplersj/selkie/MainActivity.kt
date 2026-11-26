@@ -73,9 +73,6 @@ class MainActivity : ComponentActivity() {
         var phantom by remember { mutableStateOf(check.check()) }
         var acknowledged by remember { mutableStateOf(prefs.getBoolean("phantom_ack", false)) }
         var screen by rememberSaveable { mutableStateOf("auto") }
-        var switchRef by rememberSaveable { mutableStateOf<String?>(null) }
-        /** Name of the container being made, while its image is chosen. */
-        var newContainer by rememberSaveable { mutableStateOf<String?>(null) }
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
@@ -111,21 +108,26 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = "auto" })
                 }
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
-                screen == "setup" && newContainer != null -> {
-                    val name = newContainer!!
-                    BackHandler { newContainer = null; screen = "auto" }
-                    SetupScreen(
-                        title = "Choose an image for $name",
-                        initialRef = null,
-                        onStart = { ref, insecure -> screen = "auto"; newContainer = null; service.createContainer(name, ref, insecure) },
-                        onBack = { newContainer = null; screen = "auto" })
+                screen == "new" -> {
+                    BackHandler { screen = "auto" }
+                    NewContainerScreen(
+                        existing = state.containers.map { it.name },
+                        onCreate = { name, ref, insecure -> screen = "auto"; service.createContainer(name, ref, insecure) },
+                        onClose = { screen = "auto" })
                 }
-                screen == "setup" || (screen == "auto" && state.statusLoaded && state.status?.current == null
-                        && state.statusError == null && state.containers.size == 1) -> SetupScreen(
-                    title = if (state.status?.current == null) "Choose an image" else "Switch image",
-                    initialRef = switchRef,
-                    onStart = { ref, insecure -> screen = "auto"; service.switchTo(ref, insecure) },
-                    onBack = if (state.status?.current != null || state.containers.size > 1) ({ screen = "auto" }) else null)
+                screen == "change" -> {
+                    BackHandler { screen = "auto" }
+                    ChangeImageScreen(state.container, state.status?.current?.imageRef,
+                        onChange = { ref, insecure -> screen = "auto"; service.switchTo(ref, insecure) },
+                        onBack = { screen = "auto" })
+                }
+                // The first run: the default container has no image yet and there are no others.
+                screen == "auto" && state.statusLoaded && state.status?.current == null && state.statusError == null
+                        && state.containers.size == 1 -> NewContainerScreen(
+                    existing = emptyList(),
+                    fixedName = state.container,
+                    onCreate = { _, ref, insecure -> service.switchTo(ref, insecure) },
+                    onClose = null)
                 !state.statusLoaded -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 else -> HomeScreen(state,
                     onOpenTerminal = { screen = "terminal" },
@@ -133,11 +135,11 @@ class MainActivity : ComponentActivity() {
                     onConfigureDesktop = { screen = "session" },
                     onUpgrade = { service.upgrade() },
                     onRollback = { service.rollback() },
-                    onSwitch = { switchRef = state.status?.current?.imageRef; screen = "setup" },
+                    onSwitch = { screen = "change" },
                     onAbout = { screen = "about" },
                     onRefresh = { service.refreshStatus() },
                     onSelectContainer = { service.selectContainer(it) },
-                    onNewContainer = { newContainer = it; screen = "setup" },
+                    onNewContainer = { screen = "new" },
                     onRemoveContainer = { name, done -> service.removeContainer(name, done) },
                     onRootMode = { service.setRootMode(it) })
             }
