@@ -114,12 +114,13 @@ class SelkieTerminalClient(private val context: Context) : TerminalViewClient, T
 data class TerminalTab(val container: String, val title: String, val home: Boolean)
 
 @Composable
-fun TerminalScreen(service: SessionService, onBack: () -> Unit) {
+fun TerminalScreen(service: SessionService, onBack: () -> Unit, initialSession: String? = null) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember { SelkieTerminalClient(ctx) }
     var sessions by remember { mutableStateOf(service.terminalSessions()) }
-    var current by remember { mutableStateOf<TerminalSession?>(sessions.firstOrNull()) }
+    // Activity opens a terminal by its id; everywhere else starts on the first.
+    var current by remember { mutableStateOf<TerminalSession?>(initialSession?.let { service.terminalSession(it) } ?: sessions.firstOrNull()) }
     var ctrlOn by remember { mutableStateOf(false) }
     var altOn by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
