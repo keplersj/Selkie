@@ -173,6 +173,7 @@ class EngineE2ETest {
                 "[ -d /run/sandbox ] && echo dir=ok; exit 3"
             val (c11, sb) = inGuest(b.command(sandbox + listOf("/usr/bin/sh", "-c", script)))
             log("bwrap sandbox exit=$c11 output=$sb")
+            if (c11 != 3) log("spawner log:\n" + File(env.cacheDir, "e2e-spawner.log").readText())
             assertEquals("bwrap sandbox exit (the command's own): $sb", 3, c11)
             for (want in listOf("sandbox=yes", "cwd=/tmp", "etc=hidden", "dir=ok"))
                 assertTrue("bwrap sandbox missing $want: $sb", sb.lines().any { it.trim() == want })
