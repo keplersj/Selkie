@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onFirst
@@ -18,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.SessionService
+import io.github.keplersj.selkie.ui.OPEN_DESKTOP_TAG
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -147,7 +149,7 @@ class DesktopE2ETest {
 
     /** Opens the desktop from the home screen and waits for a frame with more than [minColors] colours. */
     private fun openDesktop(s: SessionService, minColors: Int, metric: String) {
-        val open = hasText("Open desktop", substring = true)
+        val open = hasTestTag(OPEN_DESKTOP_TAG)
         rule.waitUntil(timeoutMillis = 60_000) { rule.onAllNodes(open).fetchSemanticsNodes().isNotEmpty() }
         rule.onAllNodes(open).onFirst().performClick()
         val t0 = SystemClock.uptimeMillis()

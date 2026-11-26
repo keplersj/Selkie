@@ -71,4 +71,11 @@ class ImageCatalogTest {
         assertEquals(3, ImageCatalog.columns(DeviceClass.Desktop))
         assertEquals(2, ImageCatalog.columns(DeviceClass.Xr))
     }
+
+    @Test fun emptyStateLeadsWithBluefinUntilATunedImageShips() {
+        assertEquals("Start with Bluefin LTS, a signed GNOME desktop, or use any other image.",
+            ImageCatalog.emptyStateLead(ImageCatalog.tuned.map { it.copy(ref = null) }))
+        assertEquals("Start with an image made for Selkie, or use any other.",
+            ImageCatalog.emptyStateLead(ImageCatalog.tuned.map { if (it.name == "Monk") it.copy(ref = "ghcr.io/x/monk:1") else it }))
+    }
 }

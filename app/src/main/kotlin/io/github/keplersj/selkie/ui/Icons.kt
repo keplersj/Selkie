@@ -32,8 +32,8 @@ object SelkieIcons {
     val Shield by lazy { line("shield", "M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6l8-3zM8.5 12l2.5 2.5 4.5-5") }
     val Warn by lazy { line("warn", "M12 4l9 16H3L12 4zM12 10v4.5M12 17.5v.01") }
     val Download by lazy { line("download", "M12 4v11M7 11l5 5 5-5M5 20h14") }
-    val Upgrade by lazy { line("upgrade", "M12 21a9 9 0 100-18 9 9 0 000 18zM12 16V8M8.5 11.5L12 8l3.5 3.5") }
-    val Rollback by lazy { line("rollback", "M4 12a8 8 0 108-8 8 8 0 00-6 2.7M4 4v4h4M12 8v4l3 2") }
+    val Upgrade by lazy { line("upgrade", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16V8M8.5 11.5L12 8l3.5 3.5") }
+    val Rollback by lazy { line("rollback", "M4 12a8 8 0 1 0 8-8 8 8 0 0 0-6 2.7M4 4v4h4M12 8v4l3 2") }
     val Stop by lazy { line("stop", "M7 7h10v10H7z") }
     val Play by lazy { line("play", "M8 5l11 7-11 7V5z") }
     val Copy by lazy { line("copy", "M9 9h11v11H9zM5 15V4h11") }
@@ -48,12 +48,12 @@ object SelkieIcons {
         line("storage", "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3v12c0 1.7-3.6 3-8 3s-8-1.3-8-3V6zM4 6c0 1.7 3.6 3 8 3s8-1.3 8-3" +
             "M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3")
     }
-    val Info by lazy { line("info", "M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v6M12 7.5v.01") }
-    val Block by lazy { line("block", "M12 21a9 9 0 100-18 9 9 0 000 18zM5.6 5.6l12.8 12.8") }
-    val Search by lazy { line("search", "M11 18a7 7 0 100-14 7 7 0 000 14zM16 16l4.5 4.5") }
+    val Info by lazy { line("info", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.01") }
+    val Block by lazy { line("block", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8") }
+    val Search by lazy { line("search", "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM16 16l4.5 4.5") }
     val Edit by lazy { line("edit", "M4 20l4-1L19 8l-3-3L5 16l-1 4z") }
     val Open by lazy { line("open", "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6") }
-    val Bell by lazy { line("bell", "M6 16v-5a6 6 0 1112 0v5l2 2H4l2-2zM10 21h4") }
+    val Bell by lazy { line("bell", "M6 16v-5a6 6 0 1 1 12 0v5l2 2H4l2-2zM10 21h4") }
     val Pause by lazy { line("pause", "M8 5v14M16 5v14") }
 
     // The canvas used one "swap" icon for both changing image and the install's last step, and one "device"
@@ -61,7 +61,7 @@ object SelkieIcons {
     /** Change the image under a container. */
     val ChangeImage by lazy { line("change-image", "M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4") }
     /** The install's last step: the new version becomes the one in use. */
-    val MakeCurrent by lazy { line("make-current", "M12 21a9 9 0 100-18 9 9 0 000 18zM8 12.5l3 3 5-6") }
+    val MakeCurrent by lazy { line("make-current", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l3 3 5-6") }
     /** A phone or tablet: this device. */
     val Device by lazy { line("device", "M7 3h10v18H7zM11 18h2") }
     /** Developer options and other Android system settings. */

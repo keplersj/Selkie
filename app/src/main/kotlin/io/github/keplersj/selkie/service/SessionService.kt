@@ -136,11 +136,15 @@ class SessionService : Service() {
             val listed = withContext(Dispatchers.IO) { c.listContainers() }
             // A droidc from before containers has no `container list`: then only the selected one is known.
             val containers = (listed as? DroidcOutcome.Success)?.let { runCatching { it.containers() }.getOrNull() }
-            if (containers != null && container != EngineEnv.DEFAULT_CONTAINER && containers.none { it.name == container }
-                && _state.value.operation !is Operation.Running) {
-                // Removed elsewhere, or its first install failed before anything was deployed.
-                selectContainer(EngineEnv.DEFAULT_CONTAINER)
-                return@launch
+            if (containers != null && containers.none { it.name == container } && _state.value.operation !is Operation.Running) {
+                // Removed (the default one too), or its first install failed before anything was deployed:
+                // show the first container droidc lists. With none left, stay put and Home shows its empty state.
+                val next = containers.firstOrNull()?.name
+                    ?: EngineEnv.DEFAULT_CONTAINER.takeIf { container != EngineEnv.DEFAULT_CONTAINER }
+                if (next != null) {
+                    selectContainer(next)
+                    return@launch
+                }
             }
             _state.update { st ->
                 st.copy(containers = mergeContainers(containers ?: st.containers.filter { it.name == container }, container))
@@ -200,7 +204,7 @@ class SessionService : Service() {
      * uses are freed. [onDone] gets an error message, or null.
      */
     fun removeContainer(name: String, onDone: (String?) -> Unit = {}) {
-        if (name == EngineEnv.DEFAULT_CONTAINER || _state.value.operation is Operation.Running) return
+        if (!EngineEnv.isValidContainerName(name) || _state.value.operation is Operation.Running) return
         // Taken first, so closing its sessions doesn't stop them in the background while droidc deletes.
         val left = takeServices(name)
         terminals.values.filter { it.container == name }.forEach { closeSession(it.session) }
@@ -214,7 +218,8 @@ class SessionService : Service() {
             }
             if (outcome is DroidcOutcome.Success) setRootModeEnabled(this@SessionService, name, false)
             onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
-            if (_state.value.container == name) selectContainer(EngineEnv.DEFAULT_CONTAINER) else refreshStatus()
+            // refreshStatus moves Home to the next listed container when the shown one has gone.
+            refreshStatus()
         }
     }
 

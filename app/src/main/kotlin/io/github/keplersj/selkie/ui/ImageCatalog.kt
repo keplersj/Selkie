@@ -73,6 +73,14 @@ object ImageCatalog {
         return ImageSelection.Custom
     }
 
+    /**
+     * The empty state's suggestion. It names an image made for Selkie only once one is published; until then it
+     * leads with the signed image the picker preselects.
+     */
+    fun emptyStateLead(variants: List<TunedVariant> = tuned): String =
+        if (variants.any { it.ready }) "Start with an image made for Selkie, or use any other."
+        else "Start with ${known.first { it.signed }.title}, a signed GNOME desktop, or use any other image."
+
     fun columns(device: DeviceClass): Int = when (device) {
         DeviceClass.Phone, DeviceClass.Watch, DeviceClass.Car -> 1
         DeviceClass.Foldable, DeviceClass.Tablet, DeviceClass.Xr -> 2
