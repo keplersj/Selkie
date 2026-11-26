@@ -86,7 +86,10 @@ class MainActivity : ComponentActivity() {
             when {
                 needPhantom -> PhantomScreen(true, phantom == PhantomProcessCheck.State.UNVERIFIED,
                     onRecheck = { phantom = check.check() },
-                    onContinueAnyway = { prefs.edit().putBoolean("phantom_ack", true).apply(); acknowledged = true })
+                    onContinueAnyway = { prefs.edit().putBoolean("phantom_ack", true).apply(); acknowledged = true },
+                    onFixWithRoot = if (state.suFound) ({
+                        service.disablePhantomKillerWithRoot { phantom = check.check() }
+                    }) else null)
                 op !is Operation.Idle -> ProgressScreen(op,
                     onCancel = { service.cancelOperation() },
                     onRetry = { f -> service.retry(f, f.insecure) },
@@ -135,7 +138,8 @@ class MainActivity : ComponentActivity() {
                     onRefresh = { service.refreshStatus() },
                     onSelectContainer = { service.selectContainer(it) },
                     onNewContainer = { newContainer = it; screen = "setup" },
-                    onRemoveContainer = { name, done -> service.removeContainer(name, done) })
+                    onRemoveContainer = { name, done -> service.removeContainer(name, done) },
+                    onRootMode = { service.setRootMode(it) })
             }
         }
     }

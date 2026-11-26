@@ -50,6 +50,36 @@ echo "== EngineE2ETest (pull + unpack in an emulator can take 10-20 min)"
 timeout 3000 adb shell am instrument -w -e class $PKG.EngineE2ETest $RUNNER | tee "$OUT/e2e.txt"
 grep -q '^OK (' "$OUT/e2e.txt" || { echo "e2e test failed"; rc=1; diag; }
 
+# droidc root mode on this emulator's kernel, on the deployment EngineE2ETest left behind. Also
+# proves the app still owns (uid and SELinux label) everything root touched: status and gc run as
+# the app via run-as afterwards.
+root_mode() {
+  adb root >/dev/null 2>&1 && adb wait-for-device || { echo "adb root unavailable: skipped"; return 0; }
+  local lib droot app
+  lib=$(adb shell "dirname \$(pm path $PKG | head -1 | cut -d: -f2)" | tr -d '\r')/lib/x86_64
+  droot=/data/data/$PKG/files/droidc
+  app() { adb shell run-as $PKG "$lib/libdroidc.so" --root "$droot" --json "$@" | tail -n1 | tr -d '\r'; }
+  adb push .github/scripts/root-mode-device.sh /data/local/tmp/ >/dev/null
+  adb shell sh /data/local/tmp/root-mode-device.sh "$lib" "$droot" apply | tee "$OUT/root-mode.txt"
+  grep -q "ROOTCHECK FAIL" "$OUT/root-mode.txt" && return 1
+  grep -q "^passwd 0 4755" "$OUT/root-mode.txt" || { echo "passwd not 0 4755 under enter"; return 1; }
+  adb shell sh /data/local/tmp/root-mode-device.sh "$lib" "$droot" kill | tee -a "$OUT/root-mode.txt"
+  grep -q "ROOTCHECK FAIL" "$OUT/root-mode.txt" && return 1
+  local s; s=$(app status); echo "app status after root: $s"
+  echo "$s" | grep -q '"ok":true' || { echo "app cannot read status after root commands"; return 1; }
+  s=$(app gc); echo "app gc while image-owned: $s"
+  echo "$s" | grep -q '"kind":"invalid"' || { echo "app gc should refuse while image-owned"; return 1; }
+  adb shell sh /data/local/tmp/root-mode-device.sh "$lib" "$droot" undo | tee -a "$OUT/root-mode.txt"
+  grep -q "ROOTCHECK FAIL" "$OUT/root-mode.txt" && return 1
+  s=$(app gc); echo "app gc after undo: $s"
+  echo "$s" | grep -q '"ok":true' || { echo "app cannot gc after undo (owner or SELinux label)"; return 1; }
+  adb unroot >/dev/null 2>&1; adb wait-for-device
+}
+if grep -q '^OK (' "$OUT/e2e.txt"; then
+  echo "== droidc root mode (adb root)"
+  root_mode || { echo "root mode checks failed"; rc=1; diag; }
+fi
+
 adb shell df -h /data | tee "$OUT/df-after.txt"
 adb pull /sdcard/Android/data/$PKG/files/selkie_metric.txt "$OUT/" || true
 sleep 2; kill $LOGCAT 2>/dev/null || true

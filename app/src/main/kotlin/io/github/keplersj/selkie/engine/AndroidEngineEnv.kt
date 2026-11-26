@@ -4,8 +4,12 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Process
 
-/** Android-specific construction of [EngineEnv]. */
-fun engineEnvFrom(context: Context, dns: List<String> = currentDns(context)): EngineEnv {
+/** Android-specific construction of [EngineEnv] for [container], with that container's root mode setting. */
+fun engineEnvFrom(
+    context: Context,
+    container: String = EngineEnv.DEFAULT_CONTAINER,
+    dns: List<String> = currentDns(context),
+): EngineEnv {
     val app = context.applicationContext
     val uid = Process.myUid()
     return EngineEnv(
@@ -17,9 +21,28 @@ fun engineEnvFrom(context: Context, dns: List<String> = currentDns(context)): En
         uid = uid,
         gid = uid,
         dns = dns,
+        container = container,
+        rootMode = rootModeEnabled(app, container),
+        su = RootShell.findSu(),
         timeZone = java.util.TimeZone.getDefault().id,
         locale = java.util.Locale.getDefault().let { if (it.country.isEmpty()) it.language else "${it.language}_${it.country}" },
     )
+}
+
+private const val PREFS = "selkie"
+private const val ROOT_MODE = "root_mode"
+
+/** Root mode is set per container: one may be image-owned while another still runs under proot. */
+private fun rootModeKey(container: String) =
+    if (container == EngineEnv.DEFAULT_CONTAINER) ROOT_MODE else "$ROOT_MODE:$container"
+
+fun rootModeEnabled(context: Context, container: String = EngineEnv.DEFAULT_CONTAINER): Boolean =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(rootModeKey(container), false)
+
+fun setRootModeEnabled(context: Context, container: String, on: Boolean) {
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+    if (on) prefs.putBoolean(rootModeKey(container), true) else prefs.remove(rootModeKey(container))
+    prefs.apply()
 }
 
 /** DNS servers of the active network (Android has no resolv.conf for static binaries). */

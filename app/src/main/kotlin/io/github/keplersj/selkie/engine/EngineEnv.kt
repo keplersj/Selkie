@@ -15,6 +15,10 @@ data class EngineEnv(
     val dns: List<String> = emptyList(),
     /** droidc container this env acts on (`droidc --container`). See [forContainer]. */
     val container: String = DEFAULT_CONTAINER,
+    /** Root mode for this container: mutating droidc commands and terminals run through [su] (see [RootShell]). */
+    val rootMode: Boolean = false,
+    /** Path of `su`, when one was found. */
+    val su: String? = null,
     /** The device's time zone id (`America/Denver`), passed to the guest as `TZ` and `/etc/localtime`. */
     val timeZone: String = "UTC",
     /** The device's locale as `ll` or `ll_CC` (`en_US`), the base of the guest's `LANG`. Empty: unknown. */
@@ -24,8 +28,14 @@ data class EngineEnv(
 
     val isDefaultContainer: Boolean get() = container == DEFAULT_CONTAINER
 
-    /** The same app, acting on another container. */
-    fun forContainer(name: String): EngineEnv = copy(container = name)
+    /** Root mode is usable only with an su binary. */
+    val useRoot: Boolean get() = rootMode && su != null
+
+    /**
+     * The same app, acting on another container. Root mode is per container, so it starts off here;
+     * on Android, `engineEnvFrom(context, name)` reads that container's own setting.
+     */
+    fun forContainer(name: String): EngineEnv = copy(container = name, rootMode = false)
 
     /** Android (bionic) build of droidc: run by Selkie. Static musl builds hit Android's seccomp allowlist (SIGSYS). */
     val droidcBin: File get() = File(nativeLibDir, "libdroidc.so")
@@ -66,6 +76,9 @@ data class EngineEnv(
      */
     val guestCgroup: File get() = File(guestBase, "cgroup")
     val guestGenerated: File get() = File(guestBase, "generated")
+    /** Pid files the root shells of this container's root-mode terminals write (see [RootShell.pidToFile]). */
+    val rootSessions: File get() =
+        File(cacheDir, if (isDefaultContainer) "root-sessions" else "root-sessions-$container")
 
     /** The guest's `XDG_RUNTIME_DIR` (`/run/user/<uid>`), where droidc supervise puts its sockets. */
     val guestRuntimeDir: File get() = File(guestRun, "user/$uid")
