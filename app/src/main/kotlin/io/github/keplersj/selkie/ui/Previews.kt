@@ -1,16 +1,17 @@
 package io.github.keplersj.selkie.ui
 
 import android.content.res.Configuration
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.ContainerDeployment
@@ -294,17 +295,47 @@ fun AboutPreview() = PreviewFrame {
 
 // --- Terminal chrome (the TerminalView itself needs a live session, so a placeholder stands in) ---
 
+private val previewTabs = listOf(
+    TerminalTab("default", "bash", home = true),
+    TerminalTab("default", "htop", home = true),
+    TerminalTab("dev", "bash", home = false),
+)
+
+@Composable
+private fun Terminal(error: String? = null) = TerminalLayout(
+    tabs = previewTabs, selected = 0, onSelect = {}, onBack = noop, onNew = noop, onClose = noop, onPaste = noop,
+    onShowKeyboard = noop, error = error, ctrlOn = true, altOn = false, onCtrl = noop, onAlt = noop, send = {},
+    appCursor = { false },
+) { m ->
+    val t = SelkieTheme.terminal
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = t.accent)) { append("kepler@default") }
+            append(":"); withStyle(SpanStyle(color = t.dim)) { append("~") }; append("$ brew install ripgrep\n")
+            withStyle(SpanStyle(color = t.dim)) { append("/home/linuxbrew/.linuxbrew/Cellar/ripgrep/14.1.1: 14 files, 6.2MB\n") }
+            withStyle(SpanStyle(color = t.accent)) { append("kepler@default") }
+            append(":"); withStyle(SpanStyle(color = t.dim)) { append("~") }; append("$ ▊")
+        },
+        color = t.foreground, style = MonoStyle, modifier = m.padding(horizontal = 10.dp, vertical = 12.dp),
+    )
+}
+
 @PhonePreviews @TabletPreview
 @Composable
-fun TerminalChromePreview() = PreviewFrame {
-    Column(Modifier.fillMaxSize()) {
-        SessionBar(listOf("bash", "htop", "kepler@bluefin: ~/src"), selected = 0,
-            onSelect = {}, onBack = noop, onNew = noop, onClose = noop)
-        Box(Modifier.weight(1f).fillMaxWidth().background(SelkieTheme.terminal.background), contentAlignment = Alignment.TopStart) {
-            Text("kepler@bluefin:~$ ▊", color = SelkieTheme.terminal.foreground, style = MonoStyle,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
-        }
-        ExtraKeys(ctrlOn = true, altOn = false, onCtrl = noop, onAlt = noop, send = {}, paste = noop, appCursor = { false })
+fun TerminalChromePreview() = PreviewFrame { Terminal() }
+
+@Preview(name = "phone", device = "spec:width=411dp,height=891dp", showBackground = true)
+@Composable
+fun TerminalErrorPreview() = PreviewFrame { Terminal(error = "proot exited with status 1") }
+
+/** A foldable bent like a laptop: the hinge runs across at the canvas's 338 to 362dp. */
+@Preview(name = "fold-tabletop", device = "spec:width=840dp,height=700dp", showBackground = true)
+@Preview(name = "fold-tabletop-dark", device = "spec:width=840dp,height=700dp", showBackground = true,
+    uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun TerminalTabletopPreview() = PreviewFrame {
+    CompositionLocalProvider(LocalFold provides Fold(vertical = false, start = 338.dp, end = 362.dp, halfOpened = true)) {
+        Terminal()
     }
 }
 
