@@ -88,6 +88,38 @@ class EngineE2ETest {
             ?.let { "quay.io/centos-bootc/centos-bootc@$it" }
     }
 
+    /** Plain proot runs over an empty root with the deployment's /usr bound, to narrow down a bwrap failure. */
+    private fun sandboxDiagnostics(rootfs: String) {
+        val proot = env.prootBin.path
+        val base = mapOf("PROOT_LOADER" to env.prootLoader.path, "PROOT_TMP_DIR" to env.prootTmp.path)
+        fun root(name: String, parent: File): File = File(parent, name).apply {
+            deleteRecursively(); mkdirs(); File(this, "usr").mkdirs()
+            for ((l, t) in listOf("bin" to "usr/bin", "lib" to "usr/lib", "lib64" to "usr/lib64"))
+                android.system.Os.symlink(t, File(this, l).path)
+        }
+        val inTmp = root("diag-root", env.prootTmp)
+        val inCache = root("diag-root", File(env.cacheDir, "diag"))
+        val usr = "$rootfs/usr"
+        val canonUsr = File(usr).canonicalPath
+        log("diag: usr=$usr canonical=$canonUsr ls sh=" +
+            runCatching { android.system.Os.readlink("$usr/bin/sh") }.getOrNull() + " bash link=" +
+            runCatching { android.system.Os.readlink("$usr/bin/bash") }.getOrNull())
+        val runs = listOf(
+            "tmp-root l2s sh" to listOf(proot, "--kill-on-exit", "--link2symlink", "-r", inTmp.path, "-b", "$usr:/usr", "-w", "/", "/usr/bin/sh", "-c", "echo ok"),
+            "tmp-root no-l2s sh" to listOf(proot, "-r", inTmp.path, "-b", "$usr:/usr", "-w", "/", "/usr/bin/sh", "-c", "echo ok"),
+            "tmp-root l2s bash" to listOf(proot, "--link2symlink", "-r", inTmp.path, "-b", "$usr:/usr", "-w", "/", "/usr/bin/bash", "-c", "echo ok"),
+            "tmp-root l2s true" to listOf(proot, "--link2symlink", "-r", inTmp.path, "-b", "$usr:/usr", "-w", "/", "/usr/bin/true"),
+            "tmp-root canonical usr" to listOf(proot, "--link2symlink", "-r", inTmp.path, "-b", "$canonUsr:/usr", "-w", "/", "/usr/bin/sh", "-c", "echo ok"),
+            "tmp-root canonical root" to listOf(proot, "--link2symlink", "-r", inTmp.canonicalPath, "-b", "$canonUsr:/usr", "-w", "/", "/usr/bin/sh", "-c", "echo ok"),
+            "cache-root l2s sh" to listOf(proot, "--link2symlink", "-r", inCache.path, "-b", "$usr:/usr", "-w", "/", "/usr/bin/sh", "-c", "echo ok"),
+            "verbose" to listOf(proot, "-v", "3", "--link2symlink", "-r", inTmp.path, "-b", "$usr:/usr", "-w", "/", "/usr/bin/sh", "-c", "echo ok"),
+        )
+        for ((name, argv) in runs) {
+            val (c, out) = inGuest(Invocation(argv, base), 60)
+            log("diag $name: exit=$c\n${out.lines().takeLast(60).joinToString("\n")}")
+        }
+    }
+
     @Test fun fullLifecycle() = runBlocking {
         // 0. Environment sanity
         val phantom = PhantomProcessCheck(ctx).checkDetailed()
@@ -173,7 +205,10 @@ class EngineE2ETest {
                 "[ -d /run/sandbox ] && echo dir=ok; exit 3"
             val (c11, sb) = inGuest(b.command(sandbox + listOf("/usr/bin/sh", "-c", script)))
             log("bwrap sandbox exit=$c11 output=$sb")
-            if (c11 != 3) log("spawner log:\n" + File(env.cacheDir, "e2e-spawner.log").readText())
+            if (c11 != 3) {
+                log("spawner log:\n" + File(env.cacheDir, "e2e-spawner.log").readText())
+                sandboxDiagnostics(spec.rootfs)
+            }
             assertEquals("bwrap sandbox exit (the command's own): $sb", 3, c11)
             for (want in listOf("sandbox=yes", "cwd=/tmp", "etc=hidden", "dir=ok"))
                 assertTrue("bwrap sandbox missing $want: $sb", sb.lines().any { it.trim() == want })
