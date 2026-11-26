@@ -226,11 +226,16 @@ fun SelkieCard(
 
 /** Secondary text that takes its colour from the card it sits in (the canvas's .muted). */
 @Composable
-fun MutedText(text: String, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium) {
+fun MutedText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium,
+    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+) {
     val inCard = LocalContentColor.current
     val cs = MaterialTheme.colorScheme
     val color = if (inCard == cs.onSurface) cs.onSurfaceVariant else inCard
-    Text(text, modifier, style = style, color = color)
+    Text(text, modifier, style = style, color = color, textAlign = textAlign)
 }
 
 /** An 8dp progress track, as under a download. */

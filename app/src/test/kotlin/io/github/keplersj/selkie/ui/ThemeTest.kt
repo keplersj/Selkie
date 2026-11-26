@@ -4,6 +4,9 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathNode
+import androidx.compose.ui.graphics.vector.VectorPath
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -49,6 +52,21 @@ class ThemeTest {
         for (m in icons) {
             val v = m.invoke(SelkieIcons) as ImageVector
             assertTrue("${v.name} has no path", v.root.size > 0)
+        }
+    }
+
+    @Test fun circleIconsDrawBothArcs() {
+        // Compact SVG arc flags ("a9 9 0 100-18 9 9 0 000 18z") lost the second arc, so circles drew as a "D".
+        val expected = mapOf(SelkieIcons.Info to 2, SelkieIcons.Block to 2, SelkieIcons.Upgrade to 2,
+            SelkieIcons.MakeCurrent to 2, SelkieIcons.Search to 2, SelkieIcons.Rollback to 2, SelkieIcons.Bell to 1)
+        for ((v, arcs) in expected) {
+            val nodes = v.root.filterIsInstance<VectorPath>().flatMap { it.pathData }
+            val found = nodes.filter { it is PathNode.RelativeArcTo || it is PathNode.ArcTo }
+            assertEquals("${v.name} arcs", arcs, found.size)
+            for (a in found.filterIsInstance<PathNode.RelativeArcTo>()) {
+                assertTrue("${v.name} arc $a leaves the 24dp box",
+                    kotlin.math.abs(a.arcStartDx) <= 24f && kotlin.math.abs(a.arcStartDy) <= 24f)
+            }
         }
     }
 }

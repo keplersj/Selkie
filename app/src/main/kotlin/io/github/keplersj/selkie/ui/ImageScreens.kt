@@ -113,11 +113,13 @@ fun NewContainerScreen(
     onCreate: (name: String, ref: String, insecure: Boolean) -> Unit,
     onClose: (() -> Unit)?,
     fixedName: String? = null,
+    /** Prefilled, still editable: "default" for the first container. */
+    initialName: String = "",
     free: Long = freeBytes(),
     device: DeviceClass = currentDeviceClass(),
     variants: List<TunedVariant> = ImageCatalog.tuned,
 ) {
-    var name by rememberSaveable { mutableStateOf(fixedName.orEmpty()) }
+    var name by rememberSaveable { mutableStateOf(fixedName ?: initialName) }
     val preselected = ImageCatalog.defaultSelection(device, variants)
     var selection by rememberSaveable(stateSaver = SelectionSaver) { mutableStateOf(preselected) }
     var custom by rememberSaveable { mutableStateOf("") }

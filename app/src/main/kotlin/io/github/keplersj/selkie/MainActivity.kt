@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
@@ -110,8 +111,11 @@ class MainActivity : ComponentActivity() {
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
                 screen == "new" -> {
                     BackHandler { screen = "auto" }
+                    val existing = summaries(state).map { it.name }
                     NewContainerScreen(
-                        existing = state.containers.map { it.name },
+                        existing = existing,
+                        // The first container takes droidc's default name, which the user can still change.
+                        initialName = if (existing.isEmpty()) EngineEnv.DEFAULT_CONTAINER else "",
                         onCreate = { name, ref, insecure -> screen = "auto"; service.createContainer(name, ref, insecure) },
                         onClose = { screen = "auto" })
                 }
@@ -121,14 +125,9 @@ class MainActivity : ComponentActivity() {
                         onChange = { ref, insecure -> screen = "auto"; service.switchTo(ref, insecure) },
                         onBack = { screen = "auto" })
                 }
-                // The first run: the default container has no image yet and there are no others.
-                screen == "auto" && state.statusLoaded && state.status?.current == null && state.statusError == null
-                        && state.containers.size == 1 -> NewContainerScreen(
-                    existing = emptyList(),
-                    fixedName = state.container,
-                    onCreate = { _, ref, insecure -> service.switchTo(ref, insecure) },
-                    onClose = null)
-                !state.statusLoaded -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                // Only the first read waits here; later container switches load inside Home, which keeps its place.
+                !state.statusLoaded && summaries(state).isEmpty() ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 else -> HomeScreen(state,
                     onOpenTerminal = { screen = "terminal" },
                     onOpenDesktop = { screen = "desktop" },

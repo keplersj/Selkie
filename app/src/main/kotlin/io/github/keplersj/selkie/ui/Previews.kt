@@ -76,7 +76,7 @@ object Fixtures {
     val homeInstalled = ServiceState(
         status = StatusData(current = bluefin, previous = bluefinOld), statusLoaded = true,
         sessions = listOf(SessionInfo("1", "bash", true), SessionInfo("2", "htop", true)),
-        graphical = gnome, desktop = DesktopState.Running(2560, 1600),
+        graphical = gnome, desktop = DesktopState.Running(2560, 1600), desktopContainer = "default",
     )
     /** A named container selected while the default one runs the desktop. */
     val homeContainers = ServiceState(
@@ -91,7 +91,10 @@ object Fixtures {
         graphical = gnome, desktop = DesktopState.Running(2560, 1600), desktopContainer = "default",
     )
     val homeInsecure = ServiceState(status = StatusData(current = centos), statusLoaded = true, graphical = noSession)
+    /** Nothing installed anywhere: the first run, or after the last container was removed. */
     val homeEmpty = ServiceState(statusLoaded = true)
+    /** Root mode offered, for the Settings tab. */
+    val homeSettings = homeInstalled.copy(suFound = true)
     val homeError = ServiceState(statusLoaded = true,
         statusError = "droidc exited with code 101: state.json: unexpected end of file")
 
@@ -114,12 +117,16 @@ private val noop: () -> Unit = {}
 
 // --- Home ---
 
+private const val FREE = 96_636_764_160
+
 @Composable
-private fun Home(state: ServiceState) = PreviewFrame {
+private fun Home(state: ServiceState, detail: Boolean = false, tab: ContainerTab = ContainerTab.Overview) = PreviewFrame {
     HomeScreen(state, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop, onUpgrade = noop,
-        onRollback = noop, onSwitch = noop, onAbout = noop, onRefresh = noop)
+        onRollback = noop, onSwitch = noop, onAbout = noop, onRefresh = noop,
+        initialDetail = detail, initialTab = tab, free = FREE)
 }
 
+/** Phone: the list. Tablet: the list beside the selected container. */
 @PhonePreviews @TabletPreview
 @Composable
 fun HomeInstalledPreview() = Home(Fixtures.homeInstalled)
@@ -130,9 +137,25 @@ fun HomeContainersPreview() = Home(Fixtures.homeContainers)
 
 @PhonePreviews
 @Composable
-fun HomeInsecurePreview() = Home(Fixtures.homeInsecure)
+fun HomeOverviewPreview() = Home(Fixtures.homeInstalled, detail = true)
 
 @PhonePreviews
+@Composable
+fun HomeOverviewOtherDesktopPreview() = Home(Fixtures.homeContainers, detail = true)
+
+@PhonePreviews
+@Composable
+fun HomeUpdatesPreview() = Home(Fixtures.homeInstalled, detail = true, tab = ContainerTab.Updates)
+
+@PhonePreviews @TabletPreview
+@Composable
+fun HomeSettingsPreview() = Home(Fixtures.homeSettings, detail = true, tab = ContainerTab.Settings)
+
+@PhonePreviews
+@Composable
+fun HomeInsecurePreview() = Home(Fixtures.homeInsecure, detail = true)
+
+@PhonePreviews @TabletPreview
 @Composable
 fun HomeEmptyPreview() = Home(Fixtures.homeEmpty)
 
@@ -169,7 +192,7 @@ fun NewContainerPublishedPreview() = PreviewFrame {
 @PhonePreviews
 @Composable
 fun FirstContainerPreview() = PreviewFrame {
-    NewContainerScreen(existing = emptyList(), fixedName = "default", onCreate = { _, _, _ -> }, onClose = null,
+    NewContainerScreen(existing = emptyList(), initialName = "default", onCreate = { _, _, _ -> }, onClose = noop,
         free = 48_318_382_080, device = DeviceClass.Phone)
 }
 
