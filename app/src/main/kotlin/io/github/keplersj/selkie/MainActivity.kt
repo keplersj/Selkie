@@ -134,10 +134,13 @@ class MainActivity : ComponentActivity() {
                     BackHandler { screen = "auto" }
                     TerminalScreen(service) { screen = "auto" }
                 }
-                screen == "desktop" -> {
-                    BackHandler { screen = "auto" }
-                    DesktopScreen(service) { screen = "auto" }
-                }
+                // The desktop handles Back itself: the first press shows its controls.
+                screen == "desktop" -> DesktopScreen(service,
+                    onTerminal = {
+                        state.desktopContainer?.let { if (it != state.container) service.selectContainer(it) }
+                        screen = "terminal"
+                    },
+                    onBack = { screen = "auto" })
                 screen == "session" -> {
                     BackHandler { screen = "auto" }
                     SessionConfigScreen(state.graphical,

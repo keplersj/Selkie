@@ -46,6 +46,10 @@ class DesktopE2ETest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
     @get:Rule val serviceRule = ServiceTestRule.withTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
 
+    // The test presses the desktop controls' Super long after they would hide on their own.
+    @org.junit.Before fun keepDesktopControls() { io.github.keplersj.selkie.ui.desktopControlsAutoHide = false }
+    @org.junit.After fun restoreDesktopControls() { io.github.keplersj.selkie.ui.desktopControlsAutoHide = true }
+
     private val inst = InstrumentationRegistry.getInstrumentation()
     private val ctx = inst.targetContext
     private val ref = "ghcr.io/projectbluefin/bluefin-lts:stable"
