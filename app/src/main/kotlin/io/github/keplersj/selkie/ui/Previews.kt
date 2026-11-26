@@ -99,17 +99,22 @@ object Fixtures {
         statusError = "droidc exited with code 101: state.json: unexpected end of file")
 
     val downloading = Operation.Running(OpKind.SWITCH, Images.BLUEFIN, phase = "download",
-        current = 1_734_082_560, total = 4_080_218_112, unit = "bytes", message = "layer 23/41 sha256:7e1f…")
+        current = 2_362_232_012, total = 4_080_218_112, unit = "bytes", message = "layer 23/41 sha256:7e1f…",
+        container = "work", creating = true)
     val unpacking = Operation.Running(OpKind.UPGRADE, Images.BLUEFIN, phase = "unpack",
         current = 120_455, unit = "files")
-    val signatureFailed = Operation.Failed(OpKind.SWITCH, "ghcr.io/example/my-bootc:latest", insecure = false,
-        error = DroidcError(ErrorKind.SIGNATURE, "no matching signatures: policy requires sigstore for ghcr.io/example"),
-        stderrTail = "INFO pulling ghcr.io/example/my-bootc:latest\nINFO manifest sha256:0a1b2c…\nERROR verify: no matching signatures")
+    val ownership = Operation.Running(OpKind.FIX_OWNERSHIP, null, phase = "ownership",
+        message = "Applying image ownership", container = "dev")
+    val signatureFailed = Operation.Failed(OpKind.SWITCH, "registry.example/team/image:latest", insecure = false,
+        error = DroidcError(ErrorKind.SIGNATURE, "no trust policy entry matches this image"),
+        stderrTail = "INFO pulling registry.example/team/image:latest\nINFO manifest sha256:0a1b2c…\nERROR verify: no matching signatures",
+        container = "work", creating = true)
     val storageFailed = Operation.Failed(OpKind.SWITCH, Images.BLUEFIN, insecure = false,
         error = DroidcError(ErrorKind.STORAGE, "ENOSPC while writing usr/lib64/libLLVM.so.19"), stderrTail = "")
     val networkFailed = Operation.Failed(OpKind.UPGRADE, Images.BLUEFIN, insecure = false,
-        error = DroidcError(ErrorKind.NETWORK, "connection reset by peer (ghcr.io:443)"), stderrTail = "")
-    val done = Operation.Done(OpKind.SWITCH, "Installed ghcr.io/projectbluefin/bluefin-lts:stable (4f9c2a7be1d0).")
+        error = DroidcError(ErrorKind.NETWORK, "connection reset while reading layer 41 of 68"),
+        stderrTail = "INFO download layer 41/68\nERROR connection reset by peer (ghcr.io:443)")
+    val done = Operation.Done(OpKind.SWITCH, "Installing finished", container = "work", creating = true)
     val cancelled = Operation.Cancelled(OpKind.SWITCH)
 }
 
@@ -229,7 +234,9 @@ fun SessionConfigOverridePreview() = PreviewFrame {
 // --- Progress ---
 
 @Composable
-private fun Progress(op: Operation) = PreviewFrame { ProgressScreen(op, noop, {}, {}, noop, free = 1_288_490_188) }
+private fun Progress(op: Operation) = PreviewFrame {
+    ProgressScreen(op, noop, {}, {}, noop, free = 10_093_173_145, onChooseImage = {}, onCleanUp = {})
+}
 
 @PhonePreviews @TabletPreview
 @Composable
@@ -238,6 +245,10 @@ fun ProgressDownloadingPreview() = Progress(Fixtures.downloading)
 @PhonePreviews
 @Composable
 fun ProgressUnpackingPreview() = Progress(Fixtures.unpacking)
+
+@PhonePreviews
+@Composable
+fun ProgressOwnershipPreview() = Progress(Fixtures.ownership)
 
 @PhonePreviews
 @Composable

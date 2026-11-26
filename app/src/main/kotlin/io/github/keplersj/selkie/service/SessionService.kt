@@ -300,7 +300,9 @@ class SessionService : Service() {
     ) {
         if (_state.value.operation is Operation.Running) return
         val container = _state.value.container
-        _state.update { it.copy(operation = Operation.Running(kind, ref)) }
+        val creating = kind == OpKind.SWITCH && _state.value.status?.current == null
+        _state.update { it.copy(operation = Operation.Running(kind, ref, container = container, insecure = insecure,
+            creating = creating)) }
         startForegroundService(Intent(this, SessionService::class.java))
         updateForeground(force = true)
         val c = client(container)
@@ -311,7 +313,7 @@ class SessionService : Service() {
                     when (ev) {
                         is DroidcEvent.Progress -> _state.update { st ->
                             st.copy(operation = Operation.Running(kind, ref, ev.phase, ev.current,
-                                ev.total, ev.unit, ev.message))
+                                ev.total, ev.unit, ev.message, container, insecure, creating))
                         }
                         is DroidcEvent.Result -> result = ev
                         else -> {}
@@ -331,18 +333,32 @@ class SessionService : Service() {
                 val cur = (withContext(Dispatchers.IO) { c.status() } as? DroidcOutcome.Success)
                     ?.let { runCatching { it.status() }.getOrNull() }?.current
                 if (cur != null && !cur.imageOwned) {
-                    _state.update { it.copy(operation = Operation.Running(kind, ref, "ownership", message = "Applying image ownership")) }
+                    _state.update { it.copy(operation = Operation.Running(kind, ref, "ownership",
+                        message = "Applying image ownership", container = container, insecure = insecure,
+                        creating = creating)) }
                     c.fixOwnership(undo = false).collect { ev -> if (ev is DroidcEvent.Result) r = ev }
                 }
             }
             if (r?.ok == true) onSuccess()
             _state.update {
-                it.copy(operation = if (r?.ok == true) Operation.Done(kind, "${kind.label} finished")
+                it.copy(operation = if (r?.ok == true) Operation.Done(kind, "${kind.label} finished", container, creating)
                 else Operation.Failed(kind, ref, insecure,
-                    r?.error ?: DroidcError(ErrorKind.INTERNAL, "no result"), c.stderrTail(), container))
+                    r?.error ?: DroidcError(ErrorKind.INTERNAL, "no result"), c.stderrTail(), container, creating))
             }
             updateForeground(force = true)
             refreshStatus()
+        }
+    }
+
+    /**
+     * Frees downloaded layers and old deployments no container uses (`droidc gc`), as the "Not enough
+     * space" screen offers. [onDone] gets an error message, or null.
+     */
+    fun cleanUpImages(onDone: (String?) -> Unit = {}) {
+        if (_state.value.operation is Operation.Running) return
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) { client(_state.value.container).gc() }
+            onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
         }
     }
 
