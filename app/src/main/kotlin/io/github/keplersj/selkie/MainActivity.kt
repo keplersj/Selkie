@@ -51,7 +51,10 @@ class MainActivity : ComponentActivity() {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         bindService(SessionService.intent(this), conn, Context.BIND_AUTO_CREATE)
-        setContent { SelkieTheme { Surface(Modifier.fillMaxSize()) { Root() } } }
+        setContent {
+            val fold by rememberFold(this)
+            SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }
+        }
     }
 
     override fun onDestroy() {
