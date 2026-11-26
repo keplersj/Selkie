@@ -1,6 +1,7 @@
 package io.github.keplersj.selkie.ui
 
 import android.content.res.Configuration
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -387,3 +388,26 @@ fun ComponentsPreview() = PreviewFrame {
         ProgressTrack(0.58f)
     }
 }
+
+// --- Desktop controls (Tablet-Desktop), over a stand-in for the guest's desktop ---
+
+@Composable
+private fun DesktopControlsFrame(size: Pair<Int, Int>?) = SelkieTheme(dark = true, dynamicColor = false) {
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF101418))) {
+        DesktopControls("default", size, onSuper = noop, onKeyboard = noop, onEsc = noop, onTerminal = noop,
+            onBack = noop, onStop = noop, onHide = noop)
+    }
+}
+
+@TabletPreview
+@Composable
+fun DesktopControlsTabletPreview() = DesktopControlsFrame(1280 to 800)
+
+@Preview(name = "phone-landscape", device = "spec:width=891dp,height=411dp", showBackground = true)
+@Preview(name = "phone-portrait", device = "spec:width=411dp,height=891dp", showBackground = true)
+@Composable
+fun DesktopControlsPhonePreview() = DesktopControlsFrame(null)
+
+@PhonePreviews
+@Composable
+fun StopDesktopDialogPreview() = PreviewFrame { StopDesktopDialog("default", onDismiss = noop, onConfirm = noop) }
