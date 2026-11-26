@@ -155,7 +155,15 @@ class EngineE2ETest {
         assertTrue("shell-spec lists no sudo/su/pkexec shims", spec.shims.isNotEmpty())
         val spawner = startHost(b.spawnServer(), File(env.cacheDir, "e2e-spawner.log"))
         try {
-            val (c7, sudoId) = inGuest(b.command(listOf("/usr/bin/sudo", "/usr/bin/id", "-u")))
+            // The spawner binds its socket a moment after it starts, so give it a few seconds before
+            // the first sudo rather than racing it.
+            val sudo = b.command(listOf("/usr/bin/sudo", "/usr/bin/id", "-u"))
+            var (c7, sudoId) = inGuest(sudo)
+            repeat(20) {
+                if (c7 == 0 || !sudoId.contains("Connection refused") || !spawner.isAlive) return@repeat
+                Thread.sleep(500)
+                inGuest(sudo).let { (c, o) -> c7 = c; sudoId = o }
+            }
             log("sudo id -u exit=$c7 output=$sudoId")
             assertEquals("sudo output: $sudoId", 0, c7); assertEquals("0", sudoId.trim().lines().last())
         } finally { stopHost(spawner) }
