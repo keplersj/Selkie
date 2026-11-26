@@ -148,6 +148,40 @@ class ProotCommandBuilderTest {
         dir.deleteRecursively()
     }
 
+    @Test fun procSysDefaultsAndVersionMatchingUname() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache")).forContainer("work")
+        val k = GuestFiles.Kernel("6.6.102-android15-8", "#1 SMP PREEMPT Tue Oct 7 2026")
+        val fake = GuestFiles.prepare(env, spec, readable = { it == "/proc/sys/net/core/somaxconn" },
+            uptimeSeconds = 10.0, cpus = 1, chmod = { _, _ -> }, kernel = { k })
+        assertFalse("readable entries stay real", "/proc/sys/net/core/somaxconn" in fake)
+        assertEquals("65534\n", fake.getValue("/proc/sys/kernel/overflowuid").readText())
+        assertEquals("40\n", fake.getValue("/proc/sys/kernel/cap_last_cap").readText())
+        assertEquals("0\n", fake.getValue("/proc/sys/user/max_user_namespaces").readText())
+        assertEquals("6.6.102-android15-8\n", fake.getValue("/proc/sys/kernel/osrelease").readText())
+        assertEquals("work\n", fake.getValue("/proc/sys/kernel/hostname").readText())
+        assertEquals("Linux version 6.6.102-android15-8 (selkie@android) #1 SMP PREEMPT Tue Oct 7 2026\n",
+            fake.getValue("/proc/version").readText())
+        val all = GuestFiles.prepare(env, spec, readable = { false }, uptimeSeconds = 10.0, cpus = 1,
+            chmod = { _, _ -> }, kernel = { throw IllegalStateException("no uname") })
+        assertTrue(all.getValue("/proc/version").readText().startsWith("Linux version unknown"))
+        dir.deleteRecursively()
+    }
+
+    @Test fun uptimeAdvancesInPlace() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"))
+        GuestFiles.refreshUptime(env, 5.0, 1)
+        assertFalse("only containers that fake it", GuestFiles.fakeProcFile(env, "/proc/uptime").exists())
+        val fake = GuestFiles.prepare(env, spec, readable = { it != "/proc/uptime" }, uptimeSeconds = 9.5, cpus = 2,
+            chmod = { _, _ -> }, kernel = { GuestFiles.Kernel("", "") })
+        val f = fake.getValue("/proc/uptime")
+        assertEquals("9.50 17.10\n", f.readText())
+        GuestFiles.refreshUptime(env, 123.25, 2)
+        assertEquals("123.25 221.85\n", f.readText())
+        dir.deleteRecursively()
+    }
+
     @Test fun phantomEvaluate() {
         val skip = PhantomProcessCheck.PropRead.Skipped
         fun v(x: String) = PhantomProcessCheck.PropRead.Value(x)
