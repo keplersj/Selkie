@@ -27,6 +27,8 @@ class ProotCommandBuilder(
     private val resolvConf: File = File(env.guestGenerated, "resolv.conf"),
     /** guest path -> generated host file bound over the image's: /etc/passwd, /etc/group, /proc/filesystems. */
     private val overlays: Map<String, File> = emptyMap(),
+    /** Device settings for the guest (`TZ`, `LANG`, from [GuestFiles.guestEnv]); the image's own values win. */
+    private val guestEnv: Map<String, String> = emptyMap(),
 ) {
     fun prootArgs(rootMode: Boolean = false): List<String> = buildList {
         add(env.prootBin.path)
@@ -41,6 +43,7 @@ class ProotCommandBuilder(
         bind("/sys", "/sys")
         bind(env.droidcGuestBin.path, "/usr/bin/droidc")
         bind(env.cgshimLib.path, CGSHIM_GUEST_PATH)
+        bind(env.ifshimLib.path, IFSHIM_GUEST_PATH)
         bind(env.guestCgroup.path, "/sys/fs/cgroup")
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
@@ -53,6 +56,7 @@ class ProotCommandBuilder(
     /** Environment for the proot process; proot passes it through to the guest command. */
     fun environment(): Map<String, String> = LinkedHashMap<String, String>().apply {
         putAll(spec.env)
+        for ((k, v) in guestEnv) putIfAbsent(k, v)
         // Guest journal and unit output to `adb logcat`. Opt-in upstream (logs can hold paths and user
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
@@ -97,5 +101,7 @@ class ProotCommandBuilder(
     companion object {
         /** Where `droidc supervise --systemd` looks for the cgroup shim (DROIDC_CGSHIM's default). */
         const val CGSHIM_GUEST_PATH = "/usr/lib/droidc/cgshim.so"
+        /** Where `droidc supervise` looks for the network-interface shim (DROIDC_IFSHIM's default). */
+        const val IFSHIM_GUEST_PATH = "/usr/lib/droidc/ifshim.so"
     }
 }

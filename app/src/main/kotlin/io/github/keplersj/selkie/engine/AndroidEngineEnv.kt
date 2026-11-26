@@ -24,6 +24,8 @@ fun engineEnvFrom(
         container = container,
         rootMode = rootModeEnabled(app, container),
         su = RootShell.findSu(),
+        timeZone = java.util.TimeZone.getDefault().id,
+        locale = java.util.Locale.getDefault().let { if (it.country.isEmpty()) it.language else "${it.language}_${it.country}" },
     )
 }
 

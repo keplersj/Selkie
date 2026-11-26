@@ -25,6 +25,7 @@ class ProotCommandBuilderTest {
             "-b", "/dev:/dev", "-b", "/proc:/proc", "-b", "/sys:/sys",
             "-b", "/lib/libdroidc-guest.so:/usr/bin/droidc",
             "-b", "/lib/libcgshim.so:/usr/lib/droidc/cgshim.so",
+            "-b", "/lib/libifshim.so:/usr/lib/droidc/ifshim.so",
             "-b", "/files/guest/cgroup:/sys/fs/cgroup",
             "-b", "/files/guest/tmp:/tmp", "-b", "/files/guest/run:/run", "-b", "/files/guest/shm:/dev/shm",
             "-b", "/files/guest/generated/resolv.conf:/etc/resolv.conf",
@@ -86,6 +87,99 @@ class ProotCommandBuilderTest {
         val a = ProotCommandBuilder(TestEnv.env(), spec, overlays = id).prootArgs()
         assertTrue("/files/guest/generated/passwd:/etc/passwd" in a)
         assertTrue("/files/guest/generated/group:/etc/group" in a)
+    }
+
+    @Test fun deviceEnvFillsGapsButImageWins() {
+        val image = spec.copy(env = spec.env + ("LANG" to "de_DE.UTF-8"))
+        val e = ProotCommandBuilder(TestEnv.env(), image,
+            guestEnv = mapOf("TZ" to "America/Denver", "LANG" to "en_US.UTF-8")).environment()
+        assertEquals("America/Denver", e["TZ"])
+        assertEquals("de_DE.UTF-8", e["LANG"])
+    }
+
+    @Test fun guestLangNeedsTheLocaleInTheImage() {
+        val root = Files.createTempDirectory("rootfs").toFile()
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, "en_US"))
+        File(root, "usr/lib/locale/en_US.utf8").mkdirs()
+        assertEquals("en_US.UTF-8", GuestFiles.guestLang(root, "en_US"))
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, "fr_FR"))
+        File(root, "usr/lib/locale/locale-archive").writeText("")
+        assertEquals("fr_FR.UTF-8", GuestFiles.guestLang(root, "fr_FR"))
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, ""))
+        assertEquals("C.UTF-8", GuestFiles.guestLang(root, "en_US.UTF-8;rm"))
+        root.deleteRecursively()
+    }
+
+    @Test fun zoneIdsStayInsideZoneinfo() {
+        assertTrue(GuestFiles.isZoneId("America/Denver"))
+        assertTrue(GuestFiles.isZoneId("Etc/GMT+7"))
+        assertTrue(GuestFiles.isZoneId("UTC"))
+        assertFalse(GuestFiles.isZoneId("../../etc/shadow"))
+        assertFalse(GuestFiles.isZoneId("/etc/passwd"))
+        assertFalse(GuestFiles.isZoneId(""))
+    }
+
+    @Test fun identityAddsHostnameAndLocaltime() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val rootfs = File(dir, "rootfs").apply { File(this, "etc").mkdirs() }
+        File(rootfs, "usr/share/zoneinfo/America").mkdirs()
+        File(rootfs, "usr/share/zoneinfo/America/Denver").writeText("TZif-denver")
+        val s = spec.copy(rootfs = rootfs.path)
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"),
+            timeZone = "America/Denver")
+        val m = GuestFiles.prepareIdentity(env, s)
+        assertEquals("selkie\n", m.getValue("/etc/hostname").readText())
+        assertEquals("TZif-denver", m.getValue("/etc/localtime").readText())
+        val work = GuestFiles.prepareIdentity(env.forContainer("work").copy(timeZone = "Mars/Olympus"), s)
+        assertEquals("work\n", work.getValue("/etc/hostname").readText())
+        assertFalse("no tzdata for it" , "/etc/localtime" in work)
+        assertEquals(mapOf("TZ" to "Mars/Olympus", "LANG" to "C.UTF-8"),
+            GuestFiles.guestEnv(env.forContainer("work").copy(timeZone = "Mars/Olympus"), s))
+        dir.deleteRecursively()
+    }
+
+    @Test fun tmpAndShmGetTheStickyBit() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"))
+        val modes = mutableMapOf<File, Int>()
+        GuestFiles.prepare(env, spec, readable = { true }, uptimeSeconds = 1.0, cpus = 1,
+            chmod = { f, m -> modes[f] = m })
+        assertEquals(mapOf(env.guestTmp to "1777".toInt(8), env.guestShm to "1777".toInt(8)), modes)
+        dir.deleteRecursively()
+    }
+
+    @Test fun procSysDefaultsAndVersionMatchingUname() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache")).forContainer("work")
+        val k = GuestFiles.Kernel("6.6.102-android15-8", "#1 SMP PREEMPT Tue Oct 7 2026")
+        val fake = GuestFiles.prepare(env, spec, readable = { it == "/proc/sys/net/core/somaxconn" },
+            uptimeSeconds = 10.0, cpus = 1, chmod = { _, _ -> }, kernel = { k })
+        assertFalse("readable entries stay real", "/proc/sys/net/core/somaxconn" in fake)
+        assertEquals("65534\n", fake.getValue("/proc/sys/kernel/overflowuid").readText())
+        assertEquals("40\n", fake.getValue("/proc/sys/kernel/cap_last_cap").readText())
+        assertEquals("0\n", fake.getValue("/proc/sys/user/max_user_namespaces").readText())
+        assertEquals("6.6.102-android15-8\n", fake.getValue("/proc/sys/kernel/osrelease").readText())
+        assertEquals("work\n", fake.getValue("/proc/sys/kernel/hostname").readText())
+        assertEquals("Linux version 6.6.102-android15-8 (selkie@android) #1 SMP PREEMPT Tue Oct 7 2026\n",
+            fake.getValue("/proc/version").readText())
+        val all = GuestFiles.prepare(env, spec, readable = { false }, uptimeSeconds = 10.0, cpus = 1,
+            chmod = { _, _ -> }, kernel = { throw IllegalStateException("no uname") })
+        assertTrue(all.getValue("/proc/version").readText().startsWith("Linux version unknown"))
+        dir.deleteRecursively()
+    }
+
+    @Test fun uptimeAdvancesInPlace() {
+        val dir = Files.createTempDirectory("selkie").toFile()
+        val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"))
+        GuestFiles.refreshUptime(env, 5.0, 1)
+        assertFalse("only containers that fake it", GuestFiles.fakeProcFile(env, "/proc/uptime").exists())
+        val fake = GuestFiles.prepare(env, spec, readable = { it != "/proc/uptime" }, uptimeSeconds = 9.5, cpus = 2,
+            chmod = { _, _ -> }, kernel = { GuestFiles.Kernel("", "") })
+        val f = fake.getValue("/proc/uptime")
+        assertEquals("9.50 17.10\n", f.readText())
+        GuestFiles.refreshUptime(env, 123.25, 2)
+        assertEquals("123.25 221.85\n", f.readText())
+        dir.deleteRecursively()
     }
 
     @Test fun phantomEvaluate() {

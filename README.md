@@ -33,13 +33,14 @@ Both are signed with the public MVP test key, for testing only (see [docs/signin
 
 Requirements: JDK 21, Android SDK (platform 36, build-tools 36.0.0). The Gradle wrapper is included.
 
-Native binaries are **not committed**. The APK needs `libdroidc.so` (Android/bionic build), `libdroidc-guest.so` (static musl build), `libcgshim.so` (glibc LD_PRELOAD shim), `libproot.so`, `libproot-loader.so`
+Native binaries are **not committed**. The APK needs `libdroidc.so` (Android/bionic build), `libdroidc-guest.so` (static musl build), `libcgshim.so` and `libifshim.so` (glibc LD_PRELOAD shims), `libproot.so`, `libproot-loader.so`
 and `libselkie_compositor.so` for `arm64-v8a` and `x86_64`:
 
 ```
 third_party/bin/<abi>/libdroidc.so
 third_party/bin/<abi>/libdroidc-guest.so
 third_party/bin/<abi>/libcgshim.so
+third_party/bin/<abi>/libifshim.so
 third_party/bin/<abi>/libproot.so
 third_party/bin/<abi>/libproot-loader.so
 third_party/bin/<abi>/libselkie_compositor.so
@@ -53,6 +54,7 @@ or any other directory with that layout via `-Pselkie.nativeBinDir=<dir>`. Gradl
   - `libdroidc.so`: Android/bionic build (`cargo ndk -t arm64-v8a -t x86_64 build --release --bin droidc`, NDK r27c), run by Selkie. Android's app seccomp filter kills static musl binaries with SIGSYS (legacy syscalls such as `mkdir`, `rename`, `poll` on x86_64), so the app-side engine must be a bionic binary.
   - `libdroidc-guest.so`: static musl build (`cargo zigbuild --release --bin droidc --target {aarch64,x86_64}-unknown-linux-musl`), bound into the guest as `/usr/bin/droidc`; inside proot syscalls are handled by proot, so musl is fine there.
 - `libcgshim.so`: droidc's `crates/cgshim` built for the guest's glibc (Rust, `cargo zigbuild --release --target {aarch64,x86_64}-unknown-linux-gnu.2.28 -p cgshim` in droidc). Bound into the guest as `/usr/lib/droidc/cgshim.so`; `droidc supervise --systemd auto|on` uses it to run the image's own `systemd --user`. Selkie passes `--systemd auto` for the graphical session only.
+- `libifshim.so`: droidc's `crates/ifshim`, built the same way (`-p ifshim`). Bound into the guest as `/usr/lib/droidc/ifshim.so`; `droidc supervise` preloads it into everything it starts, so `getifaddrs` and `if_nameindex` (Node's `os.networkInterfaces()`, Python's `socket.if_nameindex()`, `hostname -I`) work although Android denies netlink to apps.
 - compositor: `cd native/selkie-compositor && cargo ndk --platform 29 -t arm64-v8a -t x86_64 build --release --lib`
   (pure Rust, no C dependencies; `cargo test` runs its protocol tests on Linux). See its README.
 - proot: `third_party/proot/build.sh <outdir> <abi>` (NDK; separate workflow `.github/workflows/proot.yml`, artifact `proot-android`).

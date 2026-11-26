@@ -127,6 +127,15 @@ class EngineE2ETest {
         assertEquals("id output: $id", 0, c4)
         val (c5, root) = inGuest(b.command(listOf("/usr/bin/id", "-u"), rootMode = true))
         assertEquals("root id output: $root", 0, c5); assertEquals("0", root.trim())
+        // Network interfaces (droidc's ifshim): supervise preloads it, so getifaddrs/if_nameindex
+        // answer even where Android denies netlink to apps.
+        val ifScript = "echo \"preload=\$LD_PRELOAD\"; " +
+            "if command -v python3 >/dev/null; then python3 -c 'import socket; print(\"names=\" + \",\".join(n for _, n in socket.if_nameindex()))'; fi"
+        val (c6, ifs) = inGuest(b.command(listOf("/usr/bin/droidc", "supervise", "--", "/bin/sh", "-c", ifScript)))
+        log("interfaces exit=$c6\n$ifs")
+        assertEquals("interfaces output: $ifs", 0, c6)
+        assertTrue("ifshim not preloaded: $ifs", ifs.contains("/usr/lib/droidc/ifshim.so"))
+        if (ifs.contains("names=")) assertTrue("no loopback listed: $ifs", Regex("names=.*\\blo\\b").containsMatchIn(ifs))
 
         // 3. upgrade (no-op is fine)
         val up = client.run(listOf("upgrade"))

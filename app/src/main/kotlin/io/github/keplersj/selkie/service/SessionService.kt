@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.termux.terminal.TerminalSession
@@ -39,10 +40,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -355,7 +358,9 @@ class SessionService : Service() {
                 env.rootSessions.mkdirs()
                 EnterCommandBuilder(env, spec, overlays = GuestFiles.prepareSelinuxHiding(env)).interactiveShell(pidFile)
             } else {
-                ProotCommandBuilder(env, spec, fake, overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env)).interactiveShell()
+                ProotCommandBuilder(env, spec, fake,
+                    overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
+                    guestEnv = GuestFiles.guestEnv(env, spec)).interactiveShell()
             }
         }
         if (env.useRoot) rootPidFiles[id] = pidFile
@@ -367,6 +372,7 @@ class SessionService : Service() {
         startForegroundService(Intent(this, SessionService::class.java))
         publishSessions()
         updateForeground(force = true)
+        keepUptimeCurrent()
         return session
     }
 
@@ -390,6 +396,31 @@ class SessionService : Service() {
     }
 
     private fun runningSessions() = terminals.values.count { it.session.isRunning }
+
+    private var uptimeJob: Job? = null
+
+    /**
+     * Keeps each running container's fake `/proc/uptime` current (Selkie#15): Android hides the real
+     * one, and a file written once per launch made `uptime` stand still. Stops when nothing runs.
+     */
+    private fun keepUptimeCurrent() {
+        if (uptimeJob?.isActive == true) return
+        // On the main dispatcher, like every other use of [terminals]; only the writes go to IO.
+        uptimeJob = scope.launch {
+            val cpus = Runtime.getRuntime().availableProcessors()
+            while (isActive) {
+                val containers = terminals.values.filter { it.session.isRunning }.map { it.container }.toMutableSet()
+                if (desktopActive()) _state.value.desktopContainer?.let { containers += it }
+                if (containers.isEmpty()) break
+                val envs = containers.map { newEnv(it) }
+                withContext(Dispatchers.IO) {
+                    val up = SystemClock.elapsedRealtime() / 1000.0
+                    for (e in envs) GuestFiles.refreshUptime(e, up, cpus)
+                }
+                delay(UPTIME_REFRESH_MS)
+            }
+        }
+    }
 
     // ---------------- graphical session ----------------
 
@@ -423,7 +454,8 @@ class SessionService : Service() {
                     if (env.useRoot) error("The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
                     val fake = GuestFiles.prepare(env, spec)
                     val inv = ProotCommandBuilder(env, spec, fake,
-                        overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env))
+                        overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
+                        guestEnv = GuestFiles.guestEnv(env, spec))
                         .graphicalSession(width, height)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
@@ -445,6 +477,7 @@ class SessionService : Service() {
             android.util.Log.i(TAG, "desktop session started at ${width}x$height")
             _state.update { it.copy(desktop = DesktopState.Running(width, height)) }
             updateForeground(force = true)
+            keepUptimeCurrent()
             val code = withContext(Dispatchers.IO) { p.waitFor() }
             android.util.Log.i(TAG, "desktop session exited with $code")
             if (desktop === p) {
@@ -580,6 +613,7 @@ class SessionService : Service() {
 
     companion object {
         const val ACTION_STOP = "io.github.keplersj.selkie.STOP"
+        private const val UPTIME_REFRESH_MS = 1000L
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"
         private const val NOTIF_ID = 1

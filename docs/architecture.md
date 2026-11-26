@@ -11,7 +11,7 @@ MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
 ## Packages (`io.github.keplersj.selkie`)
 
 - `engine/` `EngineEnv` (paths, uid, DNS), `DroidcClient` (command line, process, ring buffer, `Flow<DroidcEvent>`), `Models.kt` (sealed events, `NdjsonParser`, status/shell-spec models).
-- `proot/` `ProotCommandBuilder` (pure argv/env, unit-tested) and `GuestFiles` (creates the host dirs/files that binds refer to: writable `/tmp`, `/run`, `/dev/shm`, generated `resolv.conf`, fake `/proc/{stat,version,loadavg,uptime}` only when unreadable).
+- `proot/` `ProotCommandBuilder` (pure argv/env, unit-tested) and `GuestFiles` (creates the host dirs/files that binds refer to: writable `/tmp`, `/run`, `/dev/shm` (`/tmp` and `/dev/shm` 1777), generated `resolv.conf`, `/etc/passwd`, `/etc/group`, `/etc/hostname` (the container's name, `selkie` for the default one) and `/etc/localtime` (the image's zoneinfo file for the device's time zone), fake `/proc/{stat,version,loadavg,uptime}` and the `/proc/sys` values tools read (overflowuid, cap_last_cap, inotify and file limits, hostname, osrelease) only when unreadable; `/proc/version` uses the real `uname` release, and `SessionService` advances `/proc/uptime` every second while a container runs). Every guest process also gets `TZ` and `LANG` from the device unless the image sets them; `LANG` falls back to `C.UTF-8` when the image lacks the device's locale.
 - `platform/PhantomProcessCheck` the one class that decides whether "Disable child process restrictions" is on.
 - `service/` `SessionService`, `ServiceState`/`Operation` state.
 - `display/` `NativeCompositor` (JNI to the Rust compositor), `CompositorView` (SurfaceView + touch/mouse/key input),
@@ -57,7 +57,7 @@ host paths that must resolve the same way for both.
 ## proot session
 
 `libproot.so --kill-on-exit --link2symlink -i <uid>:<gid> -r <rootfs> -w <cwd>` + binds
-(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, `libcgshim.so:/usr/lib/droidc/cgshim.so`, writable tmp/run/shm, resolv.conf, fake proc files, then the
+(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, `libcgshim.so:/usr/lib/droidc/cgshim.so`, `libifshim.so:/usr/lib/droidc/ifshim.so`, writable tmp/run/shm, resolv.conf, fake proc files, then the
 binds from `droidc shell-spec`). Environment is built from scratch (shell-spec env plus `PROOT_LOADER`,
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
