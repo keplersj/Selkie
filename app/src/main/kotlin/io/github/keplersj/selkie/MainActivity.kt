@@ -74,6 +74,8 @@ class MainActivity : ComponentActivity() {
         var phantom by remember { mutableStateOf(check.check()) }
         var acknowledged by remember { mutableStateOf(prefs.getBoolean("phantom_ack", false)) }
         var screen by rememberSaveable { mutableStateOf("auto") }
+        // After a failed create, choosing another image keeps the name that was typed.
+        var retryName by rememberSaveable { mutableStateOf<String?>(null) }
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
@@ -92,7 +94,13 @@ class MainActivity : ComponentActivity() {
                     onCancel = { service.cancelOperation() },
                     onRetry = { f -> service.retry(f, f.insecure) },
                     onRetryInsecure = { f -> service.retry(f, true) },
-                    onDismiss = { service.dismissOperation(); screen = "auto" })
+                    onDismiss = { service.dismissOperation(); screen = "auto" },
+                    onChooseImage = { f ->
+                        service.dismissOperation()
+                        retryName = f.container.takeIf { f.creating }
+                        screen = if (f.creating) "new" else "change"
+                    },
+                    onCleanUp = { done -> service.cleanUpImages(done) })
                 screen == "terminal" -> {
                     BackHandler { screen = "auto" }
                     TerminalScreen(service) { screen = "auto" }
@@ -115,9 +123,9 @@ class MainActivity : ComponentActivity() {
                     NewContainerScreen(
                         existing = existing,
                         // The first container takes droidc's default name, which the user can still change.
-                        initialName = if (existing.isEmpty()) EngineEnv.DEFAULT_CONTAINER else "",
-                        onCreate = { name, ref, insecure -> screen = "auto"; service.createContainer(name, ref, insecure) },
-                        onClose = { screen = "auto" })
+                        initialName = retryName ?: if (existing.isEmpty()) EngineEnv.DEFAULT_CONTAINER else "",
+                        onCreate = { name, ref, insecure -> screen = "auto"; retryName = null; service.createContainer(name, ref, insecure) },
+                        onClose = { screen = "auto"; retryName = null })
                 }
                 screen == "change" -> {
                     BackHandler { screen = "auto" }

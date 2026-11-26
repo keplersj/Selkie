@@ -21,6 +21,12 @@ sealed interface Operation {
         val total: Long? = null,
         val unit: String? = null,
         val message: String? = null,
+        /** Container the operation acts on. */
+        val container: String = EngineEnv.DEFAULT_CONTAINER,
+        /** Installing without a signature check. */
+        val insecure: Boolean = false,
+        /** The container had no image before, so this install creates it. */
+        val creating: Boolean = false,
     ) : Operation
     data class Failed(
         val kind: OpKind,
@@ -30,8 +36,14 @@ sealed interface Operation {
         val stderrTail: String,
         /** Container the operation acted on, so a retry goes to the same one. */
         val container: String = EngineEnv.DEFAULT_CONTAINER,
+        val creating: Boolean = false,
     ) : Operation
-    data class Done(val kind: OpKind, val summary: String) : Operation
+    data class Done(
+        val kind: OpKind,
+        val summary: String,
+        val container: String = EngineEnv.DEFAULT_CONTAINER,
+        val creating: Boolean = false,
+    ) : Operation
     data class Cancelled(val kind: OpKind) : Operation
 }
 

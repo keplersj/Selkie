@@ -162,6 +162,8 @@ class DroidcClient(private val env: EngineEnv) {
     suspend fun platform(): DroidcOutcome = run(listOf("platform"))
     /** Every container under the root (`droidc container list`); the env's own container doesn't matter. */
     suspend fun listContainers(): DroidcOutcome = run(DroidcArgs.containerList)
+    /** Removes deployments and blobs no container references. */
+    suspend fun gc(asRoot: Boolean = env.useRoot): DroidcOutcome = run(listOf("gc"), asRoot)
     /** Deletes a named container's deployments, /var, /home and session, then GCs unused images. */
     suspend fun removeContainer(name: String, asRoot: Boolean = false): DroidcOutcome = run(DroidcArgs.containerRm(name), asRoot)
 
