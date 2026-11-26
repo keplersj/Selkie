@@ -357,7 +357,8 @@ internal fun TerminalKeys(
 private fun RowScope.KeyButton(k: Key, press: (String) -> Unit) {
     KeySurface(on = false, modifier = Modifier.weight(1f).clickable(role = Role.Button) { press(k.id) }
         .then(k.description?.let { d -> Modifier.semantics { contentDescription = d } } ?: Modifier)) {
-        Text(k.label)
+        // Arrow glyphs draw small at the label size, so they get a larger one.
+        Text(k.label, style = if (k.id in ARROWS) LocalTextStyle.current.copy(fontSize = 20.sp) else LocalTextStyle.current)
     }
 }
 

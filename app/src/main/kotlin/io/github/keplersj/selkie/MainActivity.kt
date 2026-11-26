@@ -9,6 +9,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.view.KeyEvent
+import android.view.KeyboardShortcutGroup
+import android.view.KeyboardShortcutInfo
+import android.view.Menu
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -41,6 +45,9 @@ class MainActivity : ComponentActivity() {
         override fun onServiceDisconnected(name: ComponentName?) { serviceState.value = null }
     }
 
+    /** What Ctrl+T and Ctrl+N do while the containers list is showing; null on every other screen. */
+    private var homeShortcuts: HomeShortcuts? = null
+
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -55,6 +62,25 @@ class MainActivity : ComponentActivity() {
             val fold by rememberFold(this)
             SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }
         }
+    }
+
+    override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
+        val home = homeShortcuts
+        if (home != null && event.isCtrlPressed) when (shortcutFor(keyCode)) {
+            Shortcut.NewTerminal -> { home.newTerminal(); return true }
+            Shortcut.NewContainer -> { home.newContainer(); return true }
+            null -> {}
+        }
+        return super.onKeyShortcut(keyCode, event)
+    }
+
+    // Lists the shortcuts in the system's keyboard shortcuts helper (Meta+/ on most keyboards).
+    override fun onProvideKeyboardShortcuts(data: MutableList<KeyboardShortcutGroup>, menu: Menu?, deviceId: Int) {
+        super.onProvideKeyboardShortcuts(data, menu, deviceId)
+        if (homeShortcuts == null) return
+        data.add(KeyboardShortcutGroup("Selkie", Shortcut.entries.map {
+            KeyboardShortcutInfo(it.label, it.keyCode, KeyEvent.META_CTRL_ON)
+        }))
     }
 
     override fun onDestroy() {
@@ -139,7 +165,16 @@ class MainActivity : ComponentActivity() {
                 // Only the first read waits here; later container switches load inside Home, which keeps its place.
                 !state.statusLoaded && summaries(state).isEmpty() ->
                     Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                else -> HomeScreen(state,
+                else -> {
+                    val selected = state.container
+                    DisposableEffect(selected) {
+                        homeShortcuts = HomeShortcuts(
+                            newTerminal = { if (selected != null) screen = "terminal" },
+                            newContainer = { screen = "new" },
+                        )
+                        onDispose { homeShortcuts = null }
+                    }
+                    HomeScreen(state,
                     onOpenTerminal = { screen = "terminal" },
                     onOpenDesktop = { screen = "desktop" },
                     onConfigureDesktop = { screen = "session" },
@@ -152,7 +187,18 @@ class MainActivity : ComponentActivity() {
                     onNewContainer = { screen = "new" },
                     onRemoveContainer = { name, done -> service.removeContainer(name, done) },
                     onRootMode = { service.setRootMode(it) })
+                }
             }
         }
     }
 }
+
+private class HomeShortcuts(val newTerminal: () -> Unit, val newContainer: () -> Unit)
+
+/** The app's Ctrl shortcuts, from the desktop window design. */
+internal enum class Shortcut(val keyCode: Int, val label: String) {
+    NewTerminal(KeyEvent.KEYCODE_T, "New terminal"),
+    NewContainer(KeyEvent.KEYCODE_N, "New container"),
+}
+
+internal fun shortcutFor(keyCode: Int): Shortcut? = Shortcut.entries.firstOrNull { it.keyCode == keyCode }

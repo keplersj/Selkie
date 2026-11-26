@@ -3,6 +3,7 @@ package io.github.keplersj.selkie.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -15,12 +16,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -43,6 +51,8 @@ internal const val SIGNATURE_TIMING = "checked before it was downloaded"
 
 /** Below this width the list and a container are separate screens; from it up they sit side by side. */
 private val LIST_DETAIL_WIDTH = 840.dp
+/** The detail pane puts Overview in two columns from this width. */
+private val DETAIL_COLUMNS_WIDTH = 600.dp
 
 /** A container's tabs. The canvas's Apps tab waits for droidc to read .desktop entries. */
 enum class ContainerTab(val label: String) { Overview("Overview"), Updates("Updates"), Settings("Settings") }
@@ -128,25 +138,35 @@ fun HomeScreen(
         onRemove = { removing = state.container }, onRootMode = onRootMode, onRefresh = onRefresh,
     )
 
+    val remove: (String) -> Unit = { name -> removing = name }
+    val fold = LocalFold.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= LIST_DETAIL_WIDTH
-        when {
-            list.isEmpty() && state.statusError == null -> EmptyContainers(free, onNewContainer, onAbout)
-            wide -> Row(Modifier.fillMaxSize()) {
-                ContainerList(list, state, wide = true, free = free, error = removeError,
-                    onOpen = open, onTerminal = terminal, onDesktop = onOpenDesktop, onNew = onNewContainer,
-                    onAbout = onAbout, modifier = Modifier.width(392.dp).fillMaxHeight())
-                Surface(
-                    Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
-                    shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow,
-                ) {
-                    ContainerDetail(state, tab, { tab = it }, actions, wide = true, onBack = null)
+        val listPane: @Composable (Modifier, Boolean) -> Unit = { m, w ->
+            ContainerList(list, state, wide = w, free = free, error = removeError,
+                onOpen = open, onTerminal = terminal, onDesktop = onOpenDesktop, onNew = onNewContainer,
+                onRemove = remove, onAbout = onAbout, modifier = m)
+        }
+        val detailPanel: @Composable (Modifier) -> Unit = { m ->
+            Surface(m, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                BoxWithConstraints {
+                    ContainerDetail(state, tab, { tab = it }, actions, wide = true, onBack = null,
+                        columns = maxWidth >= DETAIL_COLUMNS_WIDTH)
                 }
             }
+        }
+        when {
+            list.isEmpty() && state.statusError == null -> EmptyContainers(free, onNewContainer, onAbout)
+            // Open like a book: the list on one half and the container on the other, nothing across the hinge.
+            fold?.book == true -> HingePanes(fold,
+                first = { listPane(Modifier.fillMaxSize(), true) },
+                second = { detailPanel(Modifier.fillMaxSize().padding(top = 16.dp, start = 12.dp, end = 16.dp, bottom = 16.dp)) })
+            wide -> Row(Modifier.fillMaxSize()) {
+                listPane(Modifier.width(392.dp).fillMaxHeight(), true)
+                detailPanel(Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp))
+            }
             detail -> ContainerDetail(state, tab, { tab = it }, actions, wide = false, onBack = { detail = false })
-            else -> ContainerList(list, state, wide = false, free = free, error = removeError,
-                onOpen = open, onTerminal = terminal, onDesktop = onOpenDesktop, onNew = onNewContainer,
-                onAbout = onAbout, modifier = Modifier.fillMaxSize())
+            else -> listPane(Modifier.fillMaxSize(), false)
         }
     }
 
@@ -196,6 +216,7 @@ private fun ContainerList(
     onTerminal: (String) -> Unit,
     onDesktop: () -> Unit,
     onNew: () -> Unit,
+    onRemove: (String) -> Unit,
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -226,7 +247,8 @@ private fun ContainerList(
             state.statusError?.let { SelkieCard(Modifier.fillMaxWidth(), tone = CardTone.Error) { Text("Could not read status: $it") } }
             for (c in list) {
                 ContainerCard(c, state, highlighted = wide && c.name == state.container,
-                    onOpen = { onOpen(c.name) }, onTerminal = { onTerminal(c.name) }, onDesktop = onDesktop)
+                    onOpen = { onOpen(c.name) }, onTerminal = { onTerminal(c.name) }, onDesktop = onDesktop,
+                    onRemove = { onRemove(c.name) })
             }
         }
         if (!wide) {
@@ -250,13 +272,25 @@ private fun ContainerCard(
     onOpen: () -> Unit,
     onTerminal: () -> Unit,
     onDesktop: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     // Desktop details are only known for the selected container, so only its card offers the desktop.
     val graphical = state.graphical.takeIf { c.name == state.container && state.statusLoaded }
     val canDesktop = graphical?.configured == true && desktopElsewhere(state) == null
     val shape = MaterialTheme.shapes.extraLarge
+    var menu by remember { mutableStateOf(false) }
+    // The same choices as the right-click menu, for screen readers and switch access.
+    val menuActions = buildList {
+        add(CustomAccessibilityAction("Open a terminal") { onTerminal(); true })
+        if (canDesktop) add(CustomAccessibilityAction("Open the desktop") { onDesktop(); true })
+        add(CustomAccessibilityAction("Remove ${c.name}") { onRemove(); true })
+    }
+    Box {
     SelkieCard(
-        Modifier.fillMaxWidth().clip(shape).clickable(onClickLabel = "Open ${c.name}", onClick = onOpen),
+        Modifier.fillMaxWidth().clip(shape)
+            .onSecondaryClick { menu = true }
+            .clickable(onClickLabel = "Open ${c.name}", onClick = onOpen)
+            .semantics { customActions = menuActions },
         tone = if (highlighted) CardTone.Selected else CardTone.Default,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -294,6 +328,32 @@ private fun ContainerCard(
                 shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 24.dp, bottomEnd = 24.dp),
                 content = terminalLabel)
             else Button(onClick = onTerminal, Modifier.weight(1f), shape = RoundedCornerShape(24.dp), content = terminalLabel)
+        }
+    }
+    // Right-click (mouse or trackpad) opens the container's menu, like on a desktop.
+    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+        DropdownMenuItem(text = { Text("Open") }, onClick = { menu = false; onOpen() })
+        DropdownMenuItem(text = { Text("Open a terminal") }, onClick = { menu = false; onTerminal() },
+            leadingIcon = { Icon(SelkieIcons.Terminal, null) })
+        if (canDesktop) DropdownMenuItem(text = { Text("Open the desktop") }, onClick = { menu = false; onDesktop() },
+            leadingIcon = { Icon(SelkieIcons.Desktop, null) })
+        HorizontalDivider()
+        DropdownMenuItem(text = { Text("Remove…") }, onClick = { menu = false; onRemove() },
+            leadingIcon = { Icon(SelkieIcons.Trash, null) })
+    }
+    }
+}
+
+/** Calls [onClick] on a secondary (right) button press and keeps it from also counting as a tap. */
+private fun Modifier.onSecondaryClick(onClick: () -> Unit): Modifier = composed {
+    val current by rememberUpdatedState(onClick)
+    pointerInput(Unit) {
+        awaitEachGesture {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                event.changes.forEach { it.consume() }
+                current()
+            }
         }
     }
 }
@@ -341,6 +401,8 @@ private fun ContainerDetail(
     wide: Boolean,
     /** Null where the list is beside it. */
     onBack: (() -> Unit)?,
+    /** Status and "What works here" side by side; off when the pane is too narrow, as on half a fold. */
+    columns: Boolean = wide,
 ) {
     if (onBack != null) BackHandler(onBack = onBack)
     val cur = state.status?.current
@@ -372,7 +434,7 @@ private fun ContainerDetail(
             Tabs(tab, onTab)
             when {
                 !state.statusLoaded -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
-                tab == ContainerTab.Overview -> Overview(state, actions, wide)
+                tab == ContainerTab.Overview -> Overview(state, actions, columns)
                 tab == ContainerTab.Updates -> Updates(state, actions)
                 else -> Settings(state, actions)
             }

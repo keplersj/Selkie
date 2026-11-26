@@ -141,6 +141,18 @@ fun HomeInstalledPreview() = Home(Fixtures.homeInstalled)
 @Composable
 fun HomeContainersPreview() = Home(Fixtures.homeContainers)
 
+/** A foldable open like a book: the list and the container on either side of the canvas's 24dp hinge. */
+@Preview(name = "fold-book", device = "spec:width=840dp,height=700dp", showBackground = true)
+@Preview(name = "fold-book-dark", device = "spec:width=840dp,height=700dp", showBackground = true,
+    uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun HomeBookPreview() = PreviewFrame {
+    CompositionLocalProvider(LocalFold provides Fold(vertical = true, start = 408.dp, end = 432.dp, halfOpened = false)) {
+        HomeScreen(Fixtures.homeContainers, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop,
+            onUpgrade = noop, onRollback = noop, onSwitch = noop, onAbout = noop, onRefresh = noop, free = FREE)
+    }
+}
+
 @PhonePreviews
 @Composable
 fun HomeOverviewPreview() = Home(Fixtures.homeInstalled, detail = true)
