@@ -24,6 +24,9 @@ object DroidcArgs {
     fun global(env: EngineEnv, json: Boolean): List<String> = buildList {
         add(env.droidcBin.path)
         add("--root"); add(env.droidcRoot.path)
+        // Only named containers pass the flag, so the default container still works with a droidc
+        // from before containers.
+        if (!env.isDefaultContainer) { add("--container"); add(env.container) }
         if (json) add("--json")
         if (env.dns.isNotEmpty()) { add("--dns"); add(env.dns.joinToString(",")) }
     }
@@ -35,6 +38,9 @@ object DroidcArgs {
         if (!services.isNullOrBlank()) { add("--services"); add(services) }
         if (!name.isNullOrBlank()) { add("--name"); add(name) }
     }
+
+    val containerList: List<String> = listOf("container", "list")
+    fun containerRm(name: String): List<String> = listOf("container", "rm", name)
 
     fun switch(ref: String, insecure: Boolean, links: String = "link2symlink"): List<String> = buildList {
         add("switch"); add(ref)
@@ -125,11 +131,18 @@ class DroidcClient(private val env: EngineEnv) {
     suspend fun status(): DroidcOutcome = run(listOf("status"))
     suspend fun shellSpec(): DroidcOutcome = run(listOf("shell-spec"))
     suspend fun platform(): DroidcOutcome = run(listOf("platform"))
+    /** Every container under the root (`droidc container list`); the env's own container doesn't matter. */
+    suspend fun listContainers(): DroidcOutcome = run(DroidcArgs.containerList)
+    /** Deletes a named container's deployments, /var, /home and session, then GCs unused images. */
+    suspend fun removeContainer(name: String): DroidcOutcome = run(DroidcArgs.containerRm(name))
 
     /** Writes the session override (`droidc session set`); `exec`/`services` are JSON as in the labels. */
     suspend fun setSession(renderer: String, exec: String, services: String?, name: String?): DroidcOutcome =
         run(DroidcArgs.sessionSet(renderer, exec, services, name))
     suspend fun clearSession(): DroidcOutcome = run(listOf("session", "clear"))
+
+    val containerList: List<String> = listOf("container", "list")
+    fun containerRm(name: String): List<String> = listOf("container", "rm", name)
 
     fun switch(ref: String, insecure: Boolean): Flow<DroidcEvent> =
         events(DroidcArgs.switch(ref, insecure))

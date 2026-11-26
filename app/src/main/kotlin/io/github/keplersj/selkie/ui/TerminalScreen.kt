@@ -121,7 +121,11 @@ fun TerminalScreen(service: SessionService, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().imePadding().statusBarsPadding()) {
         SessionBar(
-            titles = sessions.map { it.title ?: it.mSessionName ?: "Session" },
+            titles = sessions.map { s ->
+                // Terminals of every container share the tab bar, so name the container on named ones.
+                val c = service.containerOf(s)?.takeIf { it != io.github.keplersj.selkie.engine.EngineEnv.DEFAULT_CONTAINER }
+                (c?.let { "$it: " } ?: "") + (s.title ?: s.mSessionName ?: "Session")
+            },
             selected = sessions.indexOf(current),
             onSelect = { current = sessions[it] },
             onBack = onBack,

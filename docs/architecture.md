@@ -20,10 +20,30 @@ MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
 
 ## droidc contract
 
-Command line: `libdroidc.so --root <filesDir>/droidc --json [--dns a,b] <cmd>`. stdout lines are JSON with an
+Command line: `libdroidc.so --root <filesDir>/droidc [--container <name>] --json [--dns a,b] <cmd>`. stdout lines are JSON with an
 `event` of `progress`, `log` or `result`; the last is always `result`. stderr goes to `cacheDir/droidc.log`
 (its tail is shown on error cards). Cancelling kills the process; droidc is crash-safe and recovers on its next run.
 DNS servers come from `ConnectivityManager` link properties because Android has no `/etc/resolv.conf` for a static binary.
+
+## Containers
+
+Selkie manages any number of droidc containers under the one root (`droidc --container`). They share
+downloaded images; each has its own deployments, `/var`, `/home` and desktop session. Home shows one container
+at a time as chips (`ServiceState.container`, remembered across launches); new operations, terminals and the
+desktop act on it, and terminals of every container share the terminal screen's tabs.
+
+| | `default` | named, e.g. `dev` |
+|---|---|---|
+| droidc flag | none (works with a droidc from before containers) | `--container dev` |
+| droidc state | the top of `filesDir/droidc` | `filesDir/droidc/containers/dev` |
+| guest tmp/run/shm/cgroup/generated | `filesDir/guest/...` | `filesDir/c/dev/...` |
+| logs | `cacheDir/droidc.log`, `desktop.log` | `droidc-dev.log`, `desktop-dev.log` |
+
+Named containers use the short `c/<name>` directory, and Selkie allows names of up to 20 characters (droidc allows
+63), so the longest guest socket path (`run/user/<uid>/pipewire-0-manager`) stays inside the 108-byte Unix socket
+limit. A container appears in `droidc container list` once something is deployed in it: a new container whose
+first install fails disappears again, and Home goes back to `default`. There is one compositor, so one desktop at a
+time; Home says which container it belongs to.
 
 ## Two droidc builds
 
@@ -49,7 +69,7 @@ Debuggable builds also set `DROIDC_LOGCAT=auto`, so the guest's journal and unit
 ## Graphical session
 
 ```
-SurfaceView <- libselkie_compositor.so (in the app process) <- filesDir/guest/run/user/<uid>/wayland-0
+SurfaceView <- libselkie_compositor.so (in the app process) <- <guest dir>/run/user/<uid>/wayland-0
                                                                   = guest $XDG_RUNTIME_DIR/wayland-0
    proot: droidc supervise --session --width W --height H
             renderer=wayland:    the image's compositor runs nested as a Wayland client
@@ -59,7 +79,7 @@ SurfaceView <- libselkie_compositor.so (in the app process) <- filesDir/guest/ru
 `DesktopScreen` measures its view and asks `SessionService.startDesktop(w, h)`: the compositor starts
 listening first (`GuestFiles` creates the 0700 runtime dir), then proot runs `droidc supervise --session`
 with `WAYLAND_DISPLAY=wayland-0` and `LIBGL_ALWAYS_SOFTWARE=1` (no GPU path yet: Mesa llvmpipe). Output goes to
-`cacheDir/desktop.log`, whose tail is shown if the session exits with an error. The compositor shows the most
+`cacheDir/desktop.log` (`desktop-<name>.log` for a named container), whose tail is shown if the session exits with an error. The compositor shows the most
 recently mapped toplevel full screen: it copies each committed `wl_shm` buffer into the window
 (RGBX at the client's size, scaled by SurfaceFlinger) and completes frame callbacks after that, so the
 session pauses while no Surface exists (activity in the background). Input arrives in view pixels and is

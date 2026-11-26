@@ -131,6 +131,24 @@ data class StatusData(
     val previous: Deployment? = null,
 )
 
+/** A deployment as `droidc container list` names it. */
+@Serializable
+data class ContainerDeployment(
+    val id: String = "",
+    @SerialName("image_ref") val imageRef: String? = null,
+)
+
+/** One container under the droidc root (`droidc container list`). */
+@Serializable
+data class ContainerInfo(
+    val name: String,
+    val current: ContainerDeployment? = null,
+    val previous: ContainerDeployment? = null,
+)
+
+@Serializable
+data class ContainerList(val containers: List<ContainerInfo> = emptyList())
+
 @Serializable
 data class Bind(val host: String, val guest: String)
 
@@ -170,5 +188,7 @@ fun DroidcOutcome.Success.status(): StatusData =
     SelkieJson.decodeFromJsonElement(data ?: JsonObject(emptyMap()))
 fun DroidcOutcome.Success.graphicalSession(): GraphicalSession =
     SelkieJson.decodeFromJsonElement(data ?: error("session returned no data"))
+fun DroidcOutcome.Success.containers(): List<ContainerInfo> =
+    SelkieJson.decodeFromJsonElement<ContainerList>(data ?: JsonObject(emptyMap())).containers
 fun DroidcOutcome.Success.shellSpec(): ShellSpec =
     SelkieJson.decodeFromJsonElement(data ?: error("shell-spec returned no data"))
