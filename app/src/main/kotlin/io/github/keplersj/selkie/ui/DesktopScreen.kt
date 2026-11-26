@@ -170,6 +170,9 @@ internal var desktopControlsAutoHide = true
 /** From this width the controls name the container; below it they keep to the buttons. */
 private val CONTROLS_LABEL_WIDTH = 720.dp
 
+/** Below this width the toolbar takes two rows. */
+private val CONTROLS_ONE_ROW_WIDTH = 480.dp
+
 /**
  * Selkie's controls over a running desktop (Tablet-Desktop): a floating toolbar at the bottom and the
  * session's size at the top right. They hold only what touch has no other way to do.
@@ -203,15 +206,7 @@ fun DesktopControls(
             shape = RoundedCornerShape(36.dp), color = cs.surfaceContainerHigh, contentColor = cs.onSurface,
             shadowElevation = 6.dp,
         ) {
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (labelled) Row(Modifier.padding(start = 8.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.size(32.dp).clip(CircleShape).background(cs.primary), contentAlignment = Alignment.Center) {
-                        Icon(SelkieIcons.Containers, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(18.dp))
-                    }
-                    Text("Selkie · $container", style = MaterialTheme.typography.labelLarge)
-                }
+            val keys: @Composable () -> Unit = {
                 FilledTonalButton(onClick = onSuper, Modifier.height(56.dp), shape = RoundedCornerShape(28.dp)) {
                     Icon(SelkieIcons.Apps, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -226,7 +221,8 @@ fun DesktopControls(
                 IconButton(onClick = onTerminal, Modifier.size(56.dp)) {
                     Icon(SelkieIcons.Terminal, contentDescription = "Open a terminal, keep the desktop running")
                 }
-                Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(32.dp).background(cs.outlineVariant))
+            }
+            val leave: @Composable () -> Unit = {
                 IconButton(onClick = onBack, Modifier.size(56.dp)) {
                     Icon(SelkieIcons.Back, contentDescription = "Back to Selkie, keep the desktop running")
                 }
@@ -239,6 +235,26 @@ fun DesktopControls(
                 IconButton(onClick = onHide, Modifier.size(56.dp)) {
                     Icon(SelkieIcons.Close, contentDescription = "Hide these controls")
                 }
+            }
+            val gap = Arrangement.spacedBy(4.dp)
+            // A phone held upright can't fit one row, so the keys and the ways out stack rather than scroll away.
+            if (maxWidth < CONTROLS_ONE_ROW_WIDTH) Column(Modifier.padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = gap) { keys() }
+                Box(Modifier.width(240.dp).height(1.dp).background(cs.outlineVariant))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = gap) { leave() }
+            } else Row(Modifier.horizontalScroll(rememberScrollState()).padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = gap) {
+                if (labelled) Row(Modifier.padding(start = 8.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(32.dp).clip(CircleShape).background(cs.primary), contentAlignment = Alignment.Center) {
+                        Icon(SelkieIcons.Containers, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(18.dp))
+                    }
+                    Text("Selkie · $container", style = MaterialTheme.typography.labelLarge)
+                }
+                keys()
+                Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(32.dp).background(cs.outlineVariant))
+                leave()
             }
         }
     }
