@@ -234,10 +234,47 @@ fun TerminalChromePreview() = PreviewFrame {
     Column(Modifier.fillMaxSize()) {
         SessionBar(listOf("bash", "htop", "kepler@bluefin: ~/src"), selected = 0,
             onSelect = {}, onBack = noop, onNew = noop, onClose = noop)
-        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.TopStart) {
-            Text("kepler@bluefin:~$ ▊", color = Color(0xFFD0D0D0), fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(8.dp))
+        Box(Modifier.weight(1f).fillMaxWidth().background(SelkieTheme.terminal.background), contentAlignment = Alignment.TopStart) {
+            Text("kepler@bluefin:~$ ▊", color = SelkieTheme.terminal.foreground, style = MonoStyle,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
         }
         ExtraKeys(ctrlOn = true, altOn = false, onCtrl = noop, onAlt = noop, send = {}, paste = noop, appCursor = { false })
+    }
+}
+
+// --- Shared components (the redesign's building blocks) ---
+
+@OptIn(ExperimentalLayoutApi::class)
+@PhonePreviews
+@Composable
+fun ComponentsPreview() = PreviewFrame {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Containers", style = MaterialTheme.typography.displaySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            ContainerMark("default")
+            ContainerMark("dev", style = MarkStyle.Tertiary)
+            ContainerMark("scratch", style = MarkStyle.Neutral)
+            Mark(style = MarkStyle.Tertiary) { androidx.compose.material3.Icon(SelkieIcons.Root, null) }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusChip("Running", tone = ChipTone.Ok)
+            StatusChip("GNOME desktop", tone = ChipTone.Secondary)
+            StatusChip("Unsigned image", tone = ChipTone.Bad, icon = SelkieIcons.Warn)
+            StatusChip("Stopped")
+            PlannedChip()
+        }
+        SectionTitle("Versions on this device")
+        Group {
+            GroupItem("In use", supporting = "Nov 12 · 4f9c2a7be1d0",
+                leading = { androidx.compose.material3.Icon(SelkieIcons.Check, null) })
+            GroupItem("Previous", supporting = "Oct 30 · 9a1e77c0d4b2", onClick = {},
+                trailing = { androidx.compose.material3.Icon(SelkieIcons.Chevron, null) })
+            DetailItem("Image", Images.BLUEFIN, mono = true)
+        }
+        SelkieCard(tone = CardTone.Tertiary) {
+            Text("Update available", style = MaterialTheme.typography.titleMedium)
+            MutedText("Bluefin LTS has a newer version. Its signature is checked before anything is downloaded.")
+        }
+        ProgressTrack(0.58f)
     }
 }
