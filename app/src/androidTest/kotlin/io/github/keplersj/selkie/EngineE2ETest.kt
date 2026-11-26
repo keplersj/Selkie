@@ -55,6 +55,18 @@ class EngineE2ETest {
         return p.exitValue() to text.toString()
     }
 
+    /** A host process Selkie keeps beside the sessions (keeper, spawner), output in [log]. */
+    private fun startHost(inv: Invocation, log: File): Process {
+        val pb = ProcessBuilder(inv.argv).redirectErrorStream(true).redirectOutput(log)
+        pb.environment().apply { clear(); putAll(inv.env) }
+        return pb.start()
+    }
+
+    private fun stopHost(p: Process) {
+        p.destroy()
+        if (!p.waitFor(5, TimeUnit.SECONDS)) p.destroyForcibly()
+    }
+
     /**
      * A second, older digest of centos-bootc stream10, from Quay's tag history (the previous
      * build the `stream10` tag pointed at), referenced by digest.
@@ -104,10 +116,12 @@ class EngineE2ETest {
             putString("SELKIE_METRIC", metric)
         })
 
-        // 2. commands inside proot with the same argv builder the terminal uses
+        // 2. commands inside proot with the same argv builder and overlays the terminal uses (the SELinux
+        // hiding matters: without it systemd --user cannot label, so cannot create, the session bus socket)
         val spec = (client.shellSpec() as DroidcOutcome.Success).shellSpec()
         val fake = GuestFiles.prepare(env, spec)
-        val b = ProotCommandBuilder(env, spec, fake)
+        val b = ProotCommandBuilder(env, spec, fake,
+            overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env))
         log("proot argv: ${b.command(listOf("/bin/true")).argv}")
         log("proot env: ${b.environment()}")
         for (probe in listOf(listOf("/usr/bin/droidc", "--version"), listOf("/bin/sh", "-c", "echo probe-ok"))) {
@@ -136,6 +150,30 @@ class EngineE2ETest {
         assertEquals("interfaces output: $ifs", 0, c6)
         assertTrue("ifshim not preloaded: $ifs", ifs.contains("/usr/lib/droidc/ifshim.so"))
         if (ifs.contains("names=")) assertTrue("no loopback listed: $ifs", Regex("names=.*\\blo\\b").containsMatchIn(ifs))
+
+        // sudo (droidc's spawner): the shim asks Selkie's host spawn-server, which runs proot -0.
+        assertTrue("shell-spec lists no sudo/su/pkexec shims", spec.shims.isNotEmpty())
+        val spawner = startHost(b.spawnServer(), File(env.cacheDir, "e2e-spawner.log"))
+        try {
+            val (c7, sudoId) = inGuest(b.command(listOf("/usr/bin/sudo", "/usr/bin/id", "-u")))
+            log("sudo id -u exit=$c7 output=$sudoId")
+            assertEquals("sudo output: $sudoId", 0, c7); assertEquals("0", sudoId.trim().lines().last())
+        } finally { stopHost(spawner) }
+
+        // One session bus per container (droidc user-services): Selkie's keeper, which two sessions join.
+        val keeper = startHost(b.userServices(), File(env.cacheDir, "e2e-user-services.log"))
+        try {
+            val joinBus = b.command(listOf("/usr/bin/droidc", "supervise", "--", "/bin/sh", "-c", "echo bus=\$DBUS_SESSION_BUS_ADDRESS"))
+                .let { it.copy(env = it.env + ("DROIDC_USER_SERVICES_WAIT" to "60")) }
+            val (c8, bus1) = inGuest(joinBus)
+            val (c9, bus2) = inGuest(joinBus)
+            log("user services: exit=$c8/$c9\n$bus1\n$bus2")
+            assertEquals("first session: $bus1", 0, c8); assertEquals("second session: $bus2", 0, c9)
+            val addr = { out: String -> out.lines().firstOrNull { it.startsWith("bus=") }?.removePrefix("bus=") }
+            assertTrue("no session bus: $bus1", !addr(bus1).isNullOrBlank())
+            assertEquals("sessions got different buses", addr(bus1), addr(bus2))
+            assertTrue("the keeper ended with a session", keeper.isAlive)
+        } finally { stopHost(keeper) }
 
         // 3. upgrade (no-op is fine)
         val up = client.run(listOf("upgrade"))

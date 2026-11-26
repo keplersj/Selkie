@@ -51,6 +51,8 @@ class ProotCommandBuilder(
         bind(resolvConf.path, "/etc/resolv.conf")
         for ((guest, host) in (fakeProc + overlays).toSortedMap()) bind(host.path, guest)
         for (b in spec.binds) bind(b.host, b.guest)
+        // sudo/su/pkexec: the guest droidc again, which asks the container's spawn-server for root.
+        for (shim in spec.shims) bind(env.droidcGuestBin.path, shim)
     }
 
     /** Environment for the proot process; proot passes it through to the guest command. */
@@ -60,17 +62,52 @@ class ProotCommandBuilder(
         // Guest journal and unit output to `adb logcat`. Opt-in upstream (logs can hold paths and user
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
+        if (spec.shims.isNotEmpty()) put("DROIDC_SPAWNER", env.spawnerSocket)
         put("PROOT_LOADER", env.prootLoader.path)
         put("PROOT_TMP_DIR", env.prootTmp.path)
     }
+
+    /** Whether the guest's sudo/su/pkexec need [spawnServer] (droidc lists shims only under proot). */
+    val hasShims: Boolean get() = spec.shims.isNotEmpty()
 
     /** Run an arbitrary guest command (non-interactive; used by tests and tools). */
     fun command(guestCmd: List<String>, rootMode: Boolean = false): Invocation =
         Invocation(prootArgs(rootMode) + guestCmd, environment())
 
-    /** Interactive login shell under the guest supervisor (starts dbus etc. first). */
-    fun interactiveShell(): Invocation =
-        command(listOf("/usr/bin/droidc", "supervise", "--", "/bin/bash", "-l"))
+    /**
+     * Interactive login shell under the guest supervisor, which joins the container's session bus (or
+     * `systemd --user`) from [userServices].
+     */
+    fun interactiveShell(): Invocation = command(listOf("/usr/bin/droidc", "supervise", "--", "/bin/bash", "-l"))
+        .let { it.copy(env = it.env + joinUserServices) }
+
+    /**
+     * The container's shared session bus or `systemd --user` (`droidc user-services`), which Selkie runs in
+     * a proot of its own: with `--kill-on-exit`, services started from one terminal's proot would end with
+     * that terminal. Every session's `droidc supervise` joins it; the first keeper's `--systemd` decides, so
+     * `auto` gives the desktop and terminals the image's user manager where it has one. `--stay`: Selkie
+     * stops it when the container's last session ends.
+     */
+    fun userServices(): Invocation {
+        val inv = command(listOf("/usr/bin/droidc", "user-services", "--systemd", "auto", "--stay"))
+        // The user manager starts the desktop's own services (the shell, PipeWire), so it needs the
+        // session's settings, not only the session.
+        return inv.copy(env = inv.env + sessionDefaults + systemdDiagnostics)
+    }
+
+    /**
+     * `droidc spawn-server` on the host, behind the guest's sudo/su/pkexec: for each request it starts this
+     * container's proot again as fake root (`-0`) with the requested command. Only our own uid is served.
+     */
+    fun spawnServer(): Invocation = Invocation(
+        listOf(env.droidcBin.path, "spawn-server", "--socket", env.spawnerSocket, "--uid", env.uid.toString(),
+            "--") + prootArgs(rootMode = true),
+        linkedMapOf(
+            "HOME" to env.filesDir.path, "TMPDIR" to env.cacheDir.path, "PATH" to "/system/bin",
+            // The launcher it starts is proot, which needs these as every other proot does.
+            "PROOT_LOADER" to env.prootLoader.path, "PROOT_TMP_DIR" to env.prootTmp.path,
+        ),
+    )
 
     /**
      * The deployment's graphical session (`droidc supervise --session`), shown by Selkie's compositor on
@@ -79,26 +116,36 @@ class ProotCommandBuilder(
     fun graphicalSession(width: Int, height: Int, scale: Float = 1f): Invocation {
         val inv = command(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto",
             "--width", width.toString(), "--height", height.toString(), "--scale", scale.toString()))
-        // droidc's own diagnostics for the user manager (its messages, units' output) in desktop.log.
-        val diag = if (BuildConfig.DEBUG) mapOf(
-            "DROIDC_JOURNAL" to "stderr", "DROIDC_SYSTEMD_STDIO" to "inherit",
-            "DROIDC_SYSTEMD_LOG_LEVEL" to "info",
-            "CGSHIM_TRACE" to "1",
-        ) else emptyMap()
-        return inv.copy(env = inv.env + diag + mapOf(
-            "WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY,
-            // No GPU is passed through yet: guest GL is Mesa's llvmpipe.
-            "LIBGL_ALWAYS_SOFTWARE" to "1",
-            // PipeWire's access module runs a Flatpak check on each client through /proc/<pid>/root,
-            // which Android hides; the check then fails and every client (Mutter's screen-cast stream,
-            // the portal) is restricted to nothing ("No node factory discovered"). The manager socket of
-            // PipeWire's default configuration skips that check. Flatpak apps get their own environment
-            // and keep using the checked socket.
-            "PIPEWIRE_REMOTE" to "pipewire-0-manager",
-        ))
+        return inv.copy(env = inv.env + systemdDiagnostics + sessionDefaults + joinUserServices +
+            mapOf("WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY))
     }
 
+    /** droidc's own diagnostics for the user manager (its messages, units' output), in debug builds. */
+    private val systemdDiagnostics: Map<String, String> get() = if (BuildConfig.DEBUG) mapOf(
+        "DROIDC_JOURNAL" to "stderr", "DROIDC_SYSTEMD_STDIO" to "inherit",
+        "DROIDC_SYSTEMD_LOG_LEVEL" to "info",
+        "CGSHIM_TRACE" to "1",
+    ) else emptyMap()
+
+    private val sessionDefaults: Map<String, String> = mapOf(
+        // No GPU is passed through yet: guest GL is Mesa's llvmpipe.
+        "LIBGL_ALWAYS_SOFTWARE" to "1",
+        // PipeWire's access module runs a Flatpak check on each client through /proc/<pid>/root,
+        // which Android hides; the check then fails and every client (Mutter's screen-cast stream,
+        // the portal) is restricted to nothing ("No node factory discovered"). The manager socket of
+        // PipeWire's default configuration skips that check. Flatpak apps get their own environment
+        // and keep using the checked socket.
+        "PIPEWIRE_REMOTE" to "pipewire-0-manager",
+    )
+
     companion object {
+        /**
+         * Seconds a session's `droidc supervise` waits for Selkie's [userServices] keeper before starting
+         * one itself (inside its own proot, so it would end with that session).
+         */
+        const val USER_SERVICES_WAIT_SECONDS = 10
+        private val joinUserServices = mapOf("DROIDC_USER_SERVICES_WAIT" to USER_SERVICES_WAIT_SECONDS.toString())
+
         /** Where `droidc supervise --systemd` looks for the cgroup shim (DROIDC_CGSHIM's default). */
         const val CGSHIM_GUEST_PATH = "/usr/lib/droidc/cgshim.so"
         /** Where `droidc supervise` looks for the network-interface shim (DROIDC_IFSHIM's default). */

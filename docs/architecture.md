@@ -5,6 +5,7 @@ MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
                                     |-- DroidcClient  --ProcessBuilder--> libdroidc.so (bionic) --json (NDJSON)
                                     |-- terminal sessions: TerminalSession(libproot.so ... droidc supervise -- bash -l)
                                     |-- desktop: NativeCompositor (libselkie_compositor.so) + libproot.so ... droidc supervise --session
+                                    |-- per container: libproot.so ... droidc user-services --stay, libdroidc.so spawn-server
                                     '-- StateFlow<ServiceState>  (operation, status, sessions)
 ```
 
@@ -62,7 +63,26 @@ binds from `droidc shell-spec`). Environment is built from scratch (shell-spec e
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
 The shim is bound in so `droidc supervise --systemd auto|on` can run the image's real `systemd --user` on a fake
-cgroup tree, but sessions do not pass it yet: on the CI emulator it produced no session bus.
+cgroup tree.
+
+### Per-container services
+
+A container's terminals and desktop share one session bus (or the image's `systemd --user`), so a bus a terminal
+started no longer dies with it, nor the desktop's with the desktop. `droidc supervise` would start that keeper
+inside its own proot, which `--kill-on-exit` ends with the session, so `SessionService` starts it itself, in a
+proot of its own (`ProotCommandBuilder.userServices`: `droidc user-services --systemd auto --stay`, output in
+`user-services[-<container>].log`) before a container's first session, and gives every session
+`DROIDC_USER_SERVICES_WAIT=10`. The first keeper's `--systemd` decides for the container, so terminals get the
+user manager too where the image has one.
+
+The guest's `sudo`, `su` and `pkexec` are the guest droidc (`shell-spec`'s `shims`, bound like
+`/usr/bin/droidc`). They ask `droidc spawn-server` on the host, over the abstract socket in `DROIDC_SPAWNER`
+(`selkie-<uid>-spawner-<container>`), to run the command in a second proot of the same container with `-0`.
+The server takes requests from the app's own uid only. This is proot's fake root, as in the root-only commands
+above, not real privilege.
+
+Both run while the container has a terminal or the desktop and stop with the last one. Root-mode terminals
+(`droidc enter` through `su`) use neither: they are real root, and chroot has no shims.
 Debuggable builds also set `DROIDC_LOGCAT=auto`, so the guest's journal and unit output show up in `adb logcat`
 (`droidc log` writes a line from a script); release builds leave it off because logs can hold paths and user names.
 

@@ -17,6 +17,17 @@ diag() {
   echo "::group::droidc stderr log (app cacheDir/droidc.log)"
   adb shell run-as $PKG cat cache/droidc.log 2>&1 | tail -300 | tee "$OUT/droidc.log"
   echo "::endgroup::"
+  echo "::group::container services (Selkie's user-services keeper and spawn-server)"
+  for f in cache/e2e-user-services.log cache/e2e-spawner.log cache/user-services.log cache/spawner.log; do
+    echo "== $f"; adb shell run-as $PKG cat "$f" 2>&1 | tail -150
+  done
+  # One string for adb shell, so the device's sh sees the quotes (split, `sh -c cat` waited on stdin forever).
+  echo "== guest droidc/user-services.log"
+  timeout 60 adb shell "run-as $PKG find files -maxdepth 9 -path '*/droidc/user-services.log' -exec tail -150 {} +" </dev/null 2>&1
+  echo "::endgroup::"
+  echo "::group::/etc/hostname in each deployment (the guest's identity overlay binds it)"
+  timeout 60 adb shell "run-as $PKG find files/droidc -maxdepth 6 -path '*/rootfs/etc/hostname' -exec ls -la {} +" </dev/null 2>&1
+  echo "::endgroup::"
   echo "::group::app storage"
   adb shell run-as $PKG ls -la files files/droidc cache 2>&1 | head -60
   adb shell run-as $PKG ls -la files/droidc/staging 2>&1 | head -20
