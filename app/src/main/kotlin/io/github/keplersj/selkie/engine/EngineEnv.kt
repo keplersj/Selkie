@@ -86,6 +86,16 @@ data class EngineEnv(
     val waylandSocket: File get() = File(guestRuntimeDir, WAYLAND_DISPLAY)
     /** Output of the proot process running the graphical session. */
     val desktopLog: File get() = File(cacheDir, logName("desktop"))
+    /** Output of the container's `droidc user-services` keeper (its session bus or `systemd --user`). */
+    val userServicesLog: File get() = File(cacheDir, logName("user-services"))
+    /** Output of the container's `droidc spawn-server`, behind the guest's sudo/su/pkexec. */
+    val spawnerLog: File get() = File(cacheDir, logName("spawner"))
+
+    /**
+     * The abstract socket of the container's spawn-server (the guest's `DROIDC_SPAWNER`). Abstract names
+     * are shared by every app on the device, so it carries the app's uid as well as the container.
+     */
+    val spawnerSocket: String get() = "selkie-$uid-spawner-$container"
 
     /**
      * The guest's `/etc/hostname`. A named container is called by its name; the default one, which has

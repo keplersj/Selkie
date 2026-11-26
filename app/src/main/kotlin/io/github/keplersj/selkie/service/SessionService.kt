@@ -33,6 +33,7 @@ import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.RootAccess
 import io.github.keplersj.selkie.proot.EnterCommandBuilder
 import io.github.keplersj.selkie.proot.GuestFiles
+import io.github.keplersj.selkie.proot.Invocation
 import io.github.keplersj.selkie.proot.ProotCommandBuilder
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -121,6 +122,7 @@ class SessionService : Service() {
     override fun onDestroy() {
         stopDesktop()
         terminals.values.forEach { it.session.finishIfRunning() }
+        stopAllServices()
         scope.cancel()
         super.onDestroy()
     }
@@ -199,12 +201,17 @@ class SessionService : Service() {
      */
     fun removeContainer(name: String, onDone: (String?) -> Unit = {}) {
         if (name == EngineEnv.DEFAULT_CONTAINER || _state.value.operation is Operation.Running) return
+        // Taken first, so closing its sessions doesn't stop them in the background while droidc deletes.
+        val left = takeServices(name)
         terminals.values.filter { it.container == name }.forEach { closeSession(it.session) }
         if (_state.value.desktopContainer == name) stopDesktop()
         // A root-mode container's files belong to the image's owners, so only root can delete them.
         val asRoot = newEnv(name).useRoot
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) { client(EngineEnv.DEFAULT_CONTAINER).removeContainer(name, asRoot) }
+            val outcome = withContext(Dispatchers.IO) {
+                left?.let { stopServices(it, wait = true) }
+                client(EngineEnv.DEFAULT_CONTAINER).removeContainer(name, asRoot)
+            }
             if (outcome is DroidcOutcome.Success) setRootModeEnabled(this@SessionService, name, false)
             onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
             if (_state.value.container == name) selectContainer(EngineEnv.DEFAULT_CONTAINER) else refreshStatus()
@@ -347,33 +354,43 @@ class SessionService : Service() {
     suspend fun openSession(): TerminalSession {
         val env = newEnv()
         val container = env.container
-        val outcome = withContext(Dispatchers.IO) { DroidcClient(env).shellSpec() }
-        val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
-            ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
-        val id = UUID.randomUUID().toString()
-        val pidFile = File(env.rootSessions, "$id.pid")
-        val inv = withContext(Dispatchers.IO) {
-            val fake = GuestFiles.prepare(env, spec)
-            if (env.useRoot) {
-                env.rootSessions.mkdirs()
-                EnterCommandBuilder(env, spec, overlays = GuestFiles.prepareSelinuxHiding(env)).interactiveShell(pidFile)
-            } else {
-                ProotCommandBuilder(env, spec, fake,
-                    overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
-                    guestEnv = GuestFiles.guestEnv(env, spec)).interactiveShell()
+        // Until the terminal is in [terminals], keep this container's services from looking idle.
+        starting[container] = (starting[container] ?: 0) + 1
+        try {
+            val outcome = withContext(Dispatchers.IO) { DroidcClient(env).shellSpec() }
+            val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
+                ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
+            val id = UUID.randomUUID().toString()
+            val pidFile = File(env.rootSessions, "$id.pid")
+            val inv = withContext(Dispatchers.IO) {
+                val fake = GuestFiles.prepare(env, spec)
+                if (env.useRoot) {
+                    env.rootSessions.mkdirs()
+                    EnterCommandBuilder(env, spec, overlays = GuestFiles.prepareSelinuxHiding(env)).interactiveShell(pidFile)
+                } else {
+                    val b = ProotCommandBuilder(env, spec, fake,
+                        overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
+                        guestEnv = GuestFiles.guestEnv(env, spec))
+                    ensureServices(env, b)
+                    b.interactiveShell()
+                }
             }
+            if (env.useRoot) rootPidFiles[id] = pidFile
+            val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
+                inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)
+            terminals[id] = Term(container, session)
+            val n = terminals.values.count { it.container == container }
+            session.mSessionName = if (env.isDefaultContainer) "Session $n" else "$container $n"
+            startForegroundService(Intent(this, SessionService::class.java))
+            publishSessions()
+            updateForeground(force = true)
+            keepUptimeCurrent()
+            return session
+        } finally {
+            val n = (starting[container] ?: 1) - 1
+            if (n > 0) starting[container] = n else starting.remove(container)
+            stopIdleServices()
         }
-        if (env.useRoot) rootPidFiles[id] = pidFile
-        val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
-            inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)
-        terminals[id] = Term(container, session)
-        val n = terminals.values.count { it.container == container }
-        session.mSessionName = if (env.isDefaultContainer) "Session $n" else "$container $n"
-        startForegroundService(Intent(this, SessionService::class.java))
-        publishSessions()
-        updateForeground(force = true)
-        keepUptimeCurrent()
-        return session
     }
 
     fun terminalSessions(): List<TerminalSession> = terminals.values.map { it.session }
@@ -393,6 +410,7 @@ class SessionService : Service() {
         }
         _state.update { it.copy(sessions = infos) }
         updateForeground()
+        stopIdleServices()
     }
 
     private fun runningSessions() = terminals.values.count { it.session.isRunning }
@@ -453,10 +471,11 @@ class SessionService : Service() {
                     // Root mode leaves the files image-owned, which the app-uid proot below can't write to.
                     if (env.useRoot) error("The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
                     val fake = GuestFiles.prepare(env, spec)
-                    val inv = ProotCommandBuilder(env, spec, fake,
+                    val b = ProotCommandBuilder(env, spec, fake,
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
-                        .graphicalSession(width, height)
+                    ensureServices(env, b)
+                    val inv = b.graphicalSession(width, height)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
@@ -471,6 +490,7 @@ class SessionService : Service() {
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
                     desktopContainer = null) }
                 updateForeground(force = true)
+                stopIdleServices()
                 return@launch
             }
             desktop = p
@@ -488,6 +508,7 @@ class SessionService : Service() {
                     else DesktopState.Failed("The session exited with status $code", logTail(env)),
                     desktopContainer = null) }
                 updateForeground(force = true)
+                stopIdleServices()
             }
         }
     }
@@ -505,6 +526,71 @@ class SessionService : Service() {
         stopCompositor()
         _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null) }
         updateForeground(force = true)
+        stopIdleServices()
+    }
+
+    // ---------------- per-container host services ----------------
+
+    /**
+     * Host processes a container's sessions share, started with its first terminal or desktop and stopped
+     * once it has neither: the `droidc user-services` keeper (one session bus or `systemd --user` for all
+     * of them, which no single session's proot can hold, since `--kill-on-exit` takes it along) and the
+     * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither.
+     */
+    private class ContainerServices(val keeper: Process?, val spawner: Process?) {
+        val alive: Boolean get() = keeper?.isAlive != false && spawner?.isAlive != false
+    }
+    /** By container; guarded by itself, since sessions start on IO threads. */
+    private val services = HashMap<String, ContainerServices>()
+    /** Containers with a terminal still being set up (main thread), which [stopIdleServices] leaves alone. */
+    private val starting = HashMap<String, Int>()
+
+    /** Starts [env]'s container services unless they run. Blocking: call on IO, before the session starts. */
+    private fun ensureServices(env: EngineEnv, b: ProotCommandBuilder) {
+        synchronized(services) {
+            val cur = services[env.container]
+            if (cur != null && cur.alive) return
+            // One of them died (an image without a bus, say): start both again, so the next session has them.
+            cur?.let { stopServices(it, wait = true) }
+            services[env.container] = ContainerServices(
+                keeper = startService(b.userServices(), env.userServicesLog),
+                spawner = if (b.hasShims) startService(b.spawnServer(), env.spawnerLog) else null,
+            )
+        }
+    }
+
+    private fun startService(inv: Invocation, log: File): Process? = try {
+        val pb = ProcessBuilder(inv.argv).redirectErrorStream(true).redirectOutput(log)
+        pb.environment().apply { clear(); putAll(inv.env) }
+        pb.start()
+    } catch (e: Exception) {
+        // Sessions still work: supervise starts its own keeper after the wait, and sudo says why it can't.
+        android.util.Log.w(TAG, "cannot start ${inv.argv.getOrNull(inv.argv.indexOf("--") + 1)}", e)
+        null
+    }
+
+    private fun takeServices(container: String): ContainerServices? = synchronized(services) { services.remove(container) }
+
+    /** Stops the services of containers with no running terminal, no desktop and no terminal on its way. */
+    private fun stopIdleServices() {
+        val busy = terminals.values.filter { it.session.isRunning }.mapTo(HashSet()) { it.container }
+        _state.value.desktopContainer?.let { busy += it }
+        busy += starting.keys
+        val idle = synchronized(services) { services.keys.filter { it !in busy }.map { services.remove(it)!! } }
+        idle.forEach { stopServices(it, wait = false) }
+    }
+
+    private fun stopAllServices() {
+        val all = synchronized(services) { services.values.toList().also { services.clear() } }
+        all.forEach { stopServices(it, wait = false) }
+    }
+
+    /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
+    private fun stopServices(s: ContainerServices, wait: Boolean) {
+        val procs = listOfNotNull(s.keeper, s.spawner)
+        procs.forEach { it.destroy() }
+        val reap = { procs.forEach { if (!it.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) it.destroyForcibly() } }
+        if (wait) reap() else Thread(reap).start()
     }
 
     fun dismissDesktopError() {

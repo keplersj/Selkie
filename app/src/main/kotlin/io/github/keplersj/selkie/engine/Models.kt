@@ -180,6 +180,8 @@ data class ShellSpec(
     val cwd: String = "/root",
     @SerialName("session_label") val sessionLabel: String? = null,
     val session: GraphicalSession? = null,
+    /** Guest paths to bind the guest droidc over: the sudo/su/pkexec shims (proot only). */
+    val shims: List<String> = emptyList(),
 )
 
 /** Final outcome of a droidc invocation. */

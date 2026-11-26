@@ -37,6 +37,48 @@ class ProotCommandBuilderTest {
         assertEquals("/run/droidc/root", inv.env["DROIDC_ROOT"])
     }
 
+    @Test fun sessionsJoinTheContainersUserServices() {
+        val b = ProotCommandBuilder(TestEnv.env(), spec)
+        assertEquals("10", b.interactiveShell().env["DROIDC_USER_SERVICES_WAIT"])
+        assertEquals("10", b.graphicalSession(800, 600).env["DROIDC_USER_SERVICES_WAIT"])
+        val keeper = b.userServices()
+        assertEquals(listOf("/usr/bin/droidc", "user-services", "--systemd", "auto", "--stay"), keeper.argv.takeLast(5))
+        assertTrue("--kill-on-exit" in keeper.argv)
+        assertNull(keeper.env["DROIDC_USER_SERVICES_WAIT"])
+        // The user manager starts the desktop's services, so it gets the session's settings.
+        assertEquals("1", keeper.env["LIBGL_ALWAYS_SOFTWARE"])
+        assertEquals("pipewire-0-manager", keeper.env["PIPEWIRE_REMOTE"])
+    }
+
+    @Test fun shimsAreTheGuestDroidcAndAskTheSpawner() {
+        val env = TestEnv.env()
+        val shims = listOf("/usr/bin/sudo", "/usr/bin/su", "/usr/bin/pkexec")
+        val b = ProotCommandBuilder(env, spec.copy(shims = shims))
+        val inv = b.interactiveShell()
+        for (s in shims) assertTrue("$s not bound", inv.argv.windowed(2).contains(listOf("-b", "/lib/libdroidc-guest.so:$s")))
+        assertEquals(env.spawnerSocket, inv.env["DROIDC_SPAWNER"])
+        assertTrue(b.hasShims)
+
+        val server = b.spawnServer()
+        val launcher = server.argv.dropWhile { it != "--" }.drop(1)
+        assertEquals(listOf("/lib/libdroidc.so", "spawn-server", "--socket", env.spawnerSocket, "--uid", "10234", "--"),
+            server.argv.take(7))
+        assertEquals(b.prootArgs(rootMode = true), launcher)
+        assertEquals("/lib/libproot-loader.so", server.env["PROOT_LOADER"])
+        assertNull("the server's own environment is the host's, not the guest's", server.env["DROIDC_ROOT"])
+    }
+
+    @Test fun noShimsNoSpawner() {
+        val b = ProotCommandBuilder(TestEnv.env(), spec)
+        assertFalse(b.hasShims)
+        assertNull(b.interactiveShell().env["DROIDC_SPAWNER"])
+        assertFalse(b.interactiveShell().argv.any { it.endsWith(":/usr/bin/sudo") })
+    }
+
+    @Test fun spawnerSocketsDifferByContainer() {
+        assertNotEquals(TestEnv.env().spawnerSocket, TestEnv.env().forContainer("work").spawnerSocket)
+    }
+
     @Test fun rootModeUsesDashZero() {
         val a = ProotCommandBuilder(TestEnv.env(), spec).prootArgs(rootMode = true)
         assertTrue("-0" in a); assertFalse("-i" in a); assertTrue("--link2symlink" in a)
