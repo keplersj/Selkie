@@ -17,6 +17,13 @@ diag() {
   echo "::group::droidc stderr log (app cacheDir/droidc.log)"
   adb shell run-as $PKG cat cache/droidc.log 2>&1 | tail -300 | tee "$OUT/droidc.log"
   echo "::endgroup::"
+  echo "::group::container services (Selkie's user-services keeper and spawn-server)"
+  for f in cache/e2e-user-services.log cache/e2e-spawner.log cache/user-services.log cache/spawner.log; do
+    echo "== $f"; adb shell run-as $PKG cat "$f" 2>&1 | tail -150
+  done
+  echo "== guest droidc/user-services.log"
+  adb shell run-as $PKG sh -c 'cat files/guest/run/user/*/droidc/user-services.log' 2>&1 | tail -150
+  echo "::endgroup::"
   echo "::group::app storage"
   adb shell run-as $PKG ls -la files files/droidc cache 2>&1 | head -60
   adb shell run-as $PKG ls -la files/droidc/staging 2>&1 | head -20
