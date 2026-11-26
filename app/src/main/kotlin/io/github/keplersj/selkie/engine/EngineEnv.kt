@@ -29,6 +29,11 @@ data class EngineEnv(
     val droidcGuestBin: File get() = File(nativeLibDir, "libdroidc-guest.so")
     /** glibc LD_PRELOAD shim that lets the guest's `systemd --user` run without a cgroup filesystem. */
     val cgshimLib: File get() = File(nativeLibDir, "libcgshim.so")
+    /**
+     * glibc LD_PRELOAD shim that lists network interfaces (getifaddrs, if_nameindex) where Android
+     * denies netlink to apps. `droidc supervise` preloads it for everything it starts.
+     */
+    val ifshimLib: File get() = File(nativeLibDir, "libifshim.so")
     val prootBin: File get() = File(nativeLibDir, "libproot.so")
     val prootLoader: File get() = File(nativeLibDir, "libproot-loader.so")
 

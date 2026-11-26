@@ -25,6 +25,7 @@ class ProotCommandBuilderTest {
             "-b", "/dev:/dev", "-b", "/proc:/proc", "-b", "/sys:/sys",
             "-b", "/lib/libdroidc-guest.so:/usr/bin/droidc",
             "-b", "/lib/libcgshim.so:/usr/lib/droidc/cgshim.so",
+            "-b", "/lib/libifshim.so:/usr/lib/droidc/ifshim.so",
             "-b", "/files/guest/cgroup:/sys/fs/cgroup",
             "-b", "/files/guest/tmp:/tmp", "-b", "/files/guest/run:/run", "-b", "/files/guest/shm:/dev/shm",
             "-b", "/files/guest/generated/resolv.conf:/etc/resolv.conf",
