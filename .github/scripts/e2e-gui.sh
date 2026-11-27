@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, and a GTK app
-<<<<<<< HEAD
-# nested directly in Selkie's compositor), then GNOME's display scale at tablet and phone sizes, then
-# pulls its screenshots and logs.
-=======
 # nested directly in Selkie's compositor), then pulls its screenshots and logs.
->>>>>>> origin/claude/host-link
 # usage: e2e-gui.sh <apk-dir> <out-dir>
 set -u
 APKS=${1:?apk dir}; OUT=${2:?out dir}
@@ -36,21 +31,6 @@ echo "== DesktopE2ETest (Bluefin LTS download + unpack, then GNOME on llvmpipe: 
 timeout 7800 adb shell am instrument -w -e class $PKG.DesktopE2ETest $RUNNER | tee "$OUT/gui.txt"
 grep -q '^OK (' "$OUT/gui.txt" || { echo "desktop test failed"; rc=1; }
 
-<<<<<<< HEAD
-# Display scale (DesktopE2ETest#gnomeScale): GNOME's scale follows Android's density and survives a
-# change made like GNOME Settings does, on a tablet and on a phone screen.
-scale_run() { # form size density
-  echo "== display scale: $1 ($2 at ${3}dpi)"
-  adb shell wm size "$2"; adb shell wm density "$3"; sleep 5
-  timeout 2700 adb shell am instrument -w -e class "$PKG.DesktopE2ETest#gnomeScale" -e scale "$1" $RUNNER | tee "$OUT/scale-$1.txt"
-  grep -q '^OK (' "$OUT/scale-$1.txt" || { echo "display scale test ($1) failed"; rc=1; }
-}
-scale_run tablet 2560x1600 320
-scale_run phone 1080x2340 420
-adb shell wm size 1280x800; adb shell wm density 160
-
-=======
->>>>>>> origin/claude/host-link
 adb shell screencap -p /sdcard/final.png && adb pull /sdcard/final.png "$OUT/screen-final.png" || true
 adb pull "/sdcard/Android/data/$PKG/files/." "$OUT/screenshots" || true
 adb shell run-as $PKG cat cache/desktop.log > "$OUT/desktop.log" 2>&1 || true
@@ -67,6 +47,8 @@ if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
   echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
   grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
 fi
+echo "::group::links and network: the guest's xdg-open, NetworkManager stand-in and the Android side"
+grep -a -h -E "SELKIE_GUEST (links|network)|SelkieLink" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"
 echo "::group::sound: audio-out.log, the guest's tone probe, Selkie's player"
 tail -40 "$OUT/audio-out.log" | cut -c1-400
 grep -a -h -E "SELKIE_GUEST sound|SELKIE_PROCS sound|SelkieAudio|AudioTrack" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"

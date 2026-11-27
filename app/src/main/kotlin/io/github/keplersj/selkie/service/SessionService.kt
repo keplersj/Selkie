@@ -38,8 +38,11 @@ import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
+import io.github.keplersj.selkie.link.BatteryWatcher
+import io.github.keplersj.selkie.link.NetworkWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.platform.RootAccess
@@ -57,6 +60,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -74,6 +79,10 @@ class SessionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(ServiceState())
     val state: StateFlow<ServiceState> = _state.asStateFlow()
+
+    private val _keepAwake = MutableStateFlow(false)
+    /** A desktop app asks the screen to stay on (an idle inhibitor, through `droidc host-link`). */
+    val keepAwake: StateFlow<Boolean> = _keepAwake.asStateFlow()
 
     private var opJob: Job? = null
     /** The watch remote: a no-op in builds without Play services. */
@@ -595,6 +604,8 @@ class SessionService : Service() {
     /** The desktop's channel to Android (`droidc host-link`), while the desktop runs. */
     @Volatile private var link: GuestLink? = null
     private var appearanceWatcher: AppearanceWatcher? = null
+    private var batteryWatcher: BatteryWatcher? = null
+    private var networkWatcher: NetworkWatcher? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -736,18 +747,43 @@ class SessionService : Service() {
         scope.launch(Dispatchers.Main) {
             if (link != null && appearanceWatcher == null)
                 appearanceWatcher = AppearanceWatcher(this@SessionService) { sendAppearance() }.apply { start() }
+            if (link != null && batteryWatcher == null)
+                batteryWatcher = BatteryWatcher(this@SessionService) { line -> link?.send(line) }.apply {
+                    start()
+                    current?.let { link?.send(it) }
+                }
+            if (link != null && networkWatcher == null)
+                networkWatcher = NetworkWatcher(this@SessionService) { line -> link?.send(line) }.apply {
+                    start()
+                    current?.let { link?.send(it) }
+                }
         }
     }
 
     private fun stopLink() {
         link?.stop()
         link = null
-        scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
+        _keepAwake.value = false
+        scope.launch(Dispatchers.Main) {
+            appearanceWatcher?.stop(); appearanceWatcher = null
+            batteryWatcher?.stop(); batteryWatcher = null
+            networkWatcher?.stop(); networkWatcher = null
+        }
     }
 
     private fun onLinkMessage(m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> sendAppearance()
+            "ready" -> {
+                sendAppearance()
+                // Android locks and blanks the device; GNOME's own lock would be a second one.
+                link?.send("""{"kind":"screen-lock","by_android":true}""")
+                batteryWatcher?.current?.let { link?.send(it) }
+                networkWatcher?.current?.let { link?.send(it) }
+            }
+            "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
+            "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
+                scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
+            }
         }
     }
 
