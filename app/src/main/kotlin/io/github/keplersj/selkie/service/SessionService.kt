@@ -18,6 +18,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import io.github.keplersj.selkie.MainActivity
 import io.github.keplersj.selkie.audio.GuestAudio
+import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.DroidcClient
 import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.DroidcEvent
@@ -27,6 +28,7 @@ import io.github.keplersj.selkie.engine.ErrorKind
 import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
+import io.github.keplersj.selkie.engine.apps
 import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.setRootModeEnabled
@@ -172,8 +174,18 @@ class SessionService : Service() {
                 val session = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec().session }.getOrNull() }
                 if (_state.value.container != container) return@launch
                 _state.update { it.copy(graphical = session) }
+                val apps = withContext(Dispatchers.IO) { c.apps() }
+                if (_state.value.container != container) return@launch
+                _state.update {
+                    when (apps) {
+                        is DroidcOutcome.Success -> runCatching { apps.apps() }.fold(
+                            { l -> it.copy(apps = l, appsError = null) },
+                            { e -> it.copy(apps = null, appsError = e.message ?: "unreadable app list") })
+                        is DroidcOutcome.Failure -> it.copy(apps = null, appsError = apps.error.message)
+                    }
+                }
             } else {
-                _state.update { it.copy(graphical = null) }
+                _state.update { it.copy(graphical = null, apps = null, appsError = null) }
             }
         }
     }
@@ -192,7 +204,7 @@ class SessionService : Service() {
         prefs.edit().putString(KEY_CONTAINER, name).apply()
         val root = newEnv(name).rootMode
         _state.update { it.copy(container = name, status = null, statusError = null, statusLoaded = false, graphical = null,
-            rootMode = root, rootMessage = null) }
+            apps = null, appsError = null, rootMode = root, rootMessage = null) }
     }
 
     /**
@@ -487,17 +499,48 @@ class SessionService : Service() {
     /** The running compositor, for the view that shows it. */
     fun compositor(): NativeCompositor? = compositor
 
+    /** The app [startDesktop] opens on its own instead of the session; see [prepareApp]. */
+    @Volatile private var pendingApp: AppEntry? = null
+
+    /**
+     * Has the next [startDesktop] open [app] on its own, full screen, instead of the whole desktop.
+     * Returns why it can't, or null. The compositor shows one thing at a time, so an app waits until
+     * the desktop or another app is closed; the same app already showing is fine.
+     */
+    fun prepareApp(app: AppEntry): String? {
+        val st = _state.value
+        if (st.desktop is DesktopState.Starting || st.desktop is DesktopState.Running) {
+            if (st.desktopContainer == st.container && st.desktopApp?.id == app.id) return null
+            val what = st.desktopApp?.name ?: "the desktop"
+            return "Close $what in ${st.desktopContainer} first. Selkie shows one at a time."
+        }
+        if (st.rootMode) return "Apps don't open in root mode yet. Turn root mode off for this container to use them."
+        pendingApp = app
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopApp = app) }
+        return null
+    }
+
+    /** The next [startDesktop] starts the whole desktop (undoes [prepareApp] if it never ran). */
+    fun prepareDesktop() {
+        val st = _state.value
+        if (st.desktop is DesktopState.Starting || st.desktop is DesktopState.Running) return
+        pendingApp = null
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopApp = null) }
+    }
+
     /**
      * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
      * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
-     * display's density; see [DisplayScale]). The session
-     * keeps running without the activity; the compositor holds frames while nothing shows them.
+     * display's density; see [DisplayScale]). After [prepareApp], the app runs instead, on its own.
+     * The session keeps running without the activity; the compositor holds frames while nothing
+     * shows them.
      */
     fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
-        _state.update { it.copy(desktop = DesktopState.Starting, desktopContainer = env.container) }
+        val app = pendingApp
+        _state.update { it.copy(desktop = DesktopState.Starting, desktopContainer = env.container, desktopApp = app) }
         startForegroundService(Intent(this, SessionService::class.java))
         updateForeground(force = true)
         desktopJob = scope.launch {
@@ -506,16 +549,17 @@ class SessionService : Service() {
                     val outcome = DroidcClient(env).shellSpec()
                     val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
                         ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
-                    if (spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")
+                    if (app == null && spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")
                     // Root mode leaves the files image-owned, which the app-uid proot below can't write to.
-                    if (env.useRoot) error("The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
+                    if (env.useRoot) error(if (app != null) "Apps don't open in root mode yet. Turn root mode off for this container to use them."
+                        else "The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
                     val fake = GuestFiles.prepare(env, spec)
                     val b = ProotCommandBuilder(env, spec, fake,
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
                     val (sw, sh) = DisplayScale.sessionSize(width, height)
-                    val inv = b.graphicalSession(sw, sh, scale)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
@@ -534,7 +578,7 @@ class SessionService : Service() {
                 return@launch
             }
             desktop = p
-            android.util.Log.i(TAG, "desktop session started at ${width}x$height")
+            android.util.Log.i(TAG, "${app?.id ?: "desktop session"} started at ${width}x$height")
             _state.update { it.copy(desktop = DesktopState.Running(width, height)) }
             updateForeground(force = true)
             keepUptimeCurrent()
@@ -544,10 +588,12 @@ class SessionService : Service() {
                 desktop = null
                 stopAudio()
                 stopCompositor()
+                // A failed app stays prepared, so Try again opens it again.
+                if (code == 0) pendingApp = null
                 _state.update { it.copy(desktop =
                     if (code == 0) DesktopState.Stopped
-                    else DesktopState.Failed("The session exited with status $code", logTail(env)),
-                    desktopContainer = null) }
+                    else DesktopState.Failed("${app?.name ?: "The session"} exited with status $code", logTail(env)),
+                    desktopContainer = null, desktopApp = if (code == 0) null else app) }
                 updateForeground(force = true)
                 stopIdleServices()
             }
@@ -566,7 +612,8 @@ class SessionService : Service() {
             Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
         }
         stopCompositor()
-        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null) }
+        pendingApp = null
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopApp = null) }
         updateForeground(force = true)
         stopIdleServices()
     }
@@ -644,7 +691,10 @@ class SessionService : Service() {
     }
 
     fun dismissDesktopError() {
-        if (_state.value.desktop is DesktopState.Failed) _state.update { it.copy(desktop = DesktopState.Stopped) }
+        if (_state.value.desktop is DesktopState.Failed) {
+            pendingApp = null
+            _state.update { it.copy(desktop = DesktopState.Stopped, desktopApp = null) }
+        }
     }
 
     private fun stopCompositor() {

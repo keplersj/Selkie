@@ -130,6 +130,27 @@ class ProotCommandBuilder(
             mapOf("WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY))
     }
 
+    /**
+     * One app of the deployment on its own ([argv] from its desktop entry), shown full screen by Selkie's
+     * compositor like the session, with the session's services but no desktop around it.
+     */
+    fun app(argv: List<String>): Invocation {
+        require(argv.isNotEmpty()) { "no command" }
+        val inv = command(listOf("/usr/bin/droidc", "supervise", "--systemd", "auto", "--") + argv)
+        return inv.copy(env = inv.env + systemdDiagnostics + sessionDefaults + joinUserServices + waylandOnly +
+            mapOf("WAYLAND_DISPLAY" to EngineEnv.WAYLAND_DISPLAY))
+    }
+
+    /** Toolkits that would try X11 first (there is no X server) go straight to Wayland. */
+    private val waylandOnly: Map<String, String> = mapOf(
+        "XDG_SESSION_TYPE" to "wayland",
+        "GDK_BACKEND" to "wayland",
+        "QT_QPA_PLATFORM" to "wayland",
+        "SDL_VIDEODRIVER" to "wayland",
+        "MOZ_ENABLE_WAYLAND" to "1",
+        "ELECTRON_OZONE_PLATFORM_HINT" to "wayland",
+    )
+
     /** droidc's own diagnostics for the user manager (its messages, units' output), in debug builds. */
     private val systemdDiagnostics: Map<String, String> get() = if (BuildConfig.DEBUG) mapOf(
         "DROIDC_JOURNAL" to "stderr", "DROIDC_SYSTEMD_STDIO" to "inherit",

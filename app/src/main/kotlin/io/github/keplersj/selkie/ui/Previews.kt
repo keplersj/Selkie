@@ -19,7 +19,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.github.keplersj.selkie.engine.AppAction
+import io.github.keplersj.selkie.engine.AppEntry
+import io.github.keplersj.selkie.engine.AppIcon
+import io.github.keplersj.selkie.engine.AppList
+import io.github.keplersj.selkie.engine.AppOrigin
 import io.github.keplersj.selkie.engine.ContainerDeployment
+import io.github.keplersj.selkie.engine.HiddenApp
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DeployStats
@@ -102,6 +108,40 @@ object Fixtures {
     val homeEmpty = ServiceState(statusLoaded = true)
     /** Root mode offered, for the Settings tab. */
     val homeSettings = homeInstalled.copy(suFound = true)
+    val textEditor = AppEntry(
+        id = "org.gnome.TextEditor.desktop", name = "Text Editor", comment = "Edit text files",
+        categories = listOf("GNOME", "GTK", "Utility", "TextEditor"), mimeTypes = listOf("text/plain", "text/markdown"),
+        exec = "gnome-text-editor %U", argv = listOf("gnome-text-editor"),
+        path = "/usr/share/applications/org.gnome.TextEditor.desktop",
+        icon = AppIcon("org.gnome.TextEditor"),
+        actions = listOf(AppAction("new-window", "New Window", listOf("gnome-text-editor", "--new-window"))),
+    )
+    val apps = AppList(container = "default", apps = listOf(
+        AppEntry(id = "org.gnome.Calculator.desktop", name = "Calculator", comment = "Perform arithmetic, scientific or financial calculations",
+            categories = listOf("GNOME", "GTK", "Utility", "Calculator"), origin = AppOrigin.FLATPAK,
+            argv = listOf("/usr/bin/flatpak", "run", "org.gnome.Calculator"),
+            path = "/var/lib/flatpak/exports/share/applications/org.gnome.Calculator.desktop"),
+        AppEntry(id = "org.gnome.Nautilus.desktop", name = "Files", comment = "Access and organize files",
+            categories = listOf("GNOME", "GTK", "Utility", "Core", "FileManager"), argv = listOf("nautilus", "--new-window"),
+            path = "/usr/share/applications/org.gnome.Nautilus.desktop"),
+        AppEntry(id = "htop.desktop", name = "Htop", comment = "Show system processes", terminal = true,
+            categories = listOf("System", "Monitor"), argv = listOf("htop"), path = "/usr/share/applications/htop.desktop"),
+        AppEntry(id = "org.gnome.Loupe.desktop", name = "Image Viewer", comment = "View images",
+            categories = listOf("GNOME", "GTK", "Graphics", "Viewer"), argv = listOf("loupe"),
+            path = "/usr/share/applications/org.gnome.Loupe.desktop"),
+        AppEntry(id = "org.gnome.Settings.desktop", name = "Settings", categories = listOf("GNOME", "GTK", "Settings"),
+            onlyShowIn = listOf("GNOME"), needsDesktop = true, argv = listOf("gnome-control-center"),
+            path = "/usr/share/applications/org.gnome.Settings.desktop"),
+        AppEntry(id = "org.gnome.SystemMonitor.desktop", name = "System Monitor", comment = "View current processes and monitor system state",
+            categories = listOf("GNOME", "GTK", "System", "Monitor"), argv = listOf("gnome-system-monitor"),
+            path = "/usr/share/applications/org.gnome.SystemMonitor.desktop"),
+        textEditor,
+        AppEntry(id = "dev.zed.Zed.desktop", name = "Zed", categories = listOf("Development", "IDE"), origin = AppOrigin.USER,
+            argv = listOf("/var/home/kepler/.local/bin/zed"),
+            path = "/var/home/kepler/.local/share/applications/dev.zed.Zed.desktop"),
+    ), hidden = List(9) { HiddenApp("helper$it.desktop", reason = "no-display") } +
+        List(3) { HiddenApp("old$it.desktop", reason = "not-installed") })
+    val homeApps = homeInstalled.copy(apps = apps)
     val homeError = ServiceState(statusLoaded = true,
         statusError = "droidc exited with code 101: state.json: unexpected end of file")
 
@@ -178,6 +218,14 @@ fun HomeOverviewOtherDesktopPreview() = Home(Fixtures.homeContainers, detail = t
 @PhonePreviews
 @Composable
 fun HomeUpdatesPreview() = Home(Fixtures.homeInstalled, detail = true, tab = ContainerTab.Updates)
+
+@PhonePreviews @TabletPreview
+@Composable
+fun HomeAppsPreview() = Home(Fixtures.homeApps, detail = true, tab = ContainerTab.Apps)
+
+@PhonePreviews
+@Composable
+fun AppSheetPreview() = PreviewFrame { AppSheetContent("default", Fixtures.textEditor, onOpen = {}) }
 
 @PhonePreviews @TabletPreview
 @Composable

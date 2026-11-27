@@ -6,6 +6,7 @@ activityCompose = "1.13.0"
 lifecycle = "2.9.4"
 coroutines = "1.11.0"
 serialization = "1.13.0"
+androidsvg = "1.4"
 coreKtx = "1.17.0"
 window = "1.4.0"
 termux = "0.118.3"
@@ -42,6 +43,7 @@ compose-ui-test = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 termux-terminal-view = { module = "com.github.termux.termux-app:terminal-view", version.ref = "termux" }
 termux-terminal-emulator = { module = "com.github.termux.termux-app:terminal-emulator", version.ref = "termux" }

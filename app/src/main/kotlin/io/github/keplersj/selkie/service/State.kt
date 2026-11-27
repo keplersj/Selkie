@@ -1,5 +1,7 @@
 package io.github.keplersj.selkie.service
 
+import io.github.keplersj.selkie.engine.AppEntry
+import io.github.keplersj.selkie.engine.AppList
 import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.EngineEnv
@@ -81,6 +83,12 @@ data class ServiceState(
     val desktop: DesktopState = DesktopState.Stopped,
     /** Container the desktop belongs to while it is starting or running. One desktop at a time. */
     val desktopContainer: String? = null,
+    /** The app the compositor shows on its own, instead of the desktop; null for the desktop. */
+    val desktopApp: AppEntry? = null,
+    /** The selected container's apps (`droidc apps`); null until read. */
+    val apps: AppList? = null,
+    /** Why the apps couldn't be read, such as a droidc without `apps`. */
+    val appsError: String? = null,
     /** Root mode is on for the selected container (droidc's mutating commands and terminals run through su). */
     val rootMode: Boolean = false,
     /** An su binary exists on this device. */

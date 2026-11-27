@@ -86,11 +86,11 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
         when (desktop) {
             is DesktopState.Starting -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
-                Text("Starting the session…", color = Color.White, modifier = Modifier.padding(top = 12.dp))
+                Text(state.desktopApp?.let { "Opening ${it.name}…" } ?: "Starting the session…", color = Color.White, modifier = Modifier.padding(top = 12.dp))
             }
             is DesktopState.Failed -> Card(Modifier.align(Alignment.Center).padding(24.dp).widthIn(max = 640.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("The session stopped", style = MaterialTheme.typography.titleMedium)
+                    Text(state.desktopApp?.let { "${it.name} stopped" } ?: "The session stopped", style = MaterialTheme.typography.titleMedium)
                     Text(desktop.message)
                     if (desktop.logTail.isNotBlank()) Text(desktop.logTail,
                         Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()),
@@ -110,6 +110,7 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
             DesktopControlsLayer(controls, paused = stopping, onLeave = onBack) {
                 DesktopControls(
                     container = state.desktopContainer ?: state.container,
+                    app = state.desktopApp?.name,
                     size = (desktop as? DesktopState.Running)?.let { it.width to it.height },
                     onSuper = { poke(); sendKey(service, KEY_LEFTMETA) },
                     onKeyboard = {
@@ -129,7 +130,7 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
         }
     }
 
-    if (stopping) StopDesktopDialog(state.desktopContainer ?: state.container,
+    if (stopping) StopDesktopDialog(state.desktopContainer ?: state.container, app = state.desktopApp?.name,
         onDismiss = { stopping = false; poke() },
         onConfirm = { stopping = false; service.stopDesktop(); onBack() })
 }
@@ -236,6 +237,8 @@ private val CONTROLS_ONE_ROW_WIDTH = 480.dp
 fun DesktopControls(
     container: String,
     size: Pair<Int, Int>?,
+    /** The app shown on its own, or null for the desktop. */
+    app: String? = null,
     onSuper: () -> Unit,
     onKeyboard: () -> Unit,
     onEsc: () -> Unit,
@@ -252,7 +255,7 @@ fun DesktopControls(
             Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 24.dp),
             shape = MaterialTheme.shapes.small, color = cs.surfaceContainerHigh, contentColor = cs.onSurface,
         ) {
-            Text(listOfNotNull(container, size?.let { "${it.first} × ${it.second}" }).joinToString(" · "),
+            Text(listOfNotNull(app, container, size?.let { "${it.first} × ${it.second}" }).joinToString(" · "),
                 Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
         }
         Surface(
@@ -305,7 +308,7 @@ fun DesktopControls(
                     Box(Modifier.size(32.dp).clip(CircleShape).background(cs.primary), contentAlignment = Alignment.Center) {
                         Icon(SelkieIcons.Containers, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(18.dp))
                     }
-                    Text("Selkie · $container", style = MaterialTheme.typography.labelLarge)
+                    Text(listOfNotNull("Selkie", container, app).joinToString(" · "), style = MaterialTheme.typography.labelLarge)
                 }
                 keys()
                 Box(Modifier.padding(horizontal = 4.dp).width(1.dp).height(32.dp).background(cs.outlineVariant))
@@ -316,16 +319,17 @@ fun DesktopControls(
 }
 
 @Composable
-fun StopDesktopDialog(container: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+fun StopDesktopDialog(container: String, onDismiss: () -> Unit, onConfirm: () -> Unit, app: String? = null) {
     val cs = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(SelkieIcons.Stop, contentDescription = null) },
-        title = { Text("Stop the desktop?") },
-        text = { Text("Apps open on $container's desktop close, and anything unsaved in them is lost. Its terminals keep running.") },
+        title = { Text(if (app != null) "Close $app?" else "Stop the desktop?") },
+        text = { Text(if (app != null) "$app in $container closes, and anything unsaved in it is lost. Its terminals keep running."
+            else "Apps open on $container's desktop close, and anything unsaved in them is lost. Its terminals keep running.") },
         confirmButton = {
             Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = cs.error, contentColor = cs.onError)) {
-                Text("Stop")
+                Text(if (app != null) "Close" else "Stop")
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
