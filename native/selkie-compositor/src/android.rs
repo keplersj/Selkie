@@ -47,13 +47,10 @@ extern "C" {
 }
 
 /// Draws frames into a SurfaceView's window. The buffer has the frame's size and the system
-/// compositor scales it to the view, except for a frame a few pixels short of the view
-/// ([`crate::unscaled`]): that one is drawn at its own size in the top-left corner of a view-sized
-/// buffer, the rest black.
+/// compositor scales it to the view.
 struct WindowSink {
     window: *mut ANativeWindow,
     geometry: (u32, u32),
-    view: (u32, u32),
 }
 
 // SAFETY: ANativeWindow is reference counted and usable from any thread; only the compositor
@@ -71,22 +68,17 @@ impl FrameSink for WindowSink {
     fn present(&mut self, frame: &Frame) {
         // SAFETY: valid window; the locked buffer is written within its stride and height.
         unsafe {
-            let target = if crate::unscaled((frame.width, frame.height), self.view) {
-                self.view
-            } else {
-                (frame.width, frame.height)
-            };
-            if self.geometry != target {
+            if self.geometry != (frame.width, frame.height) {
                 if ANativeWindow_setBuffersGeometry(
                     self.window,
-                    target.0 as i32,
-                    target.1 as i32,
+                    frame.width as i32,
+                    frame.height as i32,
                     RGBX_8888,
                 ) != 0
                 {
                     return;
                 }
-                self.geometry = target;
+                self.geometry = (frame.width, frame.height);
             }
             let mut b: ANativeWindowBuffer = std::mem::zeroed();
             if ANativeWindow_lock(self.window, &mut b, std::ptr::null_mut()) != 0 {
@@ -101,15 +93,6 @@ impl FrameSink for WindowSink {
                 for (d, s) in row.iter_mut().zip(src) {
                     // 0xAARRGGBB -> little-endian R, G, B, X
                     *d = 0xff00_0000 | ((s >> 16) & 0xff) | (s & 0xff00) | ((s & 0xff) << 16);
-                }
-            }
-            // A frame smaller than the buffer: black to the right of it and below it.
-            let (bw, bh) = (b.width.max(0) as usize, b.height.max(0) as usize);
-            if w < bw || h < bh {
-                for y in 0..bh {
-                    let from = if y < h { w } else { 0 };
-                    let row = std::slice::from_raw_parts_mut(dst.add(y * b.stride as usize), bw);
-                    row[from..].fill(0xff00_0000);
                 }
             }
             ANativeWindow_unlockAndPost(self.window);
@@ -177,7 +160,6 @@ pub extern "system" fn Java_io_github_keplersj_selkie_display_NativeCompositor_n
     h.send(server::Command::Sink(Some(Box::new(WindowSink {
         window,
         geometry: (0, 0),
-        view: (width.max(1) as u32, height.max(1) as u32),
     }))));
 }
 

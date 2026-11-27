@@ -39,9 +39,6 @@ import java.io.File
  *   typed into the terminal that opens. The command creates a file in the guest's /tmp, which the test
  *   reads from the host side, so a window on screen is not the only evidence that a shell ran.
  *
- * - [gnomeScale]: GNOME's scale follows Android's density, survives a change made like GNOME
- *   Settings does, and the user's kept scale wins on the next start (only with `-e scale`).
- *
  * Screenshots go to the app's external files dir.
  */
 class DesktopE2ETest {
@@ -179,17 +176,6 @@ class DesktopE2ETest {
         rule.waitForIdle()
     }
 
-    /** From the desktop screen back to the home screen: Back shows Selkie's controls, Back again leaves. */
-    private fun backToHome() {
-        val open = hasTestTag(OPEN_DESKTOP_TAG)
-        repeat(4) {
-            if (rule.onAllNodes(open).fetchSemanticsNodes().isNotEmpty()) return
-            rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
-            pause(1_000)
-        }
-        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodes(open).fetchSemanticsNodes().isNotEmpty() }
-    }
-
     /** Types [text] with key events delivered straight to the compositor view (letters, digits, - / space, \n). */
     private fun typeText(text: String) {
         for (c in text) {
@@ -214,27 +200,25 @@ class DesktopE2ETest {
 
     /**
      * Runs [script] in a second proot against the live session (same /run, so the user bus and the
-     * display are there) and returns its output.
+     * display are there) and logs its output as SELKIE_GUEST lines.
      */
-    private fun guestRun(script: String, timeoutSec: Long = 90): String {
-        val env = engineEnvFrom(ctx)
-        val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
-        val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
-        val inv = b.command(listOf("/bin/sh", "-c", script))
-        val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
-        pb.environment().apply { clear(); putAll(inv.env) }
-        val p = pb.start()
-        val text = StringBuilder()
-        val t = Thread { text.append(p.inputStream.bufferedReader().readText()) }.also { it.start() }
-        if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
-        t.join(5000)
-        return text.toString()
-    }
-
-    /** [guestRun], logging the output as SELKIE_GUEST lines. */
-    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90) {
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90, supervised: Boolean = false) {
         try {
-            guestRun(script, timeoutSec).lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
+            val env = engineEnvFrom(ctx)
+            val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
+            val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
+            val inv = if (!supervised) b.command(listOf("/bin/sh", "-c", script))
+                // On the container's session bus, as the desktop's apps are.
+                else b.command(listOf("/usr/bin/droidc", "supervise", "--", "/bin/sh", "-c", script))
+                    .let { it.copy(env = it.env + ("DROIDC_USER_SERVICES_WAIT" to "10")) }
+            val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
+            pb.environment().apply { clear(); putAll(inv.env) }
+            val p = pb.start()
+            val text = StringBuilder()
+            val t = Thread { text.append(p.inputStream.bufferedReader().readText()) }.also { it.start() }
+            if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
+            t.join(5000)
+            text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
         } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
     }
 
@@ -265,6 +249,41 @@ class DesktopE2ETest {
         val text = if (audioLog.exists()) audioLog.readText() else "(no ${audioLog.name})"
         text.lines().takeLast(20).forEach { log("SELKIE_GUEST sound-log ${it.take(300)}") }
         tone.delete()
+    }
+
+    /**
+     * Runs a small MPRIS player in the guest (Python and GObject, as GNOME images have) and checks that
+     * Selkie's media session shows its track and that pausing it from Android reaches the player.
+     * Metrics, not a gate: an image without Python's GObject skips it.
+     */
+    private fun checkMedia(s: SessionService) {
+        val script = File(ctx.filesDir, "guest/tmp/selkie-mpris.py")
+        script.writeText(MPRIS_PLAYER)
+        File(ctx.filesDir, "guest/tmp/selkie-mpris.log").delete()
+        val player = Thread { guestProbe("media", "timeout 40 python3 /tmp/selkie-mpris.py 2>&1; echo \"player exit=$?\"",
+            timeoutSec = 60, supervised = true) }.apply { start() }
+        var deadline = SystemClock.uptimeMillis() + 25_000
+        while (SystemClock.uptimeMillis() < deadline && s.mediaSnapshot()?.current?.title != "Selkie test tone") Thread.sleep(500)
+        val shown = s.mediaSnapshot()
+        log("SELKIE_METRIC media_snapshot ${shown?.current}")
+        val token = s.mediaSessionToken()
+        var paused: String? = null
+        if (shown?.current?.title == "Selkie test tone" && token != null) {
+            val controller = android.media.session.MediaController(ctx, token)
+            log("SELKIE_METRIC media_session title=${controller.metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)} " +
+                "state=${controller.playbackState?.state}")
+            controller.transportControls.pause()
+            deadline = SystemClock.uptimeMillis() + 10_000
+            while (SystemClock.uptimeMillis() < deadline && s.mediaSnapshot()?.current?.status != "Paused") Thread.sleep(300)
+            paused = s.mediaSnapshot()?.current?.status
+        }
+        val calls = File(ctx.filesDir, "guest/tmp/selkie-mpris.log").let { if (it.exists()) it.readText().trim() else "" }
+        log("SELKIE_METRIC media_pause status=$paused player_calls=${calls.replace('\n', ',')}")
+        val mediaLog = engineEnvFrom(ctx).mediaLog
+        (if (mediaLog.exists()) mediaLog.readText() else "(no ${mediaLog.name})").lines().takeLast(20)
+            .forEach { log("SELKIE_GUEST media-log ${it.take(300)}") }
+        player.join(70_000)
+        script.delete()
     }
 
     /** One second of a 440 Hz tone at half scale, 48 kHz stereo S16LE, as a WAV file. */
@@ -335,6 +354,7 @@ class DesktopE2ETest {
         settle(s)
         screenshot("gnome-1.png")
         checkSound(s)
+        checkMedia(s)
 
         // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
         // Android key path then closes GNOME's first-run dialog if it is up. The compositor's input
@@ -433,161 +453,6 @@ class DesktopE2ETest {
         stop(s)
     }
 
-    /**
-     * GNOME's monitor through Mutter's DisplayConfig, from inside the guest (gjs ships with
-     * gnome-shell): layout mode, current scale, mode size and supported scales. With [want] > 0 it
-     * first applies the supported scale closest to [want] the way GNOME Settings does (method 2,
-     * persistent: GNOME then asks to keep it) and reports it as `applied`.
-     */
-    private fun displayState(want: Double = 0.0): JsonObject {
-        File(ctx.filesDir, "guest/tmp/selkie-scale.js").writeText("""
-            const { Gio, GLib } = imports.gi;
-            const want = parseFloat(ARGV[0] || '0');
-            const call = (m, args) => Gio.DBus.session.call_sync('org.gnome.Mutter.DisplayConfig',
-                '/org/gnome/Mutter/DisplayConfig', 'org.gnome.Mutter.DisplayConfig', m, args, null,
-                Gio.DBusCallFlags.NONE, -1, null);
-            const [serial, monitors, logical, props] = call('GetCurrentState', null).recursiveUnpack();
-            const lm = logical[0];
-            const [spec, modes] = monitors.find(m => m[0][0] === lm[5][0][0]);
-            const mode = modes.find(m => m[6]['is-current']);
-            const out = { layout: props['layout-mode'], scale: lm[2], width: mode[1], height: mode[2], supported: mode[5] };
-            if (want > 0) {
-                const scale = mode[5].reduce((a, b) => Math.abs(b - want) < Math.abs(a - want) ? b : a);
-                call('ApplyMonitorsConfig', new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})',
-                    [serial, 2, [[lm[0], lm[1], scale, lm[3], lm[4], [[spec[0], mode[0], {}]]]], {}]));
-                out.applied = scale;
-            }
-            print('SCALE ' + JSON.stringify(out));
-        """.trimIndent())
-        val out = guestRun("""
-            uid=${'$'}(id -u)
-            export XDG_RUNTIME_DIR=/run/user/${'$'}uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${'$'}uid/bus
-            gjs /tmp/selkie-scale.js $want 2>&1
-        """.trimIndent())
-        val line = out.lines().firstOrNull { it.startsWith("SCALE ") }
-            ?: throw AssertionError("no display state from the guest:\n$out")
-        return Json.parseToJsonElement(line.removePrefix("SCALE ")).jsonObject
-    }
-
-    /** The session log's bridge and display lines, for a scale check that failed. */
-    private fun logDesktop(what: String) {
-        val f = File(inst.targetContext.cacheDir, "desktop.log")
-        val lines = runCatching { f.readLines() }.getOrDefault(emptyList())
-            .filter { Regex("bridge|DisplayConfig|monitor|scale|Keep|revert", RegexOption.IGNORE_CASE).containsMatchIn(it) }
-        log("$what: desktop.log (${lines.size} matching lines):\n" + lines.takeLast(60).joinToString("\n"))
-    }
-
-    private fun JsonObject.num(key: String): Double = get(key)?.jsonPrimitive?.doubleOrNull ?: Double.NaN
-
-    private fun pause(ms: Long) {
-        val end = SystemClock.uptimeMillis() + ms
-        while (SystemClock.uptimeMillis() < end) { rule.mainClock.advanceTimeBy(500); Thread.sleep(500) }
-    }
-
-    private fun assertRunning(s: SessionService, what: String) {
-        val d = s.state.value.desktop
-        if (d is DesktopState.Failed) fail("$what: the session stopped: ${d.message}\n${d.logTail}")
-        assertTrue("$what: desktop is $d", d is DesktopState.Running)
-    }
-
-    /**
-     * Changes GNOME's scale to the one closest to [want] as GNOME Settings does, keeps it with Enter
-     * in GNOME's "Keep these display settings?" dialog, and checks the session goes on: the scale
-     * stays, the session is running, and Super (input through the re-recorded stream) still changes
-     * the picture. Returns the scale applied.
-     */
-    private fun changeScale(s: SessionService, want: Double, shot: String): Double {
-        val before = displayState()
-        val h0 = hash(s)
-        val st = displayState(want)
-        val applied = st.num("applied")
-        log("SELKIE_METRIC ${shot}_scale_change from=${before.num("scale")} to=$applied state=$st")
-        assertNotEquals("$shot: no supported scale near $want other than the current one: $st",
-            before.num("scale"), applied, 0.01)
-        val changed = SystemClock.uptimeMillis()
-        waitFor("GNOME to redraw at scale $applied", 60_000, 500) {
-            (s.state.value.desktop as? DesktopState.Failed)?.let { fail("$shot: session failed: ${it.message}\n${it.logTail}") }
-            hash(s) != h0
-        }
-        // GNOME reverts in 20 s unless kept, and its dialog's countdown redraws every second (so
-        // nothing settles meanwhile): give the dialog a moment to show, then keep it.
-        pause(3_000)
-        screenshot("$shot-confirm.png")
-        assertRunning(s, "$shot after the scale change")
-        log("SELKIE_METRIC ${shot}_keep_after_ms=${SystemClock.uptimeMillis() - changed}")
-        typeText("\n") // "Keep Changes" is the dialog's default button
-        // Wait past GNOME's 20 s.
-        pause(25_000)
-        val after = displayState()
-        log("SELKIE_METRIC ${shot}_scale_kept state=$after")
-        if (kotlin.math.abs(after.num("scale") - applied) > 0.01) logDesktop(shot)
-        assertEquals("$shot: scale after keeping it", applied, after.num("scale"), 0.01)
-        assertRunning(s, "$shot after keeping the scale")
-        screenshot("$shot-kept.png")
-        val h1 = hash(s)
-        val inputs = long(s, "inputs")
-        rule.onAllNodes(hasText("Super")).onFirst().performClick()
-        waitFor("Super to reach the compositor", 30_000, 250) { long(s, "inputs") >= inputs + 2 }
-        waitFor("GNOME to redraw after Super at scale $applied", 60_000, 500) { hash(s) != h1 }
-        settle(s, 3000, 60_000)
-        screenshot("$shot-super.png")
-        typeText("\u001b")
-        settle(s, 3000, 30_000)
-        return applied
-    }
-
-    /**
-     * Display scale, run by e2e-gui.sh with `-e scale tablet` or `-e scale phone` after it sets the
-     * emulator's `wm size` and `wm density` (skipped otherwise). GNOME starts at the scale from
-     * Android's density, changing the scale like GNOME Settings keeps the session running and taking
-     * input, and (tablet) the scale the user kept wins over the density on the next start.
-     */
-    @Test fun gnomeScale() {
-        val form = InstrumentationRegistry.getArguments().getString("scale")
-        org.junit.Assume.assumeTrue("runs only with -e scale tablet|phone", form != null)
-        val s = service()
-        ensureBluefin(s)
-        configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
-            PipeWireServices.JSON, "GNOME")
-        val density = ctx.resources.displayMetrics.density
-        val want = io.github.keplersj.selkie.display.DisplayScale.forDensity(density).toDouble()
-        // Start from no saved display settings: the tablet run is the first that changes them.
-        if (form == "tablet") File(ctx.filesDir, "guest/tmp/selkie-forget-monitors.sh").let {
-            it.writeText("rm -f \"${'$'}HOME/.config/monitors.xml\"\n")
-            guestRun("sh /tmp/selkie-forget-monitors.sh")
-        }
-        openDesktop(s, 50, "scale_$form")
-        settle(s)
-        val st0 = displayState()
-        log("SELKIE_METRIC scale_${form}_default density=$density want=$want state=$st0")
-        screenshot("scale-$form-1-default.png")
-        assertNotEquals("GNOME starts above 1x on a ${density}x display: $st0", 1.0, st0.num("scale"), 0.01)
-        val supported = st0["supported"]!!.jsonArray.map { it.jsonPrimitive.double }
-        for (want in listOf(1.5, 2.0)) assertTrue("GNOME offers ${want}x at ${st0.num("width")}x${st0.num("height")}: $st0",
-            supported.any { kotlin.math.abs(it - want) < 0.01 })
-        assertEquals("GNOME starts at the supported scale closest to $want: $st0",
-            supported.minBy { kotlin.math.abs(it - want) },
-            st0.num("scale"), 0.01)
-
-        if (form == "tablet") {
-            val kept = changeScale(s, 1.5, "scale-tablet-2-150")
-            // The scale the user kept is saved, and wins over the density next time.
-            stop(s)
-            backToHome()
-            openDesktop(s, 50, "scale_tablet_restart")
-            settle(s)
-            val st = displayState()
-            log("SELKIE_METRIC scale_tablet_restart state=$st")
-            screenshot("scale-tablet-3-restarted.png")
-            assertEquals("the kept scale after a restart: $st", kept, st.num("scale"), 0.01)
-            changeScale(s, 2.0, "scale-tablet-4-200")
-        } else {
-            changeScale(s, 1.5, "scale-phone-2-150")
-            changeScale(s, 2.0, "scale-phone-3-200")
-        }
-        stop(s)
-    }
-
     @Test fun gtkAppNested() {
         val s = service()
         ensureBluefin(s)
@@ -605,3 +470,43 @@ class DesktopE2ETest {
         stop(s)
     }
 }
+
+/** A guest MPRIS player for [checkMedia]: Python with GObject, owning org.mpris.MediaPlayer2.selkietest. */
+private val MPRIS_PLAYER = """
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+XML = '''<node>
+<interface name="org.mpris.MediaPlayer2"><method name="Raise"/><property name="Identity" type="s" access="read"/></interface>
+<interface name="org.mpris.MediaPlayer2.Player">
+<method name="Play"/><method name="Pause"/><method name="PlayPause"/><method name="Stop"/><method name="Next"/><method name="Previous"/>
+<property name="PlaybackStatus" type="s" access="read"/><property name="Metadata" type="a{sv}" access="read"/>
+<property name="Position" type="x" access="read"/><property name="CanPlay" type="b" access="read"/>
+<property name="CanPause" type="b" access="read"/><property name="CanGoNext" type="b" access="read"/>
+<property name="CanGoPrevious" type="b" access="read"/><property name="CanSeek" type="b" access="read"/>
+</interface></node>'''
+state = {"s": "Playing"}
+def call(conn, sender, path, iface, method, params, inv):
+    with open("/tmp/selkie-mpris.log", "a") as f:
+        f.write(method + "\n")
+    if method == "Pause": state["s"] = "Paused"
+    elif method == "Play": state["s"] = "Playing"
+    elif method == "PlayPause": state["s"] = "Paused" if state["s"] == "Playing" else "Playing"
+    inv.return_value(None)
+def get(conn, sender, path, iface, prop):
+    if prop == "Identity": return GLib.Variant("s", "Selkie test player")
+    if prop == "PlaybackStatus": return GLib.Variant("s", state["s"])
+    if prop == "Position": return GLib.Variant("x", 0)
+    if prop == "Metadata": return GLib.Variant("a{sv}", {
+        "xesam:title": GLib.Variant("s", "Selkie test tone"),
+        "xesam:artist": GLib.Variant("as", ["droidc"]),
+        "mpris:trackid": GLib.Variant("o", "/selkie/track/1"),
+        "mpris:length": GLib.Variant("x", 60000000)})
+    return GLib.Variant("b", prop != "CanSeek")
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+for i in Gio.DBusNodeInfo.new_for_xml(XML).interfaces:
+    bus.register_object("/org/mpris/MediaPlayer2", i, call, get, None)
+Gio.bus_own_name_on_connection(bus, "org.mpris.MediaPlayer2.selkietest", Gio.BusNameOwnerFlags.NONE, None, None)
+print("player up on", bus.get_unique_name(), flush=True)
+GLib.MainLoop().run()
+""".trimStart()

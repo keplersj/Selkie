@@ -76,6 +76,9 @@ refused, so use the Developer options toggle.
   Tab S11 and the Razr, but `flatpak` itself was not tried there.
 - No GPU or Steam. Desktop sound (the guest's PipeWire through `droidc audio-out` to an Android
   AudioTrack) is built but has not been heard on a device yet; the emulator runs with `-noaudio`.
+- Desktop media controls: the guest's MPRIS players (through `droidc media`) show as an Android
+  media session, on the lock screen and in the shade, with play, pause, next and previous going back
+  to the player. Covers come from `file://` art in the container; web art isn't fetched.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
   only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
   no audio (it came later; see above), no Steam.

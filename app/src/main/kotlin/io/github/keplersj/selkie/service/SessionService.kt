@@ -28,7 +28,6 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
-import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.apps
@@ -37,6 +36,9 @@ import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.engine.status
+import io.github.keplersj.selkie.media.GuestMedia
+import io.github.keplersj.selkie.media.GuestMediaSnapshot
+import io.github.keplersj.selkie.media.MediaBridge
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.platform.RootAccess
 import io.github.keplersj.selkie.proot.EnterCommandBuilder
@@ -44,6 +46,7 @@ import io.github.keplersj.selkie.proot.GuestFiles
 import io.github.keplersj.selkie.proot.Invocation
 import io.github.keplersj.selkie.proot.ProotCommandBuilder
 import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -57,7 +60,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 /**
  * Foreground service that owns droidc operations and terminal sessions so both survive the
@@ -130,6 +132,10 @@ class SessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_MEDIA) {
+            intent.getStringExtra(EXTRA_VERB)?.let { mediaBridge?.handleAction(it) }
+            return START_NOT_STICKY
+        }
         // Entering the foreground promptly satisfies startForegroundService().
         updateForeground(force = true)
         return START_NOT_STICKY
@@ -588,6 +594,9 @@ class SessionService : Service() {
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
+    /** The desktop's media players, shown as an Android media session, while the desktop runs. */
+    @Volatile private var media: GuestMedia? = null
+    @Volatile private var mediaBridge: MediaBridge? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -623,13 +632,11 @@ class SessionService : Service() {
     }
 
     /**
-     * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
-     * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
-     * display's density; see [DisplayScale]). After [prepareApp], the app runs instead, on its own.
-     * The session keeps running without the activity; the compositor holds frames while nothing
-     * shows them.
+     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
+     * view size). After [prepareApp], the app runs instead, on its own. The session keeps running without the activity; the compositor holds frames while
+     * nothing shows them.
      */
-    fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
+    fun startDesktop(width: Int, height: Int) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
@@ -653,13 +660,15 @@ class SessionService : Service() {
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
-                    val (sw, sh) = DisplayScale.sessionSize(width, height)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
                     pb.environment().apply { clear(); putAll(inv.env) }
-                    pb.start().also { audio = GuestAudio(b.audioOut(), env.audioLog).apply { start() } }
+                    pb.start().also {
+                        audio = GuestAudio(b.audioOut(), env.audioLog).apply { start() }
+                        startMedia(b, env)
+                    }
                 }
             } catch (e: Throwable) {
                 // Throwable: a missing native library is an Error, and it must end up on screen too.
@@ -724,7 +733,33 @@ class SessionService : Service() {
     private fun stopAudio() {
         audio?.stop()
         audio = null
+        media?.stop()
+        media = null
+        mediaBridge?.release()
+        mediaBridge = null
     }
+
+    private fun startMedia(b: io.github.keplersj.selkie.proot.ProotCommandBuilder, env: io.github.keplersj.selkie.engine.EngineEnv) {
+        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        lateinit var m: GuestMedia
+        val bridge = MediaBridge(this, hostPath = { b.hostPath(it) }, send = { m.send(it) }, contentIntent = open,
+            actionIntent = { verb ->
+                PendingIntent.getService(this, 10 + io.github.keplersj.selkie.media.MediaMapping.VERBS.indexOf(verb),
+                    Intent(this, SessionService::class.java).setAction(ACTION_MEDIA).putExtra(EXTRA_VERB, verb),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            })
+        m = GuestMedia(b.media(), env.mediaLog) { bridge.update(it) }
+        mediaBridge = bridge
+        media = m.apply { start() }
+    }
+
+    /** The guest's media players as last reported, or null without a desktop; for tests and diagnostics. */
+    fun mediaSnapshot(): GuestMediaSnapshot? = media?.latest
+
+    /** The desktop's media session, while the desktop runs. */
+    fun mediaSessionToken(): android.media.session.MediaSession.Token? = mediaBridge?.token
 
     // ---------------- per-container host services ----------------
 
@@ -901,6 +936,8 @@ class SessionService : Service() {
 
     companion object {
         const val ACTION_STOP = "io.github.keplersj.selkie.STOP"
+        const val ACTION_MEDIA = "io.github.keplersj.selkie.MEDIA"
+        const val EXTRA_VERB = "verb"
         private const val UPTIME_REFRESH_MS = 1000L
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"
