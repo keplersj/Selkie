@@ -532,3 +532,32 @@ fun TvNewContainerPreview() = PreviewFrame {
     NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = {}, free = FREE,
         device = DeviceClass.Tv)
 }
+
+// --- Car (parked-only) ---
+
+@Preview(name = "car", device = "spec:width=1280dp,height=720dp,dpi=240", showBackground = true,
+    uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_CAR)
+annotation class CarPreview
+
+/** Parked: the tablet layout with what driving does, above the containers. */
+@CarPreview
+@Composable
+fun CarHomePreview() = PreviewFrame {
+    SectionScaffold(Section.Containers, onSection = {}, onNewContainer = noop) { rail ->
+        HomeScreen(Fixtures.homeContainers, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop,
+            onUpgrade = noop, onRollback = noop, onSwitch = noop, onRefresh = noop, newInList = !rail, free = FREE,
+            listNote = { CarParkedNote() })
+    }
+}
+
+/** Driving: nothing to press, only what keeps running. */
+@CarPreview
+@Composable
+fun CarDrivingPreview() = PreviewFrame { CarDrivingScreen(Fixtures.homeContainers) }
+
+@CarPreview
+@Composable
+fun CarNewContainerPreview() = PreviewFrame {
+    NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = {}, free = FREE,
+        device = DeviceClass.Car)
+}

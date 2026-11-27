@@ -127,6 +127,9 @@ class MainActivity : ComponentActivity() {
             if (full) xrDesktop = true else screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop"
         }
         val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
+        // In a car, Selkie is parked-only: while driving one screen stands in for all of it.
+        val driving = rememberCarDriving()
+        val car = currentDeviceClass() == DeviceClass.Car
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
@@ -248,7 +251,8 @@ class MainActivity : ComponentActivity() {
                                 onRemoveContainer = { name, done -> service.removeContainer(name, done) },
                                 onRootMode = { service.setRootMode(it) },
                                 newInList = !rail,
-                                onDetailShown = { homeDetail = it })
+                                onDetailShown = { homeDetail = it },
+                                listNote = if (car) ({ CarParkedNote() }) else null)
                             Section.Images -> ImagesScreen(state, rail,
                                 onNewContainer = { ref -> newRef = ref; screen = "new" },
                                 onCleanUp = { done -> service.cleanUpImages(done) })
@@ -280,7 +284,8 @@ class MainActivity : ComponentActivity() {
             }
         } }
 
-        if (full) {
+        if (driving) Box(Modifier.fillMaxSize().safeDrawingPadding()) { CarDrivingScreen(state) }
+        else if (full) {
             // A screen that went full screen before the switch moves into its panel.
             LaunchedEffect(Unit) {
                 if (screen == "desktop") { xrDesktop = true; screen = "auto" }
