@@ -234,8 +234,12 @@ class DesktopE2ETest {
             ls /run/user/${'$'}uid 2>&1 | grep -i pipewire
             echo "nodes:"; timeout 10 pw-cli ls Node 2>&1 | grep -E 'node.name|media.class' | head -20
             echo "default sink:"; timeout 10 pw-metadata 0 default.configured.audio.sink 2>&1 | tail -2
+            echo "links:"; timeout 10 pw-link -l 2>&1 | head -20
+            echo "capture:"; timeout 10 pw-dump 2>/dev/null | grep -E '"node.name": "selkie-out(-capture)?"|"state"|"error"|"node.driver-id"|"node.target"|"target.object"' | head -40
+            echo "conf.d:"; ls /usr/share/pipewire/pipewire.conf.d /etc/pipewire/pipewire.conf.d 2>&1 | head
             timeout 20 pw-play /tmp/selkie-tone.wav 2>&1 | head -10
             echo "pw-play exit=${'$'}?"
+            echo "after links:"; timeout 10 pw-link -l 2>&1 | head -20
         """.trimIndent())
         val deadline = SystemClock.uptimeMillis() + 15_000
         while (SystemClock.uptimeMillis() < deadline && (s.audioBytes()?.first ?: 0) == 0L) Thread.sleep(500)
