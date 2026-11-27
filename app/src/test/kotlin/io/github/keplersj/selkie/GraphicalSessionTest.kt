@@ -35,6 +35,15 @@ class GraphicalSessionTest {
         assertEquals(listOf("--scale", "2.125"), inv.argv.takeLast(2))
     }
 
+    @Test fun sessionSizeLetsGnomeOffer150And200() {
+        // Each side a multiple of 12: whole logical pixels at 1.5x and 2x.
+        assertEquals(1920 to 1428, DisplayScale.sessionSize(1920, 1432))
+        assertEquals(1080 to 1848, DisplayScale.sessionSize(1080, 1857))
+        assertEquals(2556 to 1596, DisplayScale.sessionSize(2560, 1600))
+        assertEquals(1200 to 1920, DisplayScale.sessionSize(1200, 1920))
+        assertEquals(8 to 1, DisplayScale.sessionSize(8, 1))
+    }
+
     @Test fun displayScaleFollowsDensity() {
         // One GNOME logical pixel per Android dp.
         assertEquals(1f, DisplayScale.forDensity(1f))

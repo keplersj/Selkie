@@ -458,6 +458,14 @@ class DesktopE2ETest {
         return Json.parseToJsonElement(line.removePrefix("SCALE ")).jsonObject
     }
 
+    /** The session log's bridge and display lines, for a scale check that failed. */
+    private fun logDesktop(what: String) {
+        val f = File(inst.targetContext.cacheDir, "desktop.log")
+        val lines = runCatching { f.readLines() }.getOrDefault(emptyList())
+            .filter { Regex("bridge|DisplayConfig|monitor|scale|Keep|revert", RegexOption.IGNORE_CASE).containsMatchIn(it) }
+        log("$what: desktop.log (${lines.size} matching lines):\n" + lines.takeLast(60).joinToString("\n"))
+    }
+
     private fun JsonObject.num(key: String): Double = get(key)?.jsonPrimitive?.doubleOrNull ?: Double.NaN
 
     private fun pause(ms: Long) {
@@ -485,19 +493,23 @@ class DesktopE2ETest {
         log("SELKIE_METRIC ${shot}_scale_change from=${before.num("scale")} to=$applied state=$st")
         assertNotEquals("$shot: no supported scale near $want other than the current one: $st",
             before.num("scale"), applied, 0.01)
-        waitFor("GNOME to redraw at scale $applied", 120_000, 500) {
+        val changed = SystemClock.uptimeMillis()
+        waitFor("GNOME to redraw at scale $applied", 60_000, 500) {
             (s.state.value.desktop as? DesktopState.Failed)?.let { fail("$shot: session failed: ${it.message}\n${it.logTail}") }
             hash(s) != h0
         }
-        settle(s, 3000, 60_000)
+        // GNOME reverts in 20 s unless kept, and its dialog's countdown redraws every second (so
+        // nothing settles meanwhile): give the dialog a moment to show, then keep it.
+        pause(3_000)
         screenshot("$shot-confirm.png")
         assertRunning(s, "$shot after the scale change")
+        log("SELKIE_METRIC ${shot}_keep_after_ms=${SystemClock.uptimeMillis() - changed}")
         typeText("\n") // "Keep Changes" is the dialog's default button
-        settle(s, 3000, 60_000)
-        // GNOME reverts after 20 s unless kept: wait past that.
+        // Wait past GNOME's 20 s.
         pause(25_000)
         val after = displayState()
         log("SELKIE_METRIC ${shot}_scale_kept state=$after")
+        if (kotlin.math.abs(after.num("scale") - applied) > 0.01) logDesktop(shot)
         assertEquals("$shot: scale after keeping it", applied, after.num("scale"), 0.01)
         assertRunning(s, "$shot after keeping the scale")
         screenshot("$shot-kept.png")
@@ -539,8 +551,11 @@ class DesktopE2ETest {
         log("SELKIE_METRIC scale_${form}_default density=$density want=$want state=$st0")
         screenshot("scale-$form-1-default.png")
         assertNotEquals("GNOME starts above 1x on a ${density}x display: $st0", 1.0, st0.num("scale"), 0.01)
+        val supported = st0["supported"]!!.jsonArray.map { it.jsonPrimitive.double }
+        for (want in listOf(1.5, 2.0)) assertTrue("GNOME offers ${want}x at ${st0.num("width")}x${st0.num("height")}: $st0",
+            supported.any { kotlin.math.abs(it - want) < 0.01 })
         assertEquals("GNOME starts at the supported scale closest to $want: $st0",
-            st0["supported"]!!.jsonArray.map { it.jsonPrimitive.double }.minBy { kotlin.math.abs(it - want) },
+            supported.minBy { kotlin.math.abs(it - want) },
             st0.num("scale"), 0.01)
 
         if (form == "tablet") {

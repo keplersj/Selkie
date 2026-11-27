@@ -21,4 +21,18 @@ object DisplayScale {
 
     /** The session scale for [context]'s display. */
     fun of(context: Context): Float = forDensity(context.resources.displayMetrics.density)
+
+    /**
+     * Linux session sizes are a multiple of this. Mutter offers a fractional scale only where the
+     * logical size comes out in whole pixels on both sides, so a view such as 1920x1432 gets no 150%
+     * and 1080x1857 no 200%. With both sides a multiple of 12, GNOME offers 150% and 200% (and about
+     * 125% and 175%) on any display. Stays under the compositor's `PAD_MAX`, so the few pixels left
+     * over show as a black edge rather than stretching the picture.
+     */
+    const val SIZE_STEP = 12
+
+    /** The Linux session size for a [width]x[height] view: each side rounded down to [SIZE_STEP]. */
+    fun sessionSize(width: Int, height: Int): Pair<Int, Int> = step(width) to step(height)
+
+    private fun step(v: Int) = if (v >= SIZE_STEP) v - v % SIZE_STEP else v
 }

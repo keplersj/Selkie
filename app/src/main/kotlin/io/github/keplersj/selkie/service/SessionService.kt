@@ -488,8 +488,9 @@ class SessionService : Service() {
     fun compositor(): NativeCompositor? = compositor
 
     /**
-     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
-     * view size) and [scale] (by default from the display's density; see [DisplayScale]). The session
+     * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
+     * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
+     * display's density; see [DisplayScale]). The session
      * keeps running without the activity; the compositor holds frames while nothing shows them.
      */
     fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
@@ -513,7 +514,8 @@ class SessionService : Service() {
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
-                    val inv = b.graphicalSession(width, height, scale)
+                    val (sw, sh) = DisplayScale.sessionSize(width, height)
+                    val inv = b.graphicalSession(sw, sh, scale)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
