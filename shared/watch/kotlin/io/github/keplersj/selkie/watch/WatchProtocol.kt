@@ -1,5 +1,7 @@
 package io.github.keplersj.selkie.watch
 
+import java.net.URI
+
 // Shared by the phone app and the watch app (both add shared/watch/kotlin as a source folder), so the two
 // sides can't drift apart. Plain Kotlin only: the Data Layer calls live in each app.
 
@@ -33,6 +35,22 @@ object WatchProtocol {
     const val KEY_ROOT = "root"
     /** Payload: [refusal]. Refuses one root request. */
     const val REFUSE_ROOT_PATH = "/selkie/refuse-root"
+
+    /**
+     * The link the watch opens on the phone (Open on phone) to show one container: selkie://container/NAME.
+     * The phone's MainActivity takes it as a browsable VIEW intent, which is what the watch may start remotely.
+     */
+    fun containerLink(name: String): String = URI(LINK_SCHEME, LINK_HOST, "/$name", null).toASCIIString()
+
+    /** The container a [containerLink] names, or null for any other link. */
+    fun containerFromLink(link: String?): String? {
+        val uri = link?.let { runCatching { URI(it) }.getOrNull() } ?: return null
+        if (uri.scheme != LINK_SCHEME || uri.host != LINK_HOST) return null
+        return uri.path?.removePrefix("/")?.takeIf { it.isNotBlank() && '/' !in it }
+    }
+
+    const val LINK_SCHEME = "selkie"
+    const val LINK_HOST = "container"
 
     /** One line per container: name, desktop, terminals, separated by tabs. Container names hold neither. */
     fun encode(containers: List<WatchContainer>): String =

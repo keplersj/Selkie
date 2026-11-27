@@ -41,7 +41,15 @@ fun WatchNoPhonePreview() = Round { WatchHome(null, loaded = true, onOpen = {}) 
 
 @WatchPreview @Composable
 fun WatchContainerPreview() = Round {
-    WatchContainerScreen(tablet.device, tablet.containers[0], onStopDesktop = {}, onCloseTerminals = {})
+    WatchContainerScreen(tablet.device, tablet.containers[0], onStopDesktop = {}, onCloseTerminals = {},
+        onOpenOnPhone = {})
+}
+
+/** Scrolled to the end after Open on phone, which says where to look. */
+@WatchPreview @Composable
+fun WatchOpenedOnPhonePreview() = Round {
+    WatchContainerScreen(tablet.device, tablet.containers[2], onStopDesktop = {}, onCloseTerminals = {},
+        onOpenOnPhone = {}, initialOpened = true)
 }
 
 @WatchPreview @Composable

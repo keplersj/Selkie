@@ -37,9 +37,12 @@ import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionService
 import io.github.keplersj.selkie.ui.*
+import io.github.keplersj.selkie.watch.WatchProtocol
 
 class MainActivity : ComponentActivity() {
     private val serviceState = mutableStateOf<SessionService?>(null)
+    /** A container a selkie://container/NAME link asked to show, such as the watch's Open on phone. */
+    private val linkedContainer = mutableStateOf<String?>(null)
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             serviceState.value = (binder as SessionService.LocalBinder).service
@@ -59,11 +62,18 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        if (savedInstanceState == null) linkedContainer.value = WatchProtocol.containerFromLink(intent?.dataString)
         bindService(SessionService.intent(this), conn, Context.BIND_AUTO_CREATE)
         setContent {
             val fold by rememberFold(this)
             SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        WatchProtocol.containerFromLink(intent.dataString)?.let { linkedContainer.value = it }
     }
 
     override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
@@ -118,6 +128,19 @@ class MainActivity : ComponentActivity() {
         // Root requests put off with Back: they wait under Activity until opened again.
         var laterRoot by remember { mutableStateOf(setOf<Pair<String, Long>>()) }
         val rootRequest = state.rootRequests.firstOrNull { (it.container to it.id) !in laterRoot }
+        // Bumped to open the selected container's own screen, for a link that named it.
+        var detailRequest by remember { mutableIntStateOf(0) }
+        val linked = linkedContainer.value
+        LaunchedEffect(linked, state.statusLoaded) {
+            if (linked == null || !state.statusLoaded) return@LaunchedEffect
+            if (summaries(state).any { it.name == linked }) {
+                if (linked != state.container) service.selectContainer(linked)
+                section = Section.Containers
+                screen = "auto"
+                detailRequest++
+            }
+            linkedContainer.value = null
+        }
         // On a TV the desktop waits for a mouse or trackpad, which a remote can't stand in for.
         val tv = currentDeviceClass() == DeviceClass.Tv
         val inputs = if (tv) rememberTvInputs() else TvInputs()
@@ -269,6 +292,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenApp = openApp,
                                 newInList = !rail,
                                 onDetailShown = { homeDetail = it },
+                                openDetail = detailRequest,
                                 listNote = if (car) ({ CarParkedNote() }) else null)
                             Section.Images -> ImagesScreen(state, rail,
                                 onNewContainer = { ref -> newRef = ref; screen = "new" },
