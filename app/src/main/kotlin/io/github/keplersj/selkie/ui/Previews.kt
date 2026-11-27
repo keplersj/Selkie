@@ -480,3 +480,55 @@ fun SettingsPreview() = SettingsSection(PhantomProcessCheck.State.OK, suFound = 
 @PhonePreviews
 @Composable
 fun SettingsRestrictedPreview() = SettingsSection(PhantomProcessCheck.State.RESTRICTED, suFound = true, notifications = false)
+
+// --- TV (TV-Home, TV-New, TV-Session) ---
+
+/** A 1080p TV: 960x540dp at xhdpi, dark as TV launchers are. */
+@Preview(name = "tv", device = "spec:width=960dp,height=540dp,dpi=320", showBackground = true,
+    uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_TELEVISION)
+annotation class TvPreview
+
+private val tvRemote = TvInputs(gamepad = true)
+
+@Composable
+private fun TvHomeFrame(state: ServiceState, inputs: TvInputs = tvRemote) = PreviewFrame {
+    TvScaffold(Section.Containers, onSection = {}, inputs = inputs) {
+        TvHome(state, onSelectContainer = {}, onOpenDesktop = noop, onOpenTerminal = noop, onStopDesktop = noop,
+            onChangeImage = noop, onNewContainer = noop)
+    }
+}
+
+@TvPreview
+@Composable
+fun TvHomePreview() = TvHomeFrame(Fixtures.homeContainers, TvInputs(gamepad = true, keyboard = true))
+
+/** Nothing running: the selected container is featured with its terminal. */
+@TvPreview
+@Composable
+fun TvHomeStoppedPreview() = TvHomeFrame(Fixtures.homeContainers.copy(sessions = emptyList(),
+    desktop = DesktopState.Stopped, desktopContainer = null, graphical = Fixtures.noSession))
+
+@TvPreview
+@Composable
+fun TvHomeEmptyPreview() = TvHomeFrame(Fixtures.homeEmpty, TvInputs())
+
+@TvPreview
+@Composable
+fun TvImagesPreview() = PreviewFrame {
+    TvScaffold(Section.Images, onSection = {}, inputs = tvRemote) {
+        ImagesScreen(imagesState, rail = true, onNewContainer = {}, onCleanUp = {})
+    }
+}
+
+@TvPreview
+@Composable
+fun TvPointerGatePreview() = PreviewFrame {
+    TvPointerGate("GNOME", TvInputs(gamepad = true), onPair = noop, onOpenAnyway = noop)
+}
+
+@TvPreview
+@Composable
+fun TvNewContainerPreview() = PreviewFrame {
+    NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = {}, free = FREE,
+        device = DeviceClass.Tv)
+}

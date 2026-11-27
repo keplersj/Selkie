@@ -113,6 +113,10 @@ class MainActivity : ComponentActivity() {
         // Activity opens a terminal on the session that was tapped.
         var openSession by remember { mutableStateOf<String?>(null) }
         var homeDetail by remember { mutableStateOf(false) }
+        // On a TV the desktop waits for a mouse or trackpad, which a remote can't stand in for.
+        val tv = currentDeviceClass() == DeviceClass.Tv
+        val inputs = if (tv) rememberTvInputs() else TvInputs()
+        val openDesktop = { screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop" }
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
@@ -149,6 +153,17 @@ class MainActivity : ComponentActivity() {
                         screen = "terminal"
                     },
                     onBack = { screen = "auto" })
+                screen == "tv-pointer" -> {
+                    BackHandler { screen = "auto" }
+                    // Pairing a mouse from the gate carries on into the desktop.
+                    LaunchedEffect(inputs.pointer) { if (inputs.pointer) screen = "desktop" }
+                    TvPointerGate(state.graphical?.name, inputs,
+                        onPair = {
+                            runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)) }
+                                .onFailure { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) } }
+                        },
+                        onOpenAnyway = { screen = "desktop" })
+                }
                 screen == "session" -> {
                     BackHandler { screen = "auto" }
                     SessionConfigScreen(state.graphical,
@@ -201,12 +216,18 @@ class MainActivity : ComponentActivity() {
                         )
                         onDispose { homeShortcuts = null }
                     }
-                    SectionScaffold(section, onSection = { section = it }, onNewContainer = newContainer,
-                        showNavigation = !(section == Section.Containers && homeDetail)) { rail ->
+                    val body: @Composable (Boolean) -> Unit = { rail ->
                         when (section) {
-                            Section.Containers -> HomeScreen(state,
+                            Section.Containers -> if (tv) TvHome(state,
+                                onSelectContainer = { service.selectContainer(it) },
+                                onOpenDesktop = openDesktop,
                                 onOpenTerminal = { screen = "terminal" },
-                                onOpenDesktop = { screen = "desktop" },
+                                onStopDesktop = { service.stopDesktop() },
+                                onChangeImage = { screen = "change" },
+                                onNewContainer = newContainer)
+                            else HomeScreen(state,
+                                onOpenTerminal = { screen = "terminal" },
+                                onOpenDesktop = openDesktop,
                                 onConfigureDesktop = { screen = "session" },
                                 onUpgrade = { service.upgrade() },
                                 onRollback = { service.rollback() },
@@ -222,7 +243,7 @@ class MainActivity : ComponentActivity() {
                                 onNewContainer = { ref -> newRef = ref; screen = "new" },
                                 onCleanUp = { done -> service.cleanUpImages(done) })
                             Section.Activity -> ActivityScreen(state, rail,
-                                onReturnToDesktop = { c -> if (c != state.container) service.selectContainer(c); screen = "desktop" },
+                                onReturnToDesktop = { c -> if (c != state.container) service.selectContainer(c); openDesktop() },
                                 onStopDesktop = { service.stopDesktop() },
                                 onOpenTerminal = { t ->
                                     if (t.container != state.container) service.selectContainer(t.container)
@@ -238,6 +259,12 @@ class MainActivity : ComponentActivity() {
                                 onAbout = { screen = "about" })
                         }
                     }
+                    if (tv) {
+                        // Back from another tab returns to Containers; from Containers it leaves Selkie.
+                        BackHandler(enabled = section != Section.Containers) { section = Section.Containers }
+                        TvScaffold(section, onSection = { section = it }, inputs = inputs) { body(true) }
+                    } else SectionScaffold(section, onSection = { section = it }, onNewContainer = newContainer,
+                        showNavigation = !(section == Section.Containers && homeDetail)) { rail -> body(rail) }
                 }
             }
         }
