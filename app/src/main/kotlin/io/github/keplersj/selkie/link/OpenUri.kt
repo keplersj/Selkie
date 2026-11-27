@@ -38,6 +38,7 @@ object OpenUri {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             context.startActivity(intent)
+            Log.i("SelkieLink", "opened a ${uri.substringBefore(':')} link")
             true
         } catch (e: ActivityNotFoundException) {
             Log.w("SelkieLink", "no app opens ${uri.substringBefore(':')} links")

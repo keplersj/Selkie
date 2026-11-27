@@ -458,17 +458,24 @@ class DesktopE2ETest {
         guestProbe("links", """
             run() { DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- "${'$'}@" 2>&1 | tail -3; }
             echo "https handler: ${'$'}(run gio mime x-scheme-handler/https | head -1)"
+            echo "user default: ${'$'}(grep -s scheme-handler/https= ${'$'}HOME/.config/mimeapps.list)"
+            ls ${'$'}HOME/.local/share/applications/dev.droidc.AndroidOpen.desktop 2>&1
             if command -v xdg-open >/dev/null; then run xdg-open $url; else run gio open $url; fi
             echo "open exit=${'$'}?"
         """.trimIndent())
+        // Selkie logs each link it hands to Android; dumpsys shows only the host of a web link.
         var opened = false
+        var seen = false
         val deadline = SystemClock.uptimeMillis() + 20_000
-        while (SystemClock.uptimeMillis() < deadline && !opened) {
+        while (SystemClock.uptimeMillis() < deadline && !(opened && seen)) {
             Thread.sleep(1000)
-            opened = "selkie-e2e-link" in shell("dumpsys activity activities")
+            opened = opened || "opened a https link" in shell("logcat -d -s SelkieLink:I")
+            seen = seen || "example.org" in shell("dumpsys activity activities")
         }
-        log("SELKIE_METRIC link_opened_on_android=$opened")
-        shell("dumpsys activity activities").lines().filter { "Intent {" in it }.take(5)
+        log("SELKIE_METRIC link_opened_on_android=$opened activity_seen=$seen")
+        shell("logcat -d -s SelkieLink:*").lines().filter { it.isNotBlank() }.takeLast(5)
+            .forEach { log("SELKIE_GUEST links-host ${it.trim().take(300)}") }
+        shell("dumpsys activity activities").lines().filter { "example.org" in it || "act=android.intent.action.VIEW" in it }.take(5)
             .forEach { log("SELKIE_GUEST links-activity ${it.trim().take(300)}") }
     }
 
