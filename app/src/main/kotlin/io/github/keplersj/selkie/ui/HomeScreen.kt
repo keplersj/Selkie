@@ -448,8 +448,7 @@ private fun ContainerDetail(
                 !state.statusLoaded -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
                 tab == ContainerTab.Overview -> Overview(state, actions, columns)
                 tab == ContainerTab.Apps -> AppsTab(state.container, state.apps, state.appsError,
-                    installed = cur != null, onOpen = actions.onOpenApp, onOpenDesktop = actions.onOpenDesktop,
-                    onPin = rememberPinApp(state.container))
+                    installed = cur != null, onOpen = actions.onOpenApp, onOpenDesktop = actions.onOpenDesktop)
                 tab == ContainerTab.Updates -> Updates(state, actions)
                 else -> Settings(state, actions)
             }
