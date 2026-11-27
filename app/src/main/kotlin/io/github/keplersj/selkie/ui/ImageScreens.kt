@@ -138,6 +138,11 @@ fun NewContainerScreen(
         FormColumn {
             if (onClose == null) Text("New container", style = MaterialTheme.typography.displaySmall,
                 modifier = Modifier.padding(horizontal = 4.dp).semantics { heading() })
+            // A parked car: what happens to a download once the car moves, before anything is chosen.
+            if (device == DeviceClass.Car) SelkieCard(tone = CardTone.Low, shape = MaterialTheme.shapes.extraLarge) {
+                StatusChip("Parked", tone = ChipTone.Ok)
+                MutedText("Downloads and setup keep going while you drive. The new container is here when you park.")
+            }
             if (fixedName == null) {
                 OutlinedTextField(
                     value = name, onValueChange = { name = it.lowercase() }, singleLine = true,
@@ -156,6 +161,7 @@ fun NewContainerScreen(
             ImagePicker(selection, { selection = it }, custom, { custom = it }, device = device, variants = variants)
 
             if (initialRef == null && selection == preselected) PreselectNote(preselected, variants)
+
 
             SectionTitle("Space")
             SelkieCard(tone = CardTone.Low, shape = MaterialTheme.shapes.extraLarge) {

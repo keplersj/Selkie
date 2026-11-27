@@ -123,6 +123,8 @@ fun HomeScreen(
     initialDetail: Boolean = false,
     initialTab: ContainerTab = ContainerTab.Overview,
     free: Long = freeBytes(),
+    /** Under the list's heading, such as what driving does in a parked car. */
+    listNote: (@Composable () -> Unit)? = null,
 ) {
     var detail by rememberSaveable { mutableStateOf(initialDetail) }
     var tab by rememberSaveable { mutableStateOf(initialTab) }
@@ -148,7 +150,7 @@ fun HomeScreen(
         val listPane: @Composable (Modifier, Boolean) -> Unit = { m, w ->
             ContainerList(list, state, wide = w, free = free, error = removeError,
                 onOpen = open, onTerminal = terminal, onDesktop = onOpenDesktop, onNew = onNewContainer,
-                onRemove = remove, newButton = newInList, modifier = m)
+                onRemove = remove, newButton = newInList, note = listNote, modifier = m)
         }
         val detailPanel: @Composable (Modifier) -> Unit = { m ->
             Surface(m, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -224,6 +226,7 @@ private fun ContainerList(
     onNew: () -> Unit,
     onRemove: (String) -> Unit,
     newButton: Boolean,
+    note: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val running = list.count { it.running }
@@ -246,6 +249,7 @@ private fun ContainerList(
                     Text("New container")
                 }
             }
+            note?.invoke()
             error?.let { SelkieCard(Modifier.fillMaxWidth(), tone = CardTone.Error) { Text("Could not remove the container: $it") } }
             state.statusError?.let { SelkieCard(Modifier.fillMaxWidth(), tone = CardTone.Error) { Text("Could not read status: $it") } }
             for (c in list) {

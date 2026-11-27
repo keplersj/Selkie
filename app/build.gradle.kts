@@ -53,6 +53,8 @@ tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(stageNativeLi
 android {
     namespace = "io.github.keplersj.selkie"
     compileSdk = 36
+    // Android Automotive's driving state; the library is on the car's system image, not in the APK.
+    useLibrary("android.car")
 
     defaultConfig {
         applicationId = "io.github.keplersj.selkie"

@@ -10,6 +10,8 @@
     <!-- Selkie also runs on Android TV and Google TV, where there is no touchscreen. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- Android Automotive: parked-only, for sideloaded and OEM builds (Play doesn't list container managers for cars). -->
+    <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -19,11 +21,15 @@
         android:label="Selkie"
         android:theme="@style/Theme.Selkie">
 
+        <uses-library android:name="android.car" android:required="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize">
+            <!-- While driving Selkie shows only its own screen with nothing to press (CarDrivingScreen). -->
+            <meta-data android:name="distractionOptimized" android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
