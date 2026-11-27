@@ -18,6 +18,7 @@ import io.github.keplersj.selkie.proot.ProotCommandBuilder
 import kotlinx.coroutines.runBlocking
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
+import io.github.keplersj.selkie.service.RootChoice
 import io.github.keplersj.selkie.service.SessionService
 import io.github.keplersj.selkie.ui.OPEN_DESKTOP_TAG
 import kotlinx.serialization.json.*
@@ -68,6 +69,7 @@ class DesktopE2ETest {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         var lastLog = 0L
         while (!f()) {
+            allowRootRequests()
             val now = SystemClock.uptimeMillis()
             if (now > deadline) {
                 screenshot("timeout-${what.replace(Regex("[^A-Za-z0-9]+"), "-")}.png")
@@ -83,6 +85,18 @@ class DesktopE2ETest {
     }
 
     private var current: SessionService? = null
+
+    /**
+     * The guest's root commands ran unasked before Selkie asked about them; this test isn't about them, so
+     * it allows each once, as before, and logs it: a root screen would cover the desktop it waits for.
+     */
+    private fun allowRootRequests() {
+        val s = current ?: return
+        for (r in s.state.value.rootRequests) {
+            log("SELKIE_METRIC root_request container=${r.container} via=${r.via} from=${r.from} argv=${r.commandLine}")
+            inst.runOnMainSync { s.answerRootRequest(r, RootChoice.Once) }
+        }
+    }
 
     private fun stats(s: SessionService): JsonObject? =
         s.compositor()?.stats()?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
