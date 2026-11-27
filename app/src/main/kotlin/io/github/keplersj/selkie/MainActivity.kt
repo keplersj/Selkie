@@ -17,9 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,27 +27,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.EngineEnv
-<<<<<<< HEAD
-import io.github.keplersj.selkie.platform.AppShortcuts
-=======
->>>>>>> origin/claude/host-link
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionService
 import io.github.keplersj.selkie.ui.*
-import io.github.keplersj.selkie.watch.WatchProtocol
 
 class MainActivity : ComponentActivity() {
     private val serviceState = mutableStateOf<SessionService?>(null)
-    /** A container a selkie://container/NAME link asked to show, such as the watch's Open on phone. */
-    private val linkedContainer = mutableStateOf<String?>(null)
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             serviceState.value = (binder as SessionService.LocalBinder).service
@@ -60,6 +51,9 @@ class MainActivity : ComponentActivity() {
     /** What Ctrl+T, Ctrl+N and Ctrl+1 to 4 do while a section is showing; null on every other screen. */
     private var homeShortcuts: HomeShortcuts? = null
 
+    /** A guest notification tapped in the shade, waiting for the service and the desktop to open. */
+    private val tappedNotification = mutableStateOf<String?>(null)
+
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -69,8 +63,8 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (savedInstanceState == null) linkedContainer.value = WatchProtocol.containerFromLink(intent?.dataString)
         bindService(SessionService.intent(this), conn, Context.BIND_AUTO_CREATE)
+        takeNotificationTap(intent)
         setContent {
             val fold by rememberFold(this)
             SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }
@@ -79,8 +73,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
-        WatchProtocol.containerFromLink(intent.dataString)?.let { linkedContainer.value = it }
+        takeNotificationTap(intent)
+    }
+
+    private fun takeNotificationTap(intent: Intent?) {
+        if (intent?.action == GuestNotifier.ACTION_TAP)
+            tappedNotification.value = intent.getStringExtra(GuestNotifier.EXTRA_KEY)
     }
 
     override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
@@ -132,19 +130,6 @@ class MainActivity : ComponentActivity() {
         // Activity opens a terminal on the session that was tapped.
         var openSession by remember { mutableStateOf<String?>(null) }
         var homeDetail by remember { mutableStateOf(false) }
-        // Bumped to open the selected container's own screen, for a link that named it.
-        var detailRequest by remember { mutableIntStateOf(0) }
-        val linked = linkedContainer.value
-        LaunchedEffect(linked, state.statusLoaded) {
-            if (linked == null || !state.statusLoaded) return@LaunchedEffect
-            if (summaries(state).any { it.name == linked }) {
-                if (linked != state.container) service.selectContainer(linked)
-                section = Section.Containers
-                screen = "auto"
-                detailRequest++
-            }
-            linkedContainer.value = null
-        }
         // On a TV the desktop waits for a mouse or trackpad, which a remote can't stand in for.
         val tv = currentDeviceClass() == DeviceClass.Tv
         val inputs = if (tv) rememberTvInputs() else TvInputs()
@@ -154,70 +139,27 @@ class MainActivity : ComponentActivity() {
         val setSpace = rememberXrSpace()
         var xrDesktop by remember { mutableStateOf(false) }
         var xrTerminal by remember { mutableStateOf(false) }
-        // On TV without a mouse, a desktop or pointer-driven app first explains it needs one; big-screen apps don't.
-        val showCompositor: (Boolean) -> Unit = { needsPointer ->
-            if (full) xrDesktop = true else screen = if (tv && needsPointer && !inputs.pointer) "tv-pointer" else "desktop"
+        val showCompositor: () -> Unit = {
+            if (full) xrDesktop = true else screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop"
         }
         // The whole desktop, unless one is already running (an app left prepared but never opened is dropped).
-        val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor(true) }
-<<<<<<< HEAD
-        val openApp: (AppEntry) -> String? = { app ->
-            service.prepareApp(app) ?: run {
-                // A whole app (not one of its actions) joins the shortcuts on a long press of Selkie's icon.
-                if ('#' !in app.id) AppShortcuts.opened(ctx, state.container, app)
-                showCompositor(!bigScreen(app)); null
+        val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor() }
+        // A desktop notification tapped in the shade: tell its app, and show the desktop it came from.
+        val tapped = tappedNotification.value
+        LaunchedEffect(tapped) {
+            if (tapped != null) {
+                tappedNotification.value = null
+                service.openedGuestNotification(tapped)
+                openDesktop()
             }
         }
-=======
-        val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(!bigScreen(app)); null } }
->>>>>>> origin/claude/host-link
+        val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(); null } }
         val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
         // In a car, Selkie is parked-only: while driving one screen stands in for all of it.
         val driving = rememberCarDriving()
         val car = currentDeviceClass() == DeviceClass.Car
 
-        // Whether battery optimisation applies to Selkie, which can let Android close it in the background.
-        val power = remember { ctx.getSystemService(android.os.PowerManager::class.java) }
-        val batteryLimited = { power?.isIgnoringBatteryOptimizations(ctx.packageName) == false }
-        var limited by remember { mutableStateOf(batteryLimited()) }
-        LifecycleResumeEffect(Unit) { phantom = check.check(); limited = batteryLimited(); onPauseOrDispose {} }
-
-        // Start again on an app in another container waits for that container's apps to be read.
-        var reopenApp by remember { mutableStateOf<Pair<String, String>?>(null) }
-        LaunchedEffect(reopenApp, state.container, state.apps) {
-            val (c, id) = reopenApp ?: return@LaunchedEffect
-            if (state.container != c) return@LaunchedEffect
-            val apps = state.apps ?: return@LaunchedEffect
-            reopenApp = null
-            val app = apps.apps.firstOrNull { it.id == id }
-            if (app != null) openApp(app) else openDesktop()
-        }
-        val closedNotices: @Composable () -> Unit = {
-            ClosedNotices(state.closed,
-                phantomRestricted = phantom == PhantomProcessCheck.State.RESTRICTED,
-                batteryLimited = limited,
-                onDismiss = { service.dismissClosed(it.container) },
-                onStartAgain = { c ->
-                    service.dismissClosed(c.container)
-                    if (c.container != state.container) service.selectContainer(c.container)
-                    when {
-                        c.desktop && c.appId != null -> reopenApp = c.container to c.appId
-                        c.desktop -> openDesktop()
-                        else -> openTerminal()
-                    }
-                },
-                onFixPhantom = { screen = "phantom" },
-                onBattery = {
-                    runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-                        .onFailure {
-                            runCatching {
-                                ctx.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    android.net.Uri.fromParts("package", ctx.packageName, null)))
-                            }
-                        }
-                },
-                time = { closedTime(ctx, it) })
-        }
+        LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
         val op = state.operation
         val needPhantom = (phantom == PhantomProcessCheck.State.RESTRICTED || phantom == PhantomProcessCheck.State.UNVERIFIED) && !acknowledged
@@ -256,7 +198,7 @@ class MainActivity : ComponentActivity() {
                     BackHandler { screen = "auto" }
                     // Pairing a mouse from the gate carries on into the desktop.
                     LaunchedEffect(inputs.pointer) { if (inputs.pointer) screen = "desktop" }
-                    TvPointerGate(state.graphical?.name, inputs, app = state.desktopApp?.name,
+                    TvPointerGate(state.graphical?.name, inputs,
                         onPair = {
                             runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)) }
                                 .onFailure { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) } }
@@ -323,9 +265,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenTerminal = openTerminal,
                                 onStopDesktop = { service.stopDesktop() },
                                 onChangeImage = { screen = "change" },
-                                onNewContainer = newContainer,
-                                inputs = inputs,
-                                onOpenApp = openApp)
+                                onNewContainer = newContainer)
                             else HomeScreen(state,
                                 onOpenTerminal = openTerminal,
                                 onOpenDesktop = openDesktop,
@@ -341,13 +281,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenApp = openApp,
                                 newInList = !rail,
                                 onDetailShown = { homeDetail = it },
-                                openDetail = detailRequest,
-                                listNote = if (car || state.closed.isNotEmpty()) ({
-                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        if (car) CarParkedNote()
-                                        closedNotices()
-                                    }
-                                }) else null)
+                                listNote = if (car) ({ CarParkedNote() }) else null)
                             Section.Images -> ImagesScreen(state, rail,
                                 onNewContainer = { ref -> newRef = ref; screen = "new" },
                                 onCleanUp = { done -> service.cleanUpImages(done) })

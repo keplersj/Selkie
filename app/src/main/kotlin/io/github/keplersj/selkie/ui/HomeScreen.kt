@@ -125,14 +125,11 @@ fun HomeScreen(
     /** Previews open a container or a tab with these; the app starts on the list. */
     initialDetail: Boolean = false,
     initialTab: ContainerTab = ContainerTab.Overview,
-    /** Each new value opens the selected container's own screen, for a link that named it. */
-    openDetail: Int = 0,
     free: Long = freeBytes(),
     /** Under the list's heading, such as what driving does in a parked car. */
     listNote: (@Composable () -> Unit)? = null,
 ) {
     var detail by rememberSaveable { mutableStateOf(initialDetail) }
-    LaunchedEffect(openDetail) { if (openDetail > 0) detail = true }
     var tab by rememberSaveable { mutableStateOf(initialTab) }
     var removing by remember { mutableStateOf<String?>(null) }
     var removeError by remember { mutableStateOf<String?>(null) }

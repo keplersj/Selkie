@@ -57,13 +57,6 @@ echo "== SmokeTest"
 timeout 300 adb shell am instrument -w -e class $PKG.SmokeTest $RUNNER | tee "$OUT/smoke.txt"
 grep -q '^OK (' "$OUT/smoke.txt" || { echo "smoke test failed"; rc=1; diag; }
 
-<<<<<<< HEAD
-echo "== AppShortcutTest"
-timeout 300 adb shell am instrument -w -e class $PKG.AppShortcutTest $RUNNER | tee "$OUT/app-shortcut.txt"
-grep -q '^OK (' "$OUT/app-shortcut.txt" || { echo "app shortcut test failed"; rc=1; diag; }
-
-=======
->>>>>>> origin/claude/host-link
 echo "== HomeDetailTest"
 timeout 300 adb shell am instrument -w -e class $PKG.HomeDetailTest $RUNNER | tee "$OUT/home-detail.txt"
 grep -q '^OK (' "$OUT/home-detail.txt" || { echo "home detail test failed"; rc=1; diag; }

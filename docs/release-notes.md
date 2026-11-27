@@ -4,7 +4,7 @@ MVP prerelease of Selkie: run an unmodified bootc image (Bluefin LTS by default)
 
 Assets:
 - `selkie-0.1.0-mvp.1.apk`: arm64-v8a + x86_64, signed with the public MVP test key (`keystore/selkie-mvp.jks`; not secure, for testing only).
-- `selkie-watch-*.apk`: the Wear OS remote, signed with the same key. Install it on a watch paired with the phone; it needs Google Play services on both. It adds a Selkie tile to the watch, and each container has an Open on phone button.
+- `selkie-watch-*.apk`: the Wear OS remote, signed with the same key. Install it on a watch paired with the phone; it needs Google Play services on both.
 - `proot-src-*.tar.gz`: corresponding source for the bundled proot (GPL-2): termux/proot with DroidDeck's patches, talloc, and the build script.
 - `DROIDC_COMMIT.txt`: the droidc commit built into this APK.
 - `SHA256SUMS`.
