@@ -45,6 +45,7 @@
             </intent-filter>
         </activity>
 
+<<<<<<< HEAD
         <!-- One Linux app from a home screen shortcut (AppShortcuts), in its own task per app. -->
         <activity
             android:name=".AppActivity"
@@ -54,6 +55,8 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize" />
 
+=======
+>>>>>>> origin/claude/host-link
         <service
             android:name=".service.SessionService"
             android:exported="false"
