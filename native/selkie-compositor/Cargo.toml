@@ -15,7 +15,7 @@ wayland-protocols = { version = "0.32", features = ["server"] }
 rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.21"
+jni = "0.22"
 rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net", "use-libc"] }
 
 [dev-dependencies]
