@@ -15,8 +15,8 @@ class PhoneLink(context: Context) {
     private val data = Wearable.getDataClient(context.applicationContext)
     private val messages = Wearable.getMessageClient(context.applicationContext)
 
-    /** Calls [onState] with what the phone published (null when nothing has been), then on every change. */
-    fun watch(onState: (PhoneState?) -> Unit): AutoCloseable {
+    /** Calls [onState] once with what the phone last published, or null when nothing has been. */
+    fun readOnce(onState: (PhoneState?) -> Unit) {
         val uri = Uri.Builder().scheme(PutDataRequest.WEAR_URI_SCHEME).path(WatchProtocol.STATE_PATH).build()
         data.getDataItems(uri)
             .addOnSuccessListener { buffer ->
@@ -25,6 +25,11 @@ class PhoneLink(context: Context) {
                 onState(state)
             }
             .addOnFailureListener { onState(null) }
+    }
+
+    /** Calls [onState] with what the phone published (null when nothing has been), then on every change. */
+    fun watch(onState: (PhoneState?) -> Unit): AutoCloseable {
+        readOnce(onState)
         val listener = DataClient.OnDataChangedListener { events ->
             events.forEach { e ->
                 if (e.type == DataEvent.TYPE_CHANGED && e.dataItem.uri.path == WatchProtocol.STATE_PATH) {
