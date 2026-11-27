@@ -138,6 +138,10 @@ data class EngineEnv(
  * is restricted to nothing. `PIPEWIRE_REMOTE=pipewire-0-manager` was not enough in the emulator, because
  * not every client uses it. PipeWire therefore starts from a copy of its own configuration whose
  * `access.socket` makes the default socket `unrestricted` too.
+ *
+ * WirePlumber and `pipewire-pulse` wait until that PipeWire answers. All three start at once, and PipeWire
+ * takes a moment to write its configuration; a WirePlumber that came up first, or met a socket left by the
+ * previous session, stayed running but linked nothing, so no stream reached a sink.
  */
 object PipeWireServices {
     private const val SCRIPT =
@@ -147,7 +151,15 @@ object PipeWireServices {
         "\"\$f\" > \"\$c\" " +
         "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && exec pipewire -c \"\$c\"; done; exec pipewire"
 
+    /** Waits up to about 20 s for PipeWire to answer, then runs the program anyway. */
+    internal fun afterPipeWire(program: String) =
+        "i=0; until timeout 2 pw-cli info 0 >/dev/null 2>&1 || [ \$i -ge 100 ]; do i=\$((i+1)); sleep 0.2; done; " +
+            "exec $program"
+
+    private fun shell(script: String) =
+        """["sh","-c","${script.replace("\\", "\\\\").replace("\"", "\\\"")}"]"""
+
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
-        """[["sh","-c","${SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"")}"],["wireplumber"],["pipewire-pulse"]]"""
+        "[${shell(SCRIPT)},${shell(afterPipeWire("wireplumber"))},${shell(afterPipeWire("pipewire-pulse"))}]"
 }
