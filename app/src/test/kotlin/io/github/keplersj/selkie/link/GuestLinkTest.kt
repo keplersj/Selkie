@@ -4,6 +4,7 @@ import io.github.keplersj.selkie.TestEnv
 import io.github.keplersj.selkie.engine.ShellSpec
 import io.github.keplersj.selkie.engine.SelkieJson
 import io.github.keplersj.selkie.proot.ProotCommandBuilder
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -50,5 +51,36 @@ class GuestLinkTest {
         assertEquals(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "host-link"), inv.argv.takeLast(5))
         assertEquals(ProotCommandBuilder.USER_SERVICES_WAIT_SECONDS.toString(), inv.env["DROIDC_USER_SERVICES_WAIT"])
         assertTrue(TestEnv.env().hostLinkLog.name.startsWith("host-link"))
+    }
+
+    @Test fun onlyAndroidLinksAreOpened() {
+        fun line(uri: String) = GuestLinkMessage.parse("""{"kind":"open-uri","uri":${SelkieJson.encodeToString(String.serializer(), uri)}}""")!!
+        assertEquals("https://example.org/a?b=1", OpenUri.uriFrom(line("https://example.org/a?b=1")))
+        assertEquals("mailto:someone@example.org", OpenUri.uriFrom(line("mailto:someone@example.org")))
+        assertEquals("GEO:40.7,-111.9", OpenUri.uriFrom(line("GEO:40.7,-111.9")))
+        assertNull(OpenUri.uriFrom(line("file:///etc/passwd")))
+        assertNull(OpenUri.uriFrom(line("intent://x#Intent;end")))
+        assertNull(OpenUri.uriFrom(line("https:")))
+        assertNull(OpenUri.uriFrom(line("https://a\nb")))
+        assertNull(OpenUri.uriFrom(GuestLinkMessage.parse("""{"kind":"open-uri"}""")!!))
+        assertNull(OpenUri.uriFrom(GuestLinkMessage.parse("""{"kind":"ready","uri":"https://x"}""")!!))
+    }
+
+    @Test fun batteryLineFollowsAndroidsExtras() {
+        // BatteryManager: status 2 charging, 3 discharging, 4 not charging, 5 full; plugged 1 = AC.
+        val charging = SelkieJson.parseToJsonElement(BatteryState.of(true, 46, 100, 2, 1, 1_800_000).toLine()) as JsonObject
+        assertEquals("battery", charging["kind"]!!.jsonPrimitive.content)
+        assertEquals("46", charging["percent"]!!.jsonPrimitive.content)
+        assertEquals("charging", charging["status"]!!.jsonPrimitive.content)
+        assertEquals("true", charging["plugged"]!!.jsonPrimitive.content)
+        assertEquals("1800", charging["time_to_full"]!!.jsonPrimitive.content)
+
+        val low = BatteryState.of(true, 9, 100, 3, 0)
+        assertEquals(BatteryState(true, 9, "discharging", false, null), low)
+        assertEquals("full", BatteryState.of(true, 100, 100, 5, 2).status)
+        assertEquals("not-charging", BatteryState.of(true, 80, 100, 4, 1).status)
+        assertNull(BatteryState.of(true, -1, 100, 1, 0).percent)
+        assertEquals(50, BatteryState.of(true, 128, 256, 3, 0).percent)
+        assertFalse('\n' in low.toLine())
     }
 }
