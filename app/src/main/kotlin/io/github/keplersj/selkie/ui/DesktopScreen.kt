@@ -45,13 +45,14 @@ import io.github.keplersj.selkie.service.SessionService
  * screen keeps it running (Stop ends it). Selkie's own controls float over it for a few seconds at a time.
  */
 @Composable
-fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: () -> Unit) {
+fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: () -> Unit, immersive: Boolean = true) {
     val state by service.state.collectAsState()
     val desktop = state.desktop
     var viewRef by remember { mutableStateOf<CompositorView?>(null) }
     var size by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val ctx = LocalContext.current
-    ImmersiveMode()
+    // In an XR panel the system bars aren't over the desktop, so there is nothing to hide.
+    if (immersive) ImmersiveMode()
 
     // The controls show when the desktop opens and on Back, then go. Back while they show leaves the desktop
     // running and returns to Selkie.

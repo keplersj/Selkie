@@ -8,3 +8,6 @@
 -keepclasseswithmembers class io.github.keplersj.selkie.** { kotlinx.serialization.KSerializer serializer(...); }
 -keep,includedescriptorclasses class io.github.keplersj.selkie.**$$serializer { *; }
 -keepclassmembers class io.github.keplersj.selkie.** { *** Companion; }
+# Jetpack XR: the XR extensions are provided by the headset's system image, not bundled with the app.
+-dontwarn android.extensions.xr.**
+-dontwarn com.android.extensions.xr.**

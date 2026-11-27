@@ -17,6 +17,10 @@ roborazzi = "1.79.0"
 robolectric = "4.18.1"
 # 0.10 changed ComposablePreview.invoke; Roborazzi 1.79 is built against 0.9.x.
 previewScanner = "0.9.3"
+# Jetpack XR: spatial panels on Android XR headsets, from the set-up guide's versions.
+xrCompose = "1.0.0-rc01"
+xrRuntime = "1.1.0-alpha03"
+xrScenecore = "1.1.0-alpha02"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -45,6 +49,9 @@ roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = 
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
 roborazzi-preview-scanner-support = { module = "io.github.takahirom.roborazzi:roborazzi-compose-preview-scanner-support", version.ref = "roborazzi" }
 composable-preview-scanner = { module = "io.github.sergio-sastre.ComposablePreviewScanner:android", version.ref = "previewScanner" }
+xr-compose = { module = "androidx.xr.compose:compose", version.ref = "xrCompose" }
+xr-runtime = { module = "androidx.xr.runtime:runtime", version.ref = "xrRuntime" }
+xr-scenecore = { module = "androidx.xr.scenecore:scenecore", version.ref = "xrScenecore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

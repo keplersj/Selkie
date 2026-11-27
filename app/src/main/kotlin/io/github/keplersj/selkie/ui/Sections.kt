@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -52,6 +53,8 @@ fun SectionScaffold(
     onNewContainer: () -> Unit,
     modifier: Modifier = Modifier,
     showNavigation: Boolean = true,
+    /** At the rail's foot: the headset's Home Space and Full Space switch. */
+    railFooter: (@Composable () -> Unit)? = null,
     content: @Composable (rail: Boolean) -> Unit,
 ) {
     val book = LocalFold.current?.book == true
@@ -60,7 +63,7 @@ fun SectionScaffold(
         when {
             !showNavigation -> content(rail)
             rail -> Row(Modifier.fillMaxSize()) {
-                SectionRail(section, onSection, onNewContainer)
+                SectionRail(section, onSection, onNewContainer, railFooter)
                 Box(Modifier.weight(1f).fillMaxHeight()) { content(true) }
             }
             else -> Column(Modifier.fillMaxSize()) {
@@ -84,7 +87,8 @@ fun SectionBar(section: Section, onSection: (Section) -> Unit) {
 }
 
 @Composable
-fun SectionRail(section: Section, onSection: (Section) -> Unit, onNewContainer: () -> Unit) {
+fun SectionRail(section: Section, onSection: (Section) -> Unit, onNewContainer: () -> Unit,
+                footer: (@Composable () -> Unit)? = null) {
     NavigationRail(
         Modifier.fillMaxHeight().padding(vertical = 12.dp),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -103,6 +107,10 @@ fun SectionRail(section: Section, onSection: (Section) -> Unit, onNewContainer: 
                 icon = { Icon(s.icon, contentDescription = null) },
                 label = { Text(s.label) },
             )
+        }
+        if (footer != null) {
+            Spacer(Modifier.weight(1f))
+            footer()
         }
     }
 }

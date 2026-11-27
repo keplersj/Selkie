@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
+import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionService
@@ -116,14 +117,23 @@ class MainActivity : ComponentActivity() {
         // On a TV the desktop waits for a mouse or trackpad, which a remote can't stand in for.
         val tv = currentDeviceClass() == DeviceClass.Tv
         val inputs = if (tv) rememberTvInputs() else TvInputs()
-        val openDesktop = { screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop" }
+        // On a headset in Full Space the desktop and the terminal open in panels of their own, beside the rest.
+        val xr = xrAvailable()
+        val full = xrFullSpace()
+        val setSpace = rememberXrSpace()
+        var xrDesktop by remember { mutableStateOf(false) }
+        var xrTerminal by remember { mutableStateOf(false) }
+        val openDesktop: () -> Unit = {
+            if (full) xrDesktop = true else screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop"
+        }
+        val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
 
         LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
 
         val op = state.operation
         val needPhantom = (phantom == PhantomProcessCheck.State.RESTRICTED || phantom == PhantomProcessCheck.State.UNVERIFIED) && !acknowledged
 
-        Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+        val main: @Composable () -> Unit = { Box(Modifier.fillMaxSize().safeDrawingPadding()) {
             when {
                 needPhantom -> PhantomScreen(true, phantom == PhantomProcessCheck.State.UNVERIFIED,
                     onRecheck = { phantom = check.check() },
@@ -150,7 +160,7 @@ class MainActivity : ComponentActivity() {
                 screen == "desktop" -> DesktopScreen(service,
                     onTerminal = {
                         state.desktopContainer?.let { if (it != state.container) service.selectContainer(it) }
-                        screen = "terminal"
+                        openTerminal()
                     },
                     onBack = { screen = "auto" })
                 screen == "tv-pointer" -> {
@@ -210,7 +220,7 @@ class MainActivity : ComponentActivity() {
                     val newContainer = { newRef = null; screen = "new" }
                     DisposableEffect(selected) {
                         homeShortcuts = HomeShortcuts(
-                            newTerminal = { if (selected != null) screen = "terminal" },
+                            newTerminal = { if (selected != null) openTerminal() },
                             newContainer = newContainer,
                             section = { section = it },
                         )
@@ -221,12 +231,12 @@ class MainActivity : ComponentActivity() {
                             Section.Containers -> if (tv) TvHome(state,
                                 onSelectContainer = { service.selectContainer(it) },
                                 onOpenDesktop = openDesktop,
-                                onOpenTerminal = { screen = "terminal" },
+                                onOpenTerminal = openTerminal,
                                 onStopDesktop = { service.stopDesktop() },
                                 onChangeImage = { screen = "change" },
                                 onNewContainer = newContainer)
                             else HomeScreen(state,
-                                onOpenTerminal = { screen = "terminal" },
+                                onOpenTerminal = openTerminal,
                                 onOpenDesktop = openDesktop,
                                 onConfigureDesktop = { screen = "session" },
                                 onUpgrade = { service.upgrade() },
@@ -247,7 +257,7 @@ class MainActivity : ComponentActivity() {
                                 onStopDesktop = { service.stopDesktop() },
                                 onOpenTerminal = { t ->
                                     if (t.container != state.container) service.selectContainer(t.container)
-                                    openSession = t.id; screen = "terminal"
+                                    openSession = t.id; openTerminal()
                                 },
                                 onStopAll = {
                                     service.stopDesktop()
@@ -264,10 +274,35 @@ class MainActivity : ComponentActivity() {
                         BackHandler(enabled = section != Section.Containers) { section = Section.Containers }
                         TvScaffold(section, onSection = { section = it }, inputs = inputs) { body(true) }
                     } else SectionScaffold(section, onSection = { section = it }, onNewContainer = newContainer,
-                        showNavigation = !(section == Section.Containers && homeDetail)) { rail -> body(rail) }
+                        showNavigation = !(section == Section.Containers && homeDetail),
+                        railFooter = if (xr) ({ XrSpaceRailItem(full, setSpace) }) else null) { rail -> body(rail) }
                 }
             }
-        }
+        } }
+
+        if (full) {
+            // A screen that went full screen before the switch moves into its panel.
+            LaunchedEffect(Unit) {
+                if (screen == "desktop") { xrDesktop = true; screen = "auto" }
+                if (screen == "terminal") { xrTerminal = true; screen = "auto" }
+            }
+            XrPanels(
+                desktopSize = (state.desktop as? DesktopState.Running)?.let { it.width to it.height },
+                main = main,
+                desktop = if (xrDesktop) ({
+                    DesktopScreen(service, immersive = false,
+                        onTerminal = {
+                            state.desktopContainer?.let { if (it != state.container) service.selectContainer(it) }
+                            xrTerminal = true
+                        },
+                        onBack = { xrDesktop = false })
+                }) else null,
+                terminal = if (xrTerminal) ({
+                    key(openSession) { TerminalScreen(service, onBack = { xrTerminal = false; openSession = null },
+                        initialSession = openSession) }
+                }) else null,
+            )
+        } else main()
     }
 }
 
