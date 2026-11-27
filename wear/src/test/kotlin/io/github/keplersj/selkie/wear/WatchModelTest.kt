@@ -2,6 +2,7 @@ package io.github.keplersj.selkie.wear
 
 import io.github.keplersj.selkie.watch.WatchContainer
 import io.github.keplersj.selkie.watch.WatchDesktop
+import io.github.keplersj.selkie.watch.WatchProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -23,5 +24,16 @@ class WatchModelTest {
         val list = listOf(WatchContainer("a"), WatchContainer("b", terminals = 1), WatchContainer("c"),
             WatchContainer("d", WatchDesktop.Running))
         assertEquals(listOf("b", "d", "a", "c"), ordered(list).map { it.name })
+    }
+
+    @Test fun containerLinks() {
+        assertEquals("selkie://container/dev", WatchProtocol.containerLink("dev"))
+        assertEquals("my box", WatchProtocol.containerFromLink(WatchProtocol.containerLink("my box")))
+        assertEquals("dev", WatchProtocol.containerFromLink("selkie://container/dev"))
+        assertEquals(null, WatchProtocol.containerFromLink("selkie://container/"))
+        assertEquals(null, WatchProtocol.containerFromLink("selkie://container/a/b"))
+        assertEquals(null, WatchProtocol.containerFromLink("https://container/dev"))
+        assertEquals(null, WatchProtocol.containerFromLink("selkie://other/dev"))
+        assertEquals(null, WatchProtocol.containerFromLink(null))
     }
 }
