@@ -138,6 +138,9 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.termux.terminal.view)
     implementation(libs.termux.terminal.emulator)
+    implementation(libs.xr.compose)
+    implementation(libs.xr.runtime)
+    implementation(libs.xr.scenecore)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
