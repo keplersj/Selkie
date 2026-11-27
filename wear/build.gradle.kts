@@ -47,8 +47,6 @@ android {
         unitTests.all {
             it.systemProperties["robolectric.pixelCopyRenderMode"] = "hardware"
             it.maxHeapSize = "4096m"
-            // Full causes in the log: CI's test reports can't be read from everywhere.
-            it.testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
         }
     }
 }
@@ -77,13 +75,6 @@ dependencies {
     implementation(libs.wear.compose.material3)
     implementation(libs.wear.compose.foundation)
     implementation(libs.play.services.wearable)
-    implementation(libs.wear.tiles)
-    implementation(libs.wear.protolayout)
-    // Tiles hand back a ListenableFuture. Named here because the debug-only renderer brings
-    // all of Guava, which turns the listenablefuture stub on the compile classpath empty.
-    implementation(libs.guava)
-    implementation(libs.wear.remote.interactions)
-    implementation(libs.androidx.concurrent.futures)
 
     testImplementation(libs.junit)
     testImplementation(platform(libs.compose.bom))
@@ -93,8 +84,5 @@ dependencies {
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.preview.scanner.support)
     testImplementation(libs.composable.preview.scanner)
-    // Draws the tile the way a watch does, for its screenshot (src/testDebug). A test-only
-    // dependency's resources never reach the test R jar, so it rides on the debug build.
-    debugImplementation(libs.wear.tiles.renderer)
     debugImplementation(libs.compose.ui.test.manifest)
 }

@@ -78,10 +78,11 @@ refused, so use the Developer options toggle.
   AudioTrack) is built but has not been heard on a device yet; the emulator runs with `-noaudio`.
 - The desktop follows Android's look (dark mode, accent, font size, "Remove animations", high
   contrast) through `droidc host-link`. The emulator test checks night mode only; not yet seen on a device.
-- Web, mail, phone, SMS and map links opened in the desktop (`xdg-open`, GNOME apps) open in Android's
-  own apps, also through `droidc host-link`. The emulator test opens one web link; not yet seen on a device.
-- The screen stays on while a desktop app asks it to (a playing video), and GNOME's own lock screen
-  and idle blank are off, since Android locks the device. Not yet seen on a device.
+- Desktop apps' notifications (libnotify and GNotification, Flatpaks included) show in Android's shade
+  through `droidc host-link`, and from there on a paired Wear OS watch. Tapping one opens the desktop;
+  GNotification buttons and replies reach the app; dismissing one closes it in GNOME. Checked against a
+  fake GNOME Shell on a test bus only, not yet on a device or watch. A notification closed inside
+  GNOME stays on Android, and Android also shows them while the desktop is in front.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
   only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
   no audio (it came later; see above), no Steam.

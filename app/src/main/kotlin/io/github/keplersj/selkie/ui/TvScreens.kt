@@ -52,7 +52,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.ServiceState
 
@@ -107,37 +106,6 @@ fun rememberTvInputs(): TvInputs {
 }
 
 /** The container TV Home features: the one whose desktop runs, else the selected one, else the first. */
-/** Categories of apps made for a couch and a remote or gamepad, which open on TV without a pointer. */
-private val BIG_SCREEN_CATEGORIES = setOf("Game", "Video", "TV", "Player", "AudioVideo")
-
-/**
- * The entry to open on a TV for [app]: its own big-screen action when it has one (Steam's Big Picture),
- * named after it, otherwise the app itself.
- */
-internal fun tvEntry(app: AppEntry): AppEntry {
-    val big = app.actions.firstOrNull { a ->
-        val key = (a.id + a.name).lowercase().filter { it.isLetter() }
-        "bigpicture" in key && a.argv.isNotEmpty()
-    } ?: return app
-    val name = if (big.name.startsWith(app.name)) big.name else "${app.name} ${big.name}"
-    return app.copy(name = name, argv = big.argv, actions = emptyList())
-}
-
-/** Whether [app] works with a remote or gamepad alone. */
-internal fun bigScreen(app: AppEntry): Boolean =
-    app.argv != tvEntry(app).argv || app.categories.any { it in BIG_SCREEN_CATEGORIES }
-
-/** A container's apps for the TV row: those that open on their own, big-screen ones first, at most [max]. */
-internal fun tvApps(apps: List<AppEntry>, max: Int = 10): List<AppEntry> =
-    apps.filter { appOpen(it) == AppOpen.Alone }
-        .sortedWith(compareByDescending<AppEntry> { bigScreen(it) }.thenBy { it.name.lowercase() })
-        .take(max)
-        .map(::tvEntry)
-
-/** What a TV row card says under an app's name: its container, and what it still needs to be used. */
-internal fun tvAppLine(container: String, app: AppEntry, inputs: TvInputs): String =
-    if (bigScreen(app) || inputs.pointer) "$container · ready" else "$container · needs a pointer"
-
 internal fun tvFeatured(state: ServiceState, containers: List<ContainerSummary>): ContainerSummary? =
     containers.firstOrNull { it.desktop } ?: containers.firstOrNull { it.name == state.container } ?: containers.firstOrNull()
 
@@ -250,14 +218,10 @@ fun TvHome(
     onChangeImage: () -> Unit,
     onNewContainer: () -> Unit,
     modifier: Modifier = Modifier,
-    inputs: TvInputs = TvInputs(),
-    /** Opens one app on its own; returns why it can't open, or null. */
-    onOpenApp: (AppEntry) -> String? = { null },
 ) {
     val containers = summaries(state)
     val featured = tvFeatured(state, containers)
     var stopping by remember { mutableStateOf<String?>(null) }
-    var appMessage by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         if (featured == null) {
@@ -280,10 +244,11 @@ fun TvHome(
                 onChangeImage = onChangeImage)
         }
 
-        if (containers.isNotEmpty()) TvAppsRow(state, inputs, appMessage,
-            onOpenApp = { app -> appMessage = onOpenApp(app) },
-            onOpenDesktop = { appMessage = null; onOpenDesktop() },
-            onOpenTerminal = { appMessage = null; onOpenTerminal() })
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Big-screen apps", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+            PlannedChip()
+            MutedText("Open a container's ten-foot app, like Steam Big Picture or Kodi, straight from here.")
+        }
 
         if (containers.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Containers", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
@@ -321,70 +286,6 @@ fun TvHome(
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     stopping?.let { name ->
         StopDesktopDialog(name, onDismiss = { stopping = null }, onConfirm = { stopping = null; onStopDesktop() })
-    }
-}
-
-/**
- * The selected container's apps, ready to open on their own from the couch: big-screen ones (games, players,
- * Steam's Big Picture) first, then its desktop and terminal, each saying what it still needs.
- */
-@Composable
-private fun TvAppsRow(
-    state: ServiceState,
-    inputs: TvInputs,
-    message: String?,
-    onOpenApp: (AppEntry) -> Unit,
-    onOpenDesktop: () -> Unit,
-    onOpenTerminal: () -> Unit,
-) {
-    val container = state.container
-    val apps = state.apps?.apps?.let(::tvApps)
-    val desktop = state.graphical?.takeIf { it.configured }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Big-screen apps", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
-            MutedText(when {
-                state.appsError != null -> "Couldn't read the apps in $container: ${state.appsError}"
-                apps == null -> "Reading the apps in $container…"
-                apps.isEmpty() -> "Nothing in $container opens on its own yet."
-                else -> "From $container. Choose another container below to see its apps."
-            })
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp)) {
-            items(apps.orEmpty(), key = { it.id + it.argv.joinToString(" ") }) { app ->
-                TvCard(title = app.name, line = tvAppLine(container, app, inputs), onClick = { onOpenApp(app) }) {
-                    AppIconView(app, size = 40.dp)
-                }
-            }
-            if (desktop != null) item(key = "desktop") {
-                TvCard(title = desktop.name?.let { "$it desktop" } ?: "Desktop",
-                    line = if (inputs.pointer) container else "$container · needs a pointer", onClick = onOpenDesktop) {
-                    Mark(style = MarkStyle.Neutral, size = 40.dp) { Icon(SelkieIcons.Desktop, null) }
-                }
-            }
-            item(key = "terminal") {
-                TvCard(title = "Terminal", line = if (inputs.keyboard) container else "$container · needs a keyboard",
-                    onClick = onOpenTerminal) {
-                    Mark(style = MarkStyle.Neutral, size = 40.dp) { Icon(SelkieIcons.Terminal, null) }
-                }
-            }
-        }
-        message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-    }
-}
-
-@Composable
-private fun TvCard(title: String, line: String, onClick: () -> Unit, mark: @Composable () -> Unit) {
-    TvFocusable(onClick = onClick, modifier = Modifier.width(260.dp)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            mark()
-            Column {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(line, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
     }
 }
 
@@ -448,19 +349,15 @@ fun TvPointerGate(
     onPair: () -> Unit,
     onOpenAnyway: () -> Unit,
     modifier: Modifier = Modifier,
-    /** The app being opened on its own, or null for the desktop. */
-    app: String? = null,
 ) {
     val first = remember { FocusRequester() }
     Column(modifier.fillMaxSize().padding(horizontal = TV_H, vertical = TV_V), verticalArrangement = Arrangement.Center) {
         Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Mark(style = MarkStyle.Tertiary, size = 56.dp) { Icon(SelkieIcons.Desktop, null) }
-            Text(app?.let { "$it needs a pointer" } ?: sessionName?.let { "The $it desktop needs a pointer" }
-                ?: "This desktop needs a pointer", Modifier.semantics { heading() },
+            Text(sessionName?.let { "The $it desktop needs a pointer" } ?: "This desktop needs a pointer", Modifier.semantics { heading() },
                 style = MaterialTheme.typography.headlineMedium)
-            MutedText("A remote can't move a mouse cursor. Connect a mouse or trackpad and " +
-                (if (app != null) "$app opens" else "the desktop opens") + " on its own." +
-                if (inputs.keyboard) " Your keyboard works there too." else "")
+            MutedText("A remote can't move a mouse cursor. Connect a mouse or trackpad and the desktop opens " +
+                "on its own." + if (inputs.keyboard) " Your keyboard works there too." else "")
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TvButton("Pair a Bluetooth mouse or keyboard", onPair, Modifier.focusRequester(first),
                     icon = SelkieIcons.Keyboard, primary = true)

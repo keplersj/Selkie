@@ -1,7 +1,5 @@
 package io.github.keplersj.selkie.service
 
-import android.app.ActivityManager
-import android.app.ApplicationExitInfo
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,7 +13,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
-import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.termux.terminal.TerminalSession
@@ -40,9 +37,9 @@ import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
-import io.github.keplersj.selkie.link.OpenUri
+import io.github.keplersj.selkie.link.GuestNotification
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.engine.status
-import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.platform.RootAccess
 import io.github.keplersj.selkie.proot.EnterCommandBuilder
 import io.github.keplersj.selkie.proot.GuestFiles
@@ -58,8 +55,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -78,10 +73,6 @@ class SessionService : Service() {
     private val _state = MutableStateFlow(ServiceState())
     val state: StateFlow<ServiceState> = _state.asStateFlow()
 
-    private val _keepAwake = MutableStateFlow(false)
-    /** A desktop app asks the screen to stay on (an idle inhibitor, through `droidc host-link`). */
-    val keepAwake: StateFlow<Boolean> = _keepAwake.asStateFlow()
-
     private var opJob: Job? = null
     /** The watch remote: a no-op in builds without Play services. */
     private var watchLink: AutoCloseable? = null
@@ -99,10 +90,7 @@ class SessionService : Service() {
     private val sessionClient = object : TerminalSessionClient {
         override fun onTextChanged(s: TerminalSession) { uiSessionClient?.onTextChanged(s) }
         override fun onTitleChanged(s: TerminalSession) { uiSessionClient?.onTitleChanged(s); publishSessions() }
-        override fun onSessionFinished(s: TerminalSession) {
-            noticeKilledTerminal(s)
-            uiSessionClient?.onSessionFinished(s); publishSessions()
-        }
+        override fun onSessionFinished(s: TerminalSession) { uiSessionClient?.onSessionFinished(s); publishSessions() }
         override fun onCopyTextToClipboard(s: TerminalSession, text: String?) { uiSessionClient?.onCopyTextToClipboard(s, text) }
         override fun onPasteTextFromClipboard(s: TerminalSession?) { uiSessionClient?.onPasteTextFromClipboard(s) }
         override fun onBell(s: TerminalSession) { uiSessionClient?.onBell(s) }
@@ -133,7 +121,6 @@ class SessionService : Service() {
         if (saved != null) _state.update { it.copy(container = saved) }
         val env = newEnv()
         _state.update { it.copy(rootMode = env.rootMode, suFound = env.su != null) }
-        noticeRestart()
         refreshStatus()
         watchLink = WatchLink.start(this, state, scope,
             onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) })
@@ -141,17 +128,18 @@ class SessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == GuestNotifier.ACTION_BUTTON || intent?.action == GuestNotifier.ACTION_DISMISSED) {
+            onGuestNotificationIntent(intent)
+            return START_NOT_STICKY
+        }
         // Entering the foreground promptly satisfies startForegroundService().
         updateForeground(force = true)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        destroying = true
         stopDesktop()
         terminals.values.forEach { it.session.finishIfRunning() }
-        // Selkie ended these itself, so the next start has nothing to explain.
-        prefs.edit().remove(KEY_RUNNING).apply()
         stopAllServices()
         watchLink?.close()
         scope.cancel()
@@ -441,7 +429,6 @@ class SessionService : Service() {
             val session = TerminalSession(inv.argv.first(), spec.cwd.let { env.filesDir.path },
                 inv.argv.drop(1).toTypedArray(), inv.envArray, 4000, sessionClient)
             terminals[id] = Term(container, session)
-            _state.update { it.copy(closed = it.closed.filterNot { c -> c.container == container }) }
             val n = terminals.values.count { it.container == container }
             session.mSessionName = if (env.isDefaultContainer) "Session $n" else "$container $n"
             startForegroundService(Intent(this, SessionService::class.java))
@@ -511,88 +498,6 @@ class SessionService : Service() {
         }
     }
 
-    // ---------------- noticing that Android closed something ----------------
-
-    @Volatile private var destroying = false
-    private var lastRecord: String? = null
-
-    /** Keeps what runs in preferences, so a start after Android ended the process can tell (see [noticeRestart]). */
-    private fun recordRunning() {
-        val st = _state.value
-        val desktopC = st.desktopContainer.takeIf { desktopActive() }
-        val recs = runRecords(desktopC, st.desktopApp?.id, st.desktopApp?.name,
-            terminals.values.filter { it.session.isRunning }.map { it.container }, bootCount())
-        val enc = encodeRunRecords(recs)
-        if (enc == lastRecord) return
-        lastRecord = enc
-        prefs.edit().apply { if (recs.isEmpty()) remove(KEY_RUNNING) else putString(KEY_RUNNING, enc) }.apply()
-    }
-
-    /** A new process that finds sessions recorded as running: the previous one ended without stopping them. */
-    private fun noticeRestart() {
-        // Only a new process: the service can be created again in the same one, which ended nothing.
-        if (restartChecked) return
-        restartChecked = true
-        val left = decodeRunRecords(prefs.getString(KEY_RUNNING, null))
-        if (left.isEmpty()) return
-        prefs.edit().remove(KEY_RUNNING).apply()
-        val (kind, at) = lastExit()
-        val closed = closedAfterRestart(left, kind, at, bootCount()) { c -> logTail(newEnv(c)) }
-        android.util.Log.i(TAG, "previous run ended ($kind) with ${left.size} container(s) running")
-        if (closed.isNotEmpty()) _state.update { it.copy(closed = closed) }
-    }
-
-    @android.annotation.SuppressLint("InlinedApi")
-    private fun lastExit(): Pair<ExitKind, Long?> {
-        if (Build.VERSION.SDK_INT < 30) return ExitKind.Unknown to null
-        val am = getSystemService(ActivityManager::class.java) ?: return ExitKind.Unknown to null
-        val info = runCatching { am.getHistoricalProcessExitReasons(packageName, 0, 1).firstOrNull() }.getOrNull()
-            ?: return ExitKind.Unknown to null
-        val kind = when (info.reason) {
-            ApplicationExitInfo.REASON_LOW_MEMORY -> ExitKind.LowMemory
-            ApplicationExitInfo.REASON_USER_REQUESTED, ApplicationExitInfo.REASON_USER_STOPPED,
-            // An update or a disabled package isn't Android closing it. The constants are plain ints, so they
-            // compare fine on older devices, which never report them.
-            ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE,
-            ApplicationExitInfo.REASON_PACKAGE_UPDATED -> ExitKind.UserStopped
-            ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE,
-            ApplicationExitInfo.REASON_ANR -> ExitKind.Crash
-            ApplicationExitInfo.REASON_EXIT_SELF -> ExitKind.ExitSelf
-            else -> ExitKind.Other
-        }
-        return kind to info.timestamp
-    }
-
-    private fun bootCount(): Int? =
-        Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1).takeIf { it >= 0 }
-
-    private fun killedCause(): ClosedCause =
-        if (PhantomProcessCheck(this).check() == PhantomProcessCheck.State.RESTRICTED) ClosedCause.ChildProcesses
-        else ClosedCause.Other
-
-    /** Selkie's screen is in front, rather than only its foreground service running. */
-    private fun onScreen(): Boolean = ActivityManager.RunningAppProcessInfo().also {
-        ActivityManager.getMyMemoryState(it)
-    }.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
-
-    private fun noteKilled(k: Closed) {
-        android.util.Log.w(TAG, "Android closed ${k.container}: desktop=${k.desktop} terminals=${k.terminals} cause=${k.cause}")
-        _state.update { it.copy(closed = addKilled(it.closed, k)) }
-    }
-
-    /** A terminal Selkie didn't close (still listed) that ended with SIGKILL. */
-    private fun noticeKilledTerminal(s: TerminalSession) {
-        if (destroying) return
-        val t = terminals.values.firstOrNull { it.session === s } ?: return
-        if (!isSigkill(s.exitStatus)) return
-        noteKilled(Closed(t.container, System.currentTimeMillis(), desktop = false, terminals = 1,
-            cause = killedCause(), background = !onScreen()))
-    }
-
-    fun dismissClosed(container: String) {
-        _state.update { it.copy(closed = it.closed.filterNot { c -> c.container == container }) }
-    }
-
     // ---------------- graphical session ----------------
 
     @Volatile private var compositor: NativeCompositor? = null
@@ -602,6 +507,8 @@ class SessionService : Service() {
     /** The desktop's channel to Android (`droidc host-link`), while the desktop runs. */
     @Volatile private var link: GuestLink? = null
     private var appearanceWatcher: AppearanceWatcher? = null
+    /** The guest's notifications in Android's shade (and so on a paired watch). */
+    private val guestNotifier by lazy { GuestNotifier(this) }
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -646,8 +553,7 @@ class SessionService : Service() {
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
         val app = pendingApp
-        _state.update { it.copy(desktop = DesktopState.Starting, desktopContainer = env.container, desktopApp = app,
-            closed = it.closed.filterNot { c -> c.container == env.container }) }
+        _state.update { it.copy(desktop = DesktopState.Starting, desktopContainer = env.container, desktopApp = app) }
         startForegroundService(Intent(this, SessionService::class.java))
         updateForeground(force = true)
         desktopJob = scope.launch {
@@ -697,17 +603,12 @@ class SessionService : Service() {
                 stopAudio()
                 stopLink()
                 stopCompositor()
-                // SIGKILL that Selkie didn't send: Android closed it, which the containers list explains.
-                val killed = code != 0 && isSigkill(code)
-                if (killed) noteKilled(Closed(env.container, System.currentTimeMillis(), desktop = true,
-                    appId = app?.id, appName = app?.name, cause = killedCause(), background = !onScreen(),
-                    logTail = logTail(env)))
                 // A failed app stays prepared, so Try again opens it again.
-                if (code == 0 || killed) pendingApp = null
+                if (code == 0) pendingApp = null
                 _state.update { it.copy(desktop =
-                    if (code == 0 || killed) DesktopState.Stopped
+                    if (code == 0) DesktopState.Stopped
                     else DesktopState.Failed("${app?.name ?: "The session"} exited with status $code", logTail(env)),
-                    desktopContainer = null, desktopApp = if (code == 0 || killed) null else app) }
+                    desktopContainer = null, desktopApp = if (code == 0) null else app) }
                 updateForeground(force = true)
                 stopIdleServices()
             }
@@ -749,21 +650,40 @@ class SessionService : Service() {
     private fun stopLink() {
         link?.stop()
         link = null
-        _keepAwake.value = false
+        guestNotifier.cancelAll()
         scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
     }
 
     private fun onLinkMessage(m: GuestLinkMessage) {
         when (m.kind) {
             "ready" -> {
+                // A restarted link knows none of the notifications already up, so they can't be acted on.
+                guestNotifier.cancelAll()
                 sendAppearance()
-                // Android locks and blanks the device; GNOME's own lock would be a second one.
-                link?.send("""{"kind":"screen-lock","by_android":true}""")
             }
-            "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
-            "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
-                scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
+            "notify" -> GuestNotification.parse(m.body)?.let { guestNotifier.show(it) }
+            "close-notification" -> (m.body["key"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?.let { guestNotifier.cancel(it) }
+        }
+    }
+
+    /** The user tapped a guest notification: the activity opens the desktop, the app hears of it. */
+    fun openedGuestNotification(key: String) {
+        link?.send(GuestNotification.actionLine(key, null, null))
+    }
+
+    /** A button or a dismissal on a guest notification, from its pending intent. */
+    private fun onGuestNotificationIntent(intent: Intent) {
+        val key = intent.getStringExtra(GuestNotifier.EXTRA_KEY) ?: return
+        val l = link
+        when (intent.action) {
+            GuestNotifier.ACTION_BUTTON -> {
+                val text = GuestNotifier.replyText(intent)
+                l?.send(GuestNotification.actionLine(key, intent.getStringExtra(GuestNotifier.EXTRA_BUTTON), text))
+                // Done with it here; the app updates or withdraws it in the guest as it sees fit.
+                guestNotifier.cancel(key)
             }
+            GuestNotifier.ACTION_DISMISSED -> l?.send(GuestNotification.closedLine(key))
         }
     }
 
@@ -905,12 +825,10 @@ class SessionService : Service() {
         publishSessions()
         foreground = false
         stopForeground(STOP_FOREGROUND_REMOVE)
-        prefs.edit().remove(KEY_RUNNING).apply()
         stopSelf()
     }
 
     private fun updateForeground(force: Boolean = false) {
-        recordRunning()
         val op = _state.value.operation
         val active = op is Operation.Running || runningSessions() > 0 || desktopActive()
         if (!active) {
@@ -964,10 +882,6 @@ class SessionService : Service() {
         private const val NOTIF_ID = 1
         private const val PREFS = "selkie"
         private const val KEY_CONTAINER = "container"
-        /** What ran, as [encodeRunRecords] writes it; left behind when Android ends the process. */
-        private const val KEY_RUNNING = "running"
-        /** [noticeRestart] ran in this process. */
-        @Volatile private var restartChecked = false
 
         fun intent(context: Context) = Intent(context, SessionService::class.java)
     }
