@@ -16,4 +16,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Selkie"
-include(":app")
+include(":app", ":wear")

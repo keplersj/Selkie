@@ -19,6 +19,9 @@ val nativeLibs = listOf(
 // -Pselkie.allowMissingNative=true lets a local compile check proceed without them.
 val nativeBinDir: File = (findProperty("selkie.nativeBinDir") as String?)?.let { file(it) }
     ?: rootProject.file("third_party/bin")
+// The watch remote talks to the watch over the Wear Data Layer, which needs Google Play services.
+// -Pselkie.wear=false builds without them (F-Droid and the like): the remote is left out, the rest is the same.
+val wearRemote = (findProperty("selkie.wear") as String?) != "false"
 val allowMissingNative = (findProperty("selkie.allowMissingNative") as String?) == "true"
 val jniLibsOut = layout.projectDirectory.dir("src/main/jniLibs")
 
@@ -99,6 +102,9 @@ android {
         buildConfig = true
     }
     sourceSets.getByName("main").kotlin.srcDir("src/main/kotlin")
+    // What the phone and the watch say to each other, shared with :wear.
+    sourceSets.getByName("main").kotlin.srcDir(rootProject.file("shared/watch/kotlin"))
+    sourceSets.getByName("main").kotlin.srcDir(if (wearRemote) "src/wear/kotlin" else "src/nowear/kotlin")
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
@@ -143,6 +149,10 @@ dependencies {
     implementation(libs.xr.compose)
     implementation(libs.xr.runtime)
     implementation(libs.xr.scenecore)
+    if (wearRemote) {
+        implementation(libs.play.services.wearable)
+        implementation(libs.androidx.fragment)
+    }
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

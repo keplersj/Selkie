@@ -21,6 +21,11 @@ previewScanner = "0.9.3"
 xrCompose = "1.0.0-rc01"
 xrRuntime = "1.1.0-alpha03"
 xrScenecore = "1.1.0-alpha02"
+# The watch remote (:wear, and the phone side unless -Pselkie.wear=false).
+playServicesWearable = "19.0.0"
+wearCompose = "1.5.0"
+# Play services brings an old androidx.fragment; the Activity Result API in MainActivity needs 1.3 or later.
+fragment = "1.8.6"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -52,6 +57,10 @@ composable-preview-scanner = { module = "io.github.sergio-sastre.ComposablePrevi
 xr-compose = { module = "androidx.xr.compose:compose", version.ref = "xrCompose" }
 xr-runtime = { module = "androidx.xr.runtime:runtime", version.ref = "xrRuntime" }
 xr-scenecore = { module = "androidx.xr.scenecore:scenecore", version.ref = "xrScenecore" }
+play-services-wearable = { module = "com.google.android.gms:play-services-wearable", version.ref = "playServicesWearable" }
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
+wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "wearCompose" }
+wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wearCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -64,6 +64,8 @@ class SessionService : Service() {
     val state: StateFlow<ServiceState> = _state.asStateFlow()
 
     private var opJob: Job? = null
+    /** The watch remote: a no-op in builds without Play services. */
+    private var watchLink: AutoCloseable? = null
     private var foreground = false
     private var lastNotify = 0L
 
@@ -110,6 +112,8 @@ class SessionService : Service() {
         val env = newEnv()
         _state.update { it.copy(rootMode = env.rootMode, suFound = env.su != null) }
         refreshStatus()
+        watchLink = WatchLink.start(this, state, scope,
+            onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) })
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -123,6 +127,7 @@ class SessionService : Service() {
         stopDesktop()
         terminals.values.forEach { it.session.finishIfRunning() }
         stopAllServices()
+        watchLink?.close()
         scope.cancel()
         super.onDestroy()
     }
@@ -418,6 +423,11 @@ class SessionService : Service() {
 
     /** The session that [SessionInfo.id] names, while it is open. */
     fun terminalSession(id: String): TerminalSession? = terminals[id]?.session
+
+    /** Closes every terminal open in [container]. */
+    fun closeTerminals(container: String) {
+        terminals.values.filter { it.container == container }.map { it.session }.forEach(::closeSession)
+    }
 
     fun closeSession(s: TerminalSession) {
         s.finishIfRunning()
