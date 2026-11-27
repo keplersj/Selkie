@@ -1,6 +1,5 @@
 package io.github.keplersj.selkie
 
-import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.KeyMap
 import io.github.keplersj.selkie.engine.DroidcArgs
 import io.github.keplersj.selkie.engine.DroidcOutcome
@@ -28,32 +27,6 @@ class GraphicalSessionTest {
         // The compositor socket is in the guest's /run/user/<uid>, inside the writable /run bind.
         assertEquals(File("/files/guest/run/user/10234/wayland-0"), TestEnv.env().waylandSocket)
         assertTrue("-b" in inv.argv && "/files/guest/run:/run" in inv.argv)
-    }
-
-    @Test fun graphicalSessionScale() {
-        val inv = ProotCommandBuilder(TestEnv.env(), spec).graphicalSession(2560, 1600, 2.125f)
-        assertEquals(listOf("--scale", "2.125"), inv.argv.takeLast(2))
-    }
-
-    @Test fun sessionSizeLetsGnomeOffer150And200() {
-        // Each side a multiple of 12: whole logical pixels at 1.5x and 2x.
-        assertEquals(1920 to 1428, DisplayScale.sessionSize(1920, 1432))
-        assertEquals(1080 to 1848, DisplayScale.sessionSize(1080, 1857))
-        assertEquals(2556 to 1596, DisplayScale.sessionSize(2560, 1600))
-        assertEquals(1200 to 1920, DisplayScale.sessionSize(1200, 1920))
-        assertEquals(8 to 1, DisplayScale.sessionSize(8, 1))
-    }
-
-    @Test fun displayScaleFollowsDensity() {
-        // One GNOME logical pixel per Android dp.
-        assertEquals(1f, DisplayScale.forDensity(1f))
-        assertEquals(2f, DisplayScale.forDensity(2f))
-        assertEquals(2.625f, DisplayScale.forDensity(2.625f))
-        // Low-density screens stay at 1x; nonsense falls back to 1x; very dense screens stop at 4x.
-        assertEquals(1f, DisplayScale.forDensity(0.75f))
-        assertEquals(1f, DisplayScale.forDensity(0f))
-        assertEquals(1f, DisplayScale.forDensity(Float.NaN))
-        assertEquals(4f, DisplayScale.forDensity(5f))
     }
 
     @Test fun shellSpecSession() {

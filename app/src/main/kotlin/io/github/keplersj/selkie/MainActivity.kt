@@ -34,7 +34,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.EngineEnv
+<<<<<<< HEAD
 import io.github.keplersj.selkie.platform.AppShortcuts
+=======
+>>>>>>> origin/claude/host-link
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
@@ -157,6 +160,7 @@ class MainActivity : ComponentActivity() {
         }
         // The whole desktop, unless one is already running (an app left prepared but never opened is dropped).
         val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor(true) }
+<<<<<<< HEAD
         val openApp: (AppEntry) -> String? = { app ->
             service.prepareApp(app) ?: run {
                 // A whole app (not one of its actions) joins the shortcuts on a long press of Selkie's icon.
@@ -164,6 +168,9 @@ class MainActivity : ComponentActivity() {
                 showCompositor(!bigScreen(app)); null
             }
         }
+=======
+        val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(!bigScreen(app)); null } }
+>>>>>>> origin/claude/host-link
         val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
         // In a car, Selkie is parked-only: while driving one screen stands in for all of it.
         val driving = rememberCarDriving()

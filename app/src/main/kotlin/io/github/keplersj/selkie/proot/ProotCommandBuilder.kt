@@ -105,6 +105,14 @@ class ProotCommandBuilder(
             .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
 
     /**
+     * The desktop's channel to Android: `droidc host-link` under the supervisor (for the session bus and
+     * the session's settings), JSON lines both ways. See [io.github.keplersj.selkie.link.GuestLink].
+     */
+    fun hostLink(): Invocation =
+        command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "host-link"))
+            .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
+
+    /**
      * `droidc spawn-server` on the host, behind the guest's sudo/su/pkexec: for each request it starts this
      * container's proot again as fake root (`-0`) with the requested command. Only our own uid is served.
      */
@@ -120,8 +128,7 @@ class ProotCommandBuilder(
 
     /**
      * The deployment's graphical session (`droidc supervise --session`), shown by Selkie's compositor on
-     * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels, [scale] the
-     * session scale (`{scale}`; a `screencast` session sets its monitor to it, see `DisplayScale`).
+     * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels.
      */
     fun graphicalSession(width: Int, height: Int, scale: Float = 1f): Invocation {
         val inv = command(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto",
