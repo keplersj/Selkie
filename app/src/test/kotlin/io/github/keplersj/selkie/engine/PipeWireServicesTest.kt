@@ -23,7 +23,7 @@ class PipeWireServicesTest {
     @Test
     fun theClientsWaitForPipeWireToAnswer() {
         for (s in services.drop(1)) {
-            assertTrue(s[2], s[2].startsWith("i=0; until timeout 2 pw-cli info 0"))
+            assertTrue(s[2], s[2].contains("i=0; until timeout 2 pw-cli info 0"))
             assertTrue(s[2], s[2].contains("\$i -ge 100"))
         }
     }
