@@ -235,12 +235,14 @@ class DesktopE2ETest {
             echo "nodes:"; timeout 10 pw-cli ls Node 2>&1 | grep -E 'node.name|media.class' | head -20
             echo "default sink:"; timeout 10 pw-metadata 0 default.configured.audio.sink 2>&1 | tail -2
             echo "links:"; timeout 10 pw-link -l 2>&1 | head -20
-            echo "capture:"; timeout 10 pw-dump 2>/dev/null | grep -E '"node.name": "selkie-out(-capture)?"|"state"|"error"|"node.driver-id"|"node.target"|"target.object"' | head -40
-            echo "wpctl:"; timeout 10 wpctl status 2>&1 | head -40
+            echo "wpctl:"; timeout 10 wpctl status 2>&1 | sed -n '/^Audio/,/^Video/p' | head -16
             timeout 20 pw-play /tmp/selkie-tone.wav 2>&1 | head -10
             echo "pw-play exit=${'$'}?"
             echo "after links:"; timeout 10 pw-link -l 2>&1 | head -20
-            echo "wireplumber.log:"; grep -viE 'spa.bluez|bluetooth|alsa|v4l2|libcamera' /tmp/wireplumber.log 2>&1 | tail -60
+        """.trimIndent())
+        guestProbe("sound-wp", """
+            echo "wireplumber.log (${'$'}(wc -l < /tmp/wireplumber.log 2>/dev/null) lines):"
+            grep -viE 'spa.bluez|bluetooth|alsa|v4l2|libcamera' /tmp/wireplumber.log 2>&1 | grep -iE ' [EWM] |link|policy|target|selkie|pw-record|pw-play|component|profile|disabled|fail|error' | tail -78
         """.trimIndent())
         val deadline = SystemClock.uptimeMillis() + 15_000
         while (SystemClock.uptimeMillis() < deadline && (s.audioBytes()?.first ?: 0) == 0L) Thread.sleep(500)
