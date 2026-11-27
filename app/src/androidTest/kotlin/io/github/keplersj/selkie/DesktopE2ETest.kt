@@ -445,7 +445,7 @@ class DesktopE2ETest {
     }
 
     /**
-     * Opens a web link from the guest the way GNOME apps do (`xdg-open`, falling back to `gio open`) and
+     * Opens a web link from the guest the way GNOME apps do (`gio open`, GIO's default handler) and
      * checks that Android started an activity for it through `droidc host-link`. Last, since the browser
      * takes the screen. Logged as a metric: the emulator image may have no browser.
      */
@@ -460,7 +460,9 @@ class DesktopE2ETest {
             echo "https handler: ${'$'}(run gio mime x-scheme-handler/https | head -1)"
             echo "user default: ${'$'}(grep -s scheme-handler/https= ${'$'}HOME/.config/mimeapps.list)"
             ls ${'$'}HOME/.local/share/applications/dev.droidc.AndroidOpen.desktop 2>&1
-            if command -v xdg-open >/dev/null; then run xdg-open $url; else run gio open $url; fi
+            # GIO's default handler is the path GNOME apps and xdg-open take inside a GNOME session;
+            # a bare xdg-open here has no display, so it skips the scheme handlers for a text browser.
+            run gio open $url
             echo "open exit=${'$'}?"
         """.trimIndent())
         // Selkie logs each link it hands to Android; dumpsys shows only the host of a web link.
