@@ -37,6 +37,8 @@ import io.github.keplersj.selkie.engine.Signature
 import io.github.keplersj.selkie.engine.StatusData
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.OpKind
+import io.github.keplersj.selkie.service.Closed
+import io.github.keplersj.selkie.service.ClosedCause
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionInfo
@@ -142,6 +144,18 @@ object Fixtures {
     ), hidden = List(9) { HiddenApp("helper$it.desktop", reason = "no-display") } +
         List(3) { HiddenApp("old$it.desktop", reason = "not-installed") })
     val homeApps = homeInstalled.copy(apps = apps)
+    /** A games-and-media container's apps, for the TV row: Steam's Big Picture and Kodi lead. */
+    val tvApps = AppList(container = "dev", apps = listOf(
+        AppEntry(id = "steam.desktop", name = "Steam", comment = "Application for managing and playing games on Steam",
+            categories = listOf("Network", "FileTransfer", "Game"), argv = listOf("steam"),
+            path = "/usr/share/applications/steam.desktop",
+            actions = listOf(AppAction("Store", "Store", listOf("steam", "steam://store")),
+                AppAction("BigPicture", "Big Picture", listOf("steam", "steam://open/bigpicture")))),
+        AppEntry(id = "org.xbmc.kodi.desktop", name = "Kodi", comment = "Manage and view your media",
+            categories = listOf("AudioVideo", "Video", "Player", "TV"), origin = AppOrigin.FLATPAK,
+            argv = listOf("/usr/bin/flatpak", "run", "tv.kodi.Kodi"),
+            path = "/var/lib/flatpak/exports/share/applications/tv.kodi.Kodi.desktop"),
+    ) + apps.apps)
     val homeError = ServiceState(statusLoaded = true,
         statusError = "droidc exited with code 101: state.json: unexpected end of file")
 
@@ -195,6 +209,22 @@ fun HomeInstalledPreview() = Home(Fixtures.homeInstalled)
 @PhonePreviews @TabletPreview
 @Composable
 fun HomeContainersPreview() = Home(Fixtures.homeContainers)
+
+/** Android closed a container while Selkie was in the background: what ended, and why it happens. */
+@PhonePreviews
+@Composable
+fun HomeKilledPreview() = PreviewFrame {
+    SectionScaffold(Section.Containers, onSection = {}, onNewContainer = noop) { rail ->
+        HomeScreen(Fixtures.homeContainers, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop,
+            onUpgrade = noop, onRollback = noop, onSwitch = noop, onRefresh = noop, newInList = !rail, free = FREE,
+            listNote = {
+                ClosedNotices(listOf(Closed("default", at = 0L, desktop = true, terminals = 2,
+                    cause = ClosedCause.ChildProcesses, logTail = "gnome-shell: Exiting\n")),
+                    phantomRestricted = true, batteryLimited = true, onDismiss = {}, onStartAgain = {},
+                    onFixPhantom = noop, onBattery = noop, time = { "14:02" })
+            })
+    }
+}
 
 /** A foldable open like a book: the list and the container on either side of the canvas's 24dp hinge. */
 @Preview(name = "fold-book", device = "spec:width=840dp,height=700dp", showBackground = true)
@@ -551,13 +581,13 @@ private val tvRemote = TvInputs(gamepad = true)
 private fun TvHomeFrame(state: ServiceState, inputs: TvInputs = tvRemote) = PreviewFrame {
     TvScaffold(Section.Containers, onSection = {}, inputs = inputs) {
         TvHome(state, onSelectContainer = {}, onOpenDesktop = noop, onOpenTerminal = noop, onStopDesktop = noop,
-            onChangeImage = noop, onNewContainer = noop)
+            onChangeImage = noop, onNewContainer = noop, inputs = inputs)
     }
 }
 
 @TvPreview
 @Composable
-fun TvHomePreview() = TvHomeFrame(Fixtures.homeContainers, TvInputs(gamepad = true, keyboard = true))
+fun TvHomePreview() = TvHomeFrame(Fixtures.homeContainers.copy(apps = Fixtures.tvApps), TvInputs(gamepad = true, keyboard = true))
 
 /** Nothing running: the selected container is featured with its terminal. */
 @TvPreview
@@ -581,6 +611,13 @@ fun TvImagesPreview() = PreviewFrame {
 @Composable
 fun TvPointerGatePreview() = PreviewFrame {
     TvPointerGate("GNOME", TvInputs(gamepad = true), onPair = noop, onOpenAnyway = noop)
+}
+
+/** An app that wants a pointer (Files), opened from the TV row with only a remote. */
+@TvPreview
+@Composable
+fun TvPointerGateAppPreview() = PreviewFrame {
+    TvPointerGate("GNOME", TvInputs(gamepad = true), onPair = noop, onOpenAnyway = noop, app = "Files")
 }
 
 @TvPreview
