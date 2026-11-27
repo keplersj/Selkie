@@ -440,7 +440,36 @@ class DesktopE2ETest {
             } catch (e: Exception) { log("could not keep desktop.log: $e") }
         }
         log("SELKIE_METRIC terminal_command_ran=true")
+        checkLinks()
         stop(s)
+    }
+
+    /**
+     * Opens a web link from the guest the way GNOME apps do (`xdg-open`, falling back to `gio open`) and
+     * checks that Android started an activity for it through `droidc host-link`. Last, since the browser
+     * takes the screen. Logged as a metric: the emulator image may have no browser.
+     */
+    private fun checkLinks() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString()
+        }
+        val url = "https://example.org/selkie-e2e-link"
+        guestProbe("links", """
+            run() { DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- "${'$'}@" 2>&1 | tail -3; }
+            echo "https handler: ${'$'}(run gio mime x-scheme-handler/https | head -1)"
+            if command -v xdg-open >/dev/null; then run xdg-open $url; else run gio open $url; fi
+            echo "open exit=${'$'}?"
+        """.trimIndent())
+        var opened = false
+        val deadline = SystemClock.uptimeMillis() + 20_000
+        while (SystemClock.uptimeMillis() < deadline && !opened) {
+            Thread.sleep(1000)
+            opened = "selkie-e2e-link" in shell("dumpsys activity activities")
+        }
+        log("SELKIE_METRIC link_opened_on_android=$opened")
+        shell("dumpsys activity activities").lines().filter { "Intent {" in it }.take(5)
+            .forEach { log("SELKIE_GUEST links-activity ${it.trim().take(300)}") }
     }
 
     @Test fun gtkAppNested() {

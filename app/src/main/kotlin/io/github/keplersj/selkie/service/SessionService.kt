@@ -37,6 +37,7 @@ import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.RootAccess
 import io.github.keplersj.selkie.proot.EnterCommandBuilder
@@ -648,6 +649,9 @@ class SessionService : Service() {
     private fun onLinkMessage(m: GuestLinkMessage) {
         when (m.kind) {
             "ready" -> sendAppearance()
+            "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
+                scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
+            }
         }
     }
 
