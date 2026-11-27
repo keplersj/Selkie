@@ -96,6 +96,15 @@ class ProotCommandBuilder(
     }
 
     /**
+     * The guest's sound for Android: `droidc audio-out` under the supervisor (for the session's
+     * `XDG_RUNTIME_DIR` and bus), which makes a PipeWire sink the default output and prints what plays
+     * there as raw 48 kHz stereo S16LE on stdout. [timeout] is how long it waits for the desktop's PipeWire.
+     */
+    fun audioOut(timeout: Int = AUDIO_OUT_WAIT_SECONDS): Invocation =
+        command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "audio-out", "--timeout", timeout.toString()))
+            .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
+
+    /**
      * `droidc spawn-server` on the host, behind the guest's sudo/su/pkexec: for each request it starts this
      * container's proot again as fake root (`-0`) with the requested command. Only our own uid is served.
      */
@@ -145,6 +154,8 @@ class ProotCommandBuilder(
          * one itself (inside its own proot, so it would end with that session).
          */
         const val USER_SERVICES_WAIT_SECONDS = 10
+        /** How long `droidc audio-out` waits for the desktop's PipeWire to answer. */
+        const val AUDIO_OUT_WAIT_SECONDS = 120
         private val joinUserServices = mapOf("DROIDC_USER_SERVICES_WAIT" to USER_SERVICES_WAIT_SECONDS.toString())
 
         /** Where `droidc supervise --systemd` looks for the cgroup shim (DROIDC_CGSHIM's default). */

@@ -74,10 +74,11 @@ refused, so use the Developer options toggle.
 - **`flatpak --version` inside Selkie's terminal is unverified.** Flatpak 1.18.0 is in the Bluefin
   LTS image and runs there natively (arm64 runner, chroot), but Bluefin now runs under proot on the
   Tab S11 and the Razr, but `flatpak` itself was not tried there.
-- No GPU, audio or Steam.
+- No GPU or Steam. Desktop sound (the guest's PipeWire through `droidc audio-out` to an Android
+  AudioTrack) is built but has not been heard on a device yet; the emulator runs with `-noaudio`.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
   only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
-  no audio, no Steam.
+  no audio (it came later; see above), no Steam.
 - The terminal UI was used by hand only, and the foreground service's survival when the activity is
   closed has not been tested.
 - Upgrade on a real tag change was not observed, and Upgrade/Rollback were not run on the devices;
