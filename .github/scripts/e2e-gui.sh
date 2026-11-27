@@ -36,6 +36,7 @@ adb pull "/sdcard/Android/data/$PKG/files/." "$OUT/screenshots" || true
 adb shell run-as $PKG cat cache/desktop.log > "$OUT/desktop.log" 2>&1 || true
 adb shell run-as $PKG cat cache/droidc.log > "$OUT/droidc.log" 2>&1 || true
 adb shell run-as $PKG cat cache/user-services.log > "$OUT/user-services.log" 2>&1 || true
+adb shell run-as $PKG cat cache/audio-out.log > "$OUT/audio-out.log" 2>&1 || true
 adb shell df -h /data | tee "$OUT/df-after.txt"
 sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true
@@ -46,6 +47,9 @@ if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
   echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
   grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
 fi
+echo "::group::sound: audio-out.log, the guest's tone probe, Selkie's player"
+tail -40 "$OUT/audio-out.log" | cut -c1-400
+grep -a -h -E "SELKIE_GUEST sound|SELKIE_PROCS sound|SelkieAudio|AudioTrack" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"
 echo "::group::desktop.log (journal, warnings)"
 grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 echo "::group::user-services.log (the container's bus and systemd --user, started by Selkie)"

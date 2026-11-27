@@ -219,6 +219,52 @@ class DesktopE2ETest {
         } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
     }
 
+    /**
+     * Plays a short tone in the guest (the default sink is droidc audio-out's) and reports whether it came
+     * out on Android, as metrics: the emulator runs with -noaudio, so this measures, it doesn't gate.
+     */
+    private fun checkSound(s: SessionService) {
+        val tone = File(ctx.filesDir, "guest/tmp/selkie-tone.wav")
+        writeTone(tone)
+        val before = s.audioBytes()
+        logProcs("sound-before", "audio-out|pw-dump|pw-record|pw-cli|pipewire|wireplumber")
+        guestProbe("sound", """
+            uid=${'$'}(id -u)
+            export XDG_RUNTIME_DIR=/run/user/${'$'}uid PIPEWIRE_REMOTE=pipewire-0-manager
+            ls /run/user/${'$'}uid 2>&1 | grep -i pipewire
+            echo "nodes:"; timeout 10 pw-cli ls Node 2>&1 | grep -E 'node.name|media.class' | head -20
+            echo "default sink:"; timeout 10 pw-metadata 0 default.configured.audio.sink 2>&1 | tail -2
+            timeout 20 pw-play /tmp/selkie-tone.wav 2>&1 | head -10
+            echo "pw-play exit=${'$'}?"
+        """.trimIndent())
+        val deadline = SystemClock.uptimeMillis() + 15_000
+        while (SystemClock.uptimeMillis() < deadline && (s.audioBytes()?.first ?: 0) == 0L) Thread.sleep(500)
+        val after = s.audioBytes()
+        log("SELKIE_METRIC audio_bytes received/played before=$before after=$after")
+        logProcs("sound-after", "audio-out|pw-dump|pw-record|pw-cli")
+        val audioLog = engineEnvFrom(ctx).audioLog
+        val text = if (audioLog.exists()) audioLog.readText() else "(no ${audioLog.name})"
+        text.lines().takeLast(20).forEach { log("SELKIE_GUEST sound-log ${it.take(300)}") }
+        tone.delete()
+    }
+
+    /** One second of a 440 Hz tone at half scale, 48 kHz stereo S16LE, as a WAV file. */
+    private fun writeTone(f: File) {
+        val rate = 48_000; val frames = rate
+        val data = java.nio.ByteBuffer.allocate(frames * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        repeat(frames) { i ->
+            val v = (Math.sin(2 * Math.PI * 440 * i / rate) * 16_000).toInt().toShort()
+            data.putShort(v); data.putShort(v)
+        }
+        val h = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        h.put("RIFF".toByteArray()).putInt(36 + frames * 4).put("WAVE".toByteArray())
+        h.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(2).putInt(rate).putInt(rate * 4)
+            .putShort(4).putShort(16)
+        h.put("data".toByteArray()).putInt(frames * 4)
+        f.parentFile?.mkdirs()
+        f.writeBytes(h.array() + data.array())
+    }
+
     private val terminalProcs = "ptyxis|gnome-console|kgx|xterm|konsole|alacritty"
 
     private fun countProcs(pattern: String): Int {
@@ -269,6 +315,7 @@ class DesktopE2ETest {
         openDesktop(s, 50, "gnome")
         settle(s)
         screenshot("gnome-1.png")
+        checkSound(s)
 
         // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
         // Android key path then closes GNOME's first-run dialog if it is up. The compositor's input

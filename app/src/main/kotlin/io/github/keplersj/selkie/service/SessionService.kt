@@ -17,6 +17,7 @@ import androidx.core.app.ServiceCompat
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import io.github.keplersj.selkie.MainActivity
+import io.github.keplersj.selkie.audio.GuestAudio
 import io.github.keplersj.selkie.engine.DroidcClient
 import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.DroidcEvent
@@ -478,6 +479,8 @@ class SessionService : Service() {
 
     @Volatile private var compositor: NativeCompositor? = null
     @Volatile private var desktop: Process? = null
+    /** The desktop's sound on Android, while the desktop runs. */
+    @Volatile private var audio: GuestAudio? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -514,7 +517,7 @@ class SessionService : Service() {
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
                     pb.environment().apply { clear(); putAll(inv.env) }
-                    pb.start()
+                    pb.start().also { audio = GuestAudio(b.audioOut(), env.audioLog).apply { start() } }
                 }
             } catch (e: Throwable) {
                 // Throwable: a missing native library is an Error, and it must end up on screen too.
@@ -536,6 +539,7 @@ class SessionService : Service() {
             android.util.Log.i(TAG, "desktop session exited with $code")
             if (desktop === p) {
                 desktop = null
+                stopAudio()
                 stopCompositor()
                 _state.update { it.copy(desktop =
                     if (code == 0) DesktopState.Stopped
@@ -553,6 +557,7 @@ class SessionService : Service() {
         desktop = null
         desktopJob?.cancel()
         desktopJob = null
+        stopAudio()
         if (p != null) {
             p.destroy()
             Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
@@ -561,6 +566,14 @@ class SessionService : Service() {
         _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null) }
         updateForeground(force = true)
         stopIdleServices()
+    }
+
+    /** Bytes of the desktop's sound received from the guest and played on Android so far, or null without a desktop. */
+    fun audioBytes(): Pair<Long, Long>? = audio?.let { it.received to it.played }
+
+    private fun stopAudio() {
+        audio?.stop()
+        audio = null
     }
 
     // ---------------- per-container host services ----------------
