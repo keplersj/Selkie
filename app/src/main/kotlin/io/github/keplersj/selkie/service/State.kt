@@ -99,6 +99,8 @@ data class ServiceState(
     val rootMessage: String? = null,
     /** Guest commands waiting for the person to allow them as root, oldest first. */
     val rootRequests: List<RootRequest> = emptyList(),
+    /** Containers whose sessions Android closed, until dismissed. */
+    val closed: List<Closed> = emptyList(),
 )
 
 /** `default` first, then the rest by name; [selected] is kept even before droidc lists it. */
