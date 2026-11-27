@@ -129,7 +129,9 @@ data class EngineEnv(
 }
 
 /**
- * `containers.droidc.session.services` JSON that starts PipeWire and WirePlumber for a graphical session.
+ * `containers.droidc.session.services` JSON that starts PipeWire, WirePlumber and the PulseAudio server
+ * for a graphical session. droidc masks the image's own units for all three (it reads the `exec` in the
+ * wrapper below), so `pipewire-pulse` is started here for apps that play sound through PulseAudio.
  *
  * PipeWire's access module runs a Flatpak check on each client through `/proc/<pid>/root`, which
  * Android hides: the check fails and every client (Mutter's screen-cast stream, WirePlumber, the portal)
@@ -147,5 +149,5 @@ object PipeWireServices {
 
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
-        """[["sh","-c","${SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"")}"],["wireplumber"]]"""
+        """[["sh","-c","${SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"")}"],["wireplumber"],["pipewire-pulse"]]"""
 }
