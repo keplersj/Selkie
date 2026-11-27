@@ -18,6 +18,9 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import io.github.keplersj.selkie.MainActivity
 import io.github.keplersj.selkie.audio.GuestAudio
+import io.github.keplersj.selkie.media.GuestMedia
+import io.github.keplersj.selkie.media.GuestMediaSnapshot
+import io.github.keplersj.selkie.media.MediaBridge
 import io.github.keplersj.selkie.engine.DroidcClient
 import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.DroidcEvent
@@ -119,6 +122,10 @@ class SessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_MEDIA) {
+            intent.getStringExtra(EXTRA_VERB)?.let { mediaBridge?.handleAction(it) }
+            return START_NOT_STICKY
+        }
         // Entering the foreground promptly satisfies startForegroundService().
         updateForeground(force = true)
         return START_NOT_STICKY
@@ -481,6 +488,9 @@ class SessionService : Service() {
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
+    /** The desktop's media players, shown as an Android media session, while the desktop runs. */
+    @Volatile private var media: GuestMedia? = null
+    @Volatile private var mediaBridge: MediaBridge? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -517,7 +527,10 @@ class SessionService : Service() {
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
                     pb.environment().apply { clear(); putAll(inv.env) }
-                    pb.start().also { audio = GuestAudio(b.audioOut(), env.audioLog).apply { start() } }
+                    pb.start().also {
+                        audio = GuestAudio(b.audioOut(), env.audioLog).apply { start() }
+                        startMedia(b, env)
+                    }
                 }
             } catch (e: Throwable) {
                 // Throwable: a missing native library is an Error, and it must end up on screen too.
@@ -574,7 +587,33 @@ class SessionService : Service() {
     private fun stopAudio() {
         audio?.stop()
         audio = null
+        media?.stop()
+        media = null
+        mediaBridge?.release()
+        mediaBridge = null
     }
+
+    private fun startMedia(b: io.github.keplersj.selkie.proot.ProotCommandBuilder, env: io.github.keplersj.selkie.engine.EngineEnv) {
+        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        lateinit var m: GuestMedia
+        val bridge = MediaBridge(this, hostPath = { b.hostPath(it) }, send = { m.send(it) }, contentIntent = open,
+            actionIntent = { verb ->
+                PendingIntent.getService(this, 10 + io.github.keplersj.selkie.media.MediaMapping.VERBS.indexOf(verb),
+                    Intent(this, SessionService::class.java).setAction(ACTION_MEDIA).putExtra(EXTRA_VERB, verb),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            })
+        m = GuestMedia(b.media(), env.mediaLog) { bridge.update(it) }
+        mediaBridge = bridge
+        media = m.apply { start() }
+    }
+
+    /** The guest's media players as last reported, or null without a desktop; for tests and diagnostics. */
+    fun mediaSnapshot(): GuestMediaSnapshot? = media?.latest
+
+    /** The desktop's media session, while the desktop runs. */
+    fun mediaSessionToken(): android.media.session.MediaSession.Token? = mediaBridge?.token
 
     // ---------------- per-container host services ----------------
 
@@ -746,6 +785,8 @@ class SessionService : Service() {
 
     companion object {
         const val ACTION_STOP = "io.github.keplersj.selkie.STOP"
+        const val ACTION_MEDIA = "io.github.keplersj.selkie.MEDIA"
+        const val EXTRA_VERB = "verb"
         private const val UPTIME_REFRESH_MS = 1000L
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"

@@ -202,12 +202,15 @@ class DesktopE2ETest {
      * Runs [script] in a second proot against the live session (same /run, so the user bus and the
      * display are there) and logs its output as SELKIE_GUEST lines.
      */
-    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90) {
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90, supervised: Boolean = false) {
         try {
             val env = engineEnvFrom(ctx)
             val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
             val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
-            val inv = b.command(listOf("/bin/sh", "-c", script))
+            val inv = if (!supervised) b.command(listOf("/bin/sh", "-c", script))
+                // On the container's session bus, as the desktop's apps are.
+                else b.command(listOf("/usr/bin/droidc", "supervise", "--", "/bin/sh", "-c", script))
+                    .let { it.copy(env = it.env + ("DROIDC_USER_SERVICES_WAIT" to "10")) }
             val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
             pb.environment().apply { clear(); putAll(inv.env) }
             val p = pb.start()
@@ -246,6 +249,41 @@ class DesktopE2ETest {
         val text = if (audioLog.exists()) audioLog.readText() else "(no ${audioLog.name})"
         text.lines().takeLast(20).forEach { log("SELKIE_GUEST sound-log ${it.take(300)}") }
         tone.delete()
+    }
+
+    /**
+     * Runs a small MPRIS player in the guest (Python and GObject, as GNOME images have) and checks that
+     * Selkie's media session shows its track and that pausing it from Android reaches the player.
+     * Metrics, not a gate: an image without Python's GObject skips it.
+     */
+    private fun checkMedia(s: SessionService) {
+        val script = File(ctx.filesDir, "guest/tmp/selkie-mpris.py")
+        script.writeText(MPRIS_PLAYER)
+        File(ctx.filesDir, "guest/tmp/selkie-mpris.log").delete()
+        val player = Thread { guestProbe("media", "timeout 40 python3 /tmp/selkie-mpris.py 2>&1; echo \"player exit=$?\"",
+            timeoutSec = 60, supervised = true) }.apply { start() }
+        var deadline = SystemClock.uptimeMillis() + 25_000
+        while (SystemClock.uptimeMillis() < deadline && s.mediaSnapshot()?.current?.title != "Selkie test tone") Thread.sleep(500)
+        val shown = s.mediaSnapshot()
+        log("SELKIE_METRIC media_snapshot ${shown?.current}")
+        val token = s.mediaSessionToken()
+        var paused: String? = null
+        if (shown?.current?.title == "Selkie test tone" && token != null) {
+            val controller = android.media.session.MediaController(ctx, token)
+            log("SELKIE_METRIC media_session title=${controller.metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE)} " +
+                "state=${controller.playbackState?.state}")
+            controller.transportControls.pause()
+            deadline = SystemClock.uptimeMillis() + 10_000
+            while (SystemClock.uptimeMillis() < deadline && s.mediaSnapshot()?.current?.status != "Paused") Thread.sleep(300)
+            paused = s.mediaSnapshot()?.current?.status
+        }
+        val calls = File(ctx.filesDir, "guest/tmp/selkie-mpris.log").let { if (it.exists()) it.readText().trim() else "" }
+        log("SELKIE_METRIC media_pause status=$paused player_calls=${calls.replace('\n', ',')}")
+        val mediaLog = engineEnvFrom(ctx).mediaLog
+        (if (mediaLog.exists()) mediaLog.readText() else "(no ${mediaLog.name})").lines().takeLast(20)
+            .forEach { log("SELKIE_GUEST media-log ${it.take(300)}") }
+        player.join(70_000)
+        script.delete()
     }
 
     /** One second of a 440 Hz tone at half scale, 48 kHz stereo S16LE, as a WAV file. */
@@ -316,6 +354,7 @@ class DesktopE2ETest {
         settle(s)
         screenshot("gnome-1.png")
         checkSound(s)
+        checkMedia(s)
 
         // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
         // Android key path then closes GNOME's first-run dialog if it is up. The compositor's input
@@ -431,3 +470,43 @@ class DesktopE2ETest {
         stop(s)
     }
 }
+
+/** A guest MPRIS player for [checkMedia]: Python with GObject, owning org.mpris.MediaPlayer2.selkietest. */
+private val MPRIS_PLAYER = """
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+XML = '''<node>
+<interface name="org.mpris.MediaPlayer2"><method name="Raise"/><property name="Identity" type="s" access="read"/></interface>
+<interface name="org.mpris.MediaPlayer2.Player">
+<method name="Play"/><method name="Pause"/><method name="PlayPause"/><method name="Stop"/><method name="Next"/><method name="Previous"/>
+<property name="PlaybackStatus" type="s" access="read"/><property name="Metadata" type="a{sv}" access="read"/>
+<property name="Position" type="x" access="read"/><property name="CanPlay" type="b" access="read"/>
+<property name="CanPause" type="b" access="read"/><property name="CanGoNext" type="b" access="read"/>
+<property name="CanGoPrevious" type="b" access="read"/><property name="CanSeek" type="b" access="read"/>
+</interface></node>'''
+state = {"s": "Playing"}
+def call(conn, sender, path, iface, method, params, inv):
+    with open("/tmp/selkie-mpris.log", "a") as f:
+        f.write(method + "\n")
+    if method == "Pause": state["s"] = "Paused"
+    elif method == "Play": state["s"] = "Playing"
+    elif method == "PlayPause": state["s"] = "Paused" if state["s"] == "Playing" else "Playing"
+    inv.return_value(None)
+def get(conn, sender, path, iface, prop):
+    if prop == "Identity": return GLib.Variant("s", "Selkie test player")
+    if prop == "PlaybackStatus": return GLib.Variant("s", state["s"])
+    if prop == "Position": return GLib.Variant("x", 0)
+    if prop == "Metadata": return GLib.Variant("a{sv}", {
+        "xesam:title": GLib.Variant("s", "Selkie test tone"),
+        "xesam:artist": GLib.Variant("as", ["droidc"]),
+        "mpris:trackid": GLib.Variant("o", "/selkie/track/1"),
+        "mpris:length": GLib.Variant("x", 60000000)})
+    return GLib.Variant("b", prop != "CanSeek")
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+for i in Gio.DBusNodeInfo.new_for_xml(XML).interfaces:
+    bus.register_object("/org/mpris/MediaPlayer2", i, call, get, None)
+Gio.bus_own_name_on_connection(bus, "org.mpris.MediaPlayer2.selkietest", Gio.BusNameOwnerFlags.NONE, None, None)
+print("player up on", bus.get_unique_name(), flush=True)
+GLib.MainLoop().run()
+""".trimStart()
