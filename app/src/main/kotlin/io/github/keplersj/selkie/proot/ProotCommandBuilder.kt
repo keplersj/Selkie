@@ -65,6 +65,7 @@ class ProotCommandBuilder(
         if (spec.shims.isNotEmpty()) put("DROIDC_SPAWNER", env.spawnerSocket)
         put("PROOT_LOADER", env.prootLoader.path)
         put("PROOT_TMP_DIR", env.prootTmp.path)
+        put("PROOT_L2S_DIR", env.prootL2s.path)
     }
 
     /** Whether the guest's sudo/su/pkexec need [spawnServer] (droidc lists shims only under proot). */
@@ -123,6 +124,7 @@ class ProotCommandBuilder(
             "HOME" to env.filesDir.path, "TMPDIR" to env.cacheDir.path, "PATH" to "/system/bin",
             // The launcher it starts is proot, which needs these as every other proot does.
             "PROOT_LOADER" to env.prootLoader.path, "PROOT_TMP_DIR" to env.prootTmp.path,
+            "PROOT_L2S_DIR" to env.prootL2s.path,
         ),
     )
 
