@@ -45,18 +45,7 @@ class NativeCompositor private constructor(@Volatile private var handle: Long) {
             return NativeCompositor(h)
         }
 
-        /**
-         * Like [start], in app mode: one Linux app shown on its own at [scale] pixels per logical
-         * pixel (pass the display density), with its menus and popovers.
-         */
-        fun startApp(socket: java.io.File, width: Int, height: Int, scale: Float): NativeCompositor {
-            val h = nativeStartApp(socket.path, width, height, scale)
-            if (h == 0L) throw java.io.IOException("compositor did not start on $socket")
-            return NativeCompositor(h)
-        }
-
         @JvmStatic private external fun nativeStart(socket: String, width: Int, height: Int): Long
-        @JvmStatic private external fun nativeStartApp(socket: String, width: Int, height: Int, scale: Float): Long
         @JvmStatic private external fun nativeSetSurface(handle: Long, surface: android.view.Surface?, width: Int, height: Int)
         @JvmStatic private external fun nativeInput(handle: Long, kind: Int, code: Int, pressed: Boolean, x: Float, y: Float)
         @JvmStatic private external fun nativeStats(handle: Long): String
