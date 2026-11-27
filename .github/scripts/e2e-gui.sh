@@ -36,6 +36,7 @@ adb pull "/sdcard/Android/data/$PKG/files/." "$OUT/screenshots" || true
 adb shell run-as $PKG cat cache/desktop.log > "$OUT/desktop.log" 2>&1 || true
 adb shell run-as $PKG cat cache/droidc.log > "$OUT/droidc.log" 2>&1 || true
 adb shell run-as $PKG cat cache/user-services.log > "$OUT/user-services.log" 2>&1 || true
+adb shell run-as $PKG cat cache/audio-out.log > "$OUT/audio-out.log" 2>&1 || true
 adb shell df -h /data | tee "$OUT/df-after.txt"
 sleep 2; kill $LOGCAT 2>/dev/null || true
 grep -h SELKIE_METRIC "$OUT/logcat.txt" | tee "$OUT/metrics.txt" || true

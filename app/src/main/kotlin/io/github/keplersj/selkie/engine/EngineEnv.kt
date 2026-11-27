@@ -88,6 +88,8 @@ data class EngineEnv(
     val desktopLog: File get() = File(cacheDir, logName("desktop"))
     /** Output of the container's `droidc user-services` keeper (its session bus or `systemd --user`). */
     val userServicesLog: File get() = File(cacheDir, logName("user-services"))
+    /** Status and errors of `droidc audio-out`, which carries the desktop's sound to Android. */
+    val audioLog: File get() = File(cacheDir, logName("audio-out"))
     /** Output of the container's `droidc spawn-server`, behind the guest's sudo/su/pkexec. */
     val spawnerLog: File get() = File(cacheDir, logName("spawner"))
 
