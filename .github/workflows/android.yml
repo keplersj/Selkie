@@ -191,7 +191,7 @@ jobs:
           VERSION=$(sed -n 's/^val selkieVersion = "\(.*\)"/\1/p' app/build.gradle.kts)
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/selkie-${VERSION}.apk"
-          # Kept out of dist/ so the release jobs, which take every dist/selkie-*.apk, stay as they are.
+          # Its own artifact; the release jobs add it next to the phone APK.
           mkdir -p dist-watch
           cp wear/build/outputs/apk/release/wear-release.apk "dist-watch/selkie-watch-${VERSION}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk dist/
@@ -315,6 +315,10 @@ jobs:
           path: dist
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
+          name: selkie-watch-apk
+          path: watch
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
           name: proot-android
           path: proot
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -323,6 +327,7 @@ jobs:
           path: droidc
       - name: Collect assets
         run: |
+          cp watch/selkie-watch-*.apk dist/
           cp proot/proot-src-*.tar.gz dist/
           cp droidc/DROIDC_COMMIT dist/DROIDC_COMMIT.txt
           (cd dist && sha256sum * > SHA256SUMS)
@@ -357,6 +362,10 @@ jobs:
           path: dist
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
+          name: selkie-watch-apk
+          path: watch
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
           name: proot-android
           path: proot
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -367,6 +376,7 @@ jobs:
         run: |
           cp dist/selkie-*.apk dist/selkie-latest.apk
           rm dist/selkie-[0-9]*.apk
+          cp watch/selkie-watch-*.apk dist/selkie-watch-latest.apk
           cp proot/proot-src-*.tar.gz dist/
           cp droidc/DROIDC_COMMIT dist/DROIDC_COMMIT.txt
           (cd dist && sha256sum * > SHA256SUMS)
@@ -382,6 +392,7 @@ jobs:
             echo "- droidc: \`$(tr -d '[:space:]' < droidc.ref | cut -c1-7)\` (see \`DROIDC_COMMIT.txt\`)"
             echo
             echo "Not a versioned release. Install \`selkie-latest.apk\` (arm64-v8a + x86_64), signed with the public MVP test key (\`keystore/selkie-mvp.jks\`; for testing only)."
+            echo "\`selkie-watch-latest.apk\` is the Wear OS remote, signed with the same key. Install it on a watch paired with the phone (it needs Google Play services on both)."
             echo "\`proot-src-*.tar.gz\` is the corresponding source for the bundled proot (GPL-2). \`SHA256SUMS\` covers every asset."
             echo
             echo "Versioned prereleases are tagged \`v*\`."
