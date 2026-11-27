@@ -36,7 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +48,7 @@ import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.AppList
 import io.github.keplersj.selkie.engine.AppOrigin
 import io.github.keplersj.selkie.engine.HiddenApp
+import io.github.keplersj.selkie.platform.AppShortcuts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -122,6 +125,19 @@ fun hiddenNote(hidden: List<HiddenApp>): String? {
     } + "."
 }
 
+/**
+ * "Add to home screen" for [container]'s apps, or null where the launcher takes no pinned shortcuts
+ * (and in previews). The system shows its own dialog to place the icon.
+ */
+@Composable
+internal fun rememberPinApp(container: String): ((AppEntry) -> Unit)? {
+    if (LocalInspectionMode.current) return null
+    val ctx = LocalContext.current
+    val can = remember(ctx) { AppShortcuts.canPin(ctx) }
+    if (!can) return null
+    return remember(ctx, container) { { app: AppEntry -> AppShortcuts.pin(ctx, container, app); Unit } }
+}
+
 @Composable
 internal fun AppsTab(
     container: String,
@@ -132,6 +148,8 @@ internal fun AppsTab(
     onOpen: (AppEntry) -> String?,
     onOpenDesktop: () -> Unit,
     initialSheet: String? = null,
+    /** Pins an app to the home screen; null where the launcher can't. */
+    onPin: ((AppEntry) -> Unit)? = null,
 ) {
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     var sheet by rememberSaveable { mutableStateOf(initialSheet) }
@@ -184,7 +202,7 @@ internal fun AppsTab(
     }
     val sheetApp = apps?.apps?.firstOrNull { it.id == sheet }
     if (sheetApp != null) AppSheet(container, sheetApp, onDismiss = { sheet = null },
-        onOpen = { a -> sheet = null; open(a) })
+        onOpen = { a -> sheet = null; open(a) }, onPin = onPin)
 }
 
 @Composable
@@ -207,14 +225,22 @@ private fun AppRow(app: AppEntry, onOpen: () -> Unit, onDetails: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppSheet(container: String, app: AppEntry, onDismiss: () -> Unit, onOpen: (AppEntry) -> Unit) {
+private fun AppSheet(
+    container: String, app: AppEntry, onDismiss: () -> Unit, onOpen: (AppEntry) -> Unit, onPin: ((AppEntry) -> Unit)?,
+) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        AppSheetContent(container, app, onOpen)
+        AppSheetContent(container, app, onOpen, onPin)
     }
 }
 
 @Composable
-internal fun AppSheetContent(container: String, app: AppEntry, onOpen: (AppEntry) -> Unit) {
+internal fun AppSheetContent(
+    container: String,
+    app: AppEntry,
+    onOpen: (AppEntry) -> Unit,
+    /** Pins the app to the home screen; null hides the button. */
+    onPin: ((AppEntry) -> Unit)? = null,
+) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
             .padding(bottom = 24.dp),
@@ -229,7 +255,12 @@ internal fun AppSheetContent(container: String, app: AppEntry, onOpen: (AppEntry
             }
         }
         when (appOpen(app)) {
-            AppOpen.Alone -> Button(onClick = { onOpen(app) }, Modifier.fillMaxWidth()) { Text("Open") }
+            AppOpen.Alone -> {
+                Button(onClick = { onOpen(app) }, Modifier.fillMaxWidth()) { Text("Open") }
+                if (onPin != null) OutlinedButton(onClick = { onPin(app) }, Modifier.fillMaxWidth()) {
+                    Text("Add to home screen")
+                }
+            }
             AppOpen.Desktop -> Button(onClick = { onOpen(app) }, Modifier.fillMaxWidth()) { Text("Open the desktop") }
             AppOpen.None -> {}
         }
