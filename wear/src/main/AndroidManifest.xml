@@ -22,5 +22,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The tile: what runs on the phone, and a way into the list. -->
+        <service
+            android:name=".SelkieTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Selkie"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
+        </service>
+
+        <!-- Refreshes the tile when the phone publishes what it runs. -->
+        <service
+            android:name=".PhoneStateListener"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:host="*"
+                    android:pathPrefix="/selkie/state"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
