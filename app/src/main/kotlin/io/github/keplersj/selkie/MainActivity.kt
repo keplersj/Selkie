@@ -147,12 +147,13 @@ class MainActivity : ComponentActivity() {
         val setSpace = rememberXrSpace()
         var xrDesktop by remember { mutableStateOf(false) }
         var xrTerminal by remember { mutableStateOf(false) }
-        val showCompositor: () -> Unit = {
-            if (full) xrDesktop = true else screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop"
+        // On TV without a mouse, a desktop or pointer-driven app first explains it needs one; big-screen apps don't.
+        val showCompositor: (Boolean) -> Unit = { needsPointer ->
+            if (full) xrDesktop = true else screen = if (tv && needsPointer && !inputs.pointer) "tv-pointer" else "desktop"
         }
         // The whole desktop, unless one is already running (an app left prepared but never opened is dropped).
-        val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor() }
-        val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(); null } }
+        val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor(true) }
+        val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(!bigScreen(app)); null } }
         val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
         // In a car, Selkie is parked-only: while driving one screen stands in for all of it.
         val driving = rememberCarDriving()
@@ -197,7 +198,7 @@ class MainActivity : ComponentActivity() {
                     BackHandler { screen = "auto" }
                     // Pairing a mouse from the gate carries on into the desktop.
                     LaunchedEffect(inputs.pointer) { if (inputs.pointer) screen = "desktop" }
-                    TvPointerGate(state.graphical?.name, inputs,
+                    TvPointerGate(state.graphical?.name, inputs, app = state.desktopApp?.name,
                         onPair = {
                             runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)) }
                                 .onFailure { runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) } }
@@ -264,7 +265,9 @@ class MainActivity : ComponentActivity() {
                                 onOpenTerminal = openTerminal,
                                 onStopDesktop = { service.stopDesktop() },
                                 onChangeImage = { screen = "change" },
-                                onNewContainer = newContainer)
+                                onNewContainer = newContainer,
+                                inputs = inputs,
+                                onOpenApp = openApp)
                             else HomeScreen(state,
                                 onOpenTerminal = openTerminal,
                                 onOpenDesktop = openDesktop,
