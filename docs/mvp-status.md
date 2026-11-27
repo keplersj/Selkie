@@ -80,8 +80,6 @@ refused, so use the Developer options toggle.
   contrast) through `droidc host-link`. The emulator test checks night mode only; not yet seen on a device.
 - Web, mail, phone, SMS and map links opened in the desktop (`xdg-open`, GNOME apps) open in Android's
   own apps, also through `droidc host-link`. The emulator test opens one web link; not yet seen on a device.
-- The screen stays on while a desktop app asks it to (a playing video), and GNOME's own lock screen
-  and idle blank are off, since Android locks the device. Not yet seen on a device.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
   only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
   no audio (it came later; see above), no Steam.

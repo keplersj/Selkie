@@ -1,31 +1,20 @@
 //! Runs the compositor without Android, for testing guest sessions on Linux:
-//! `selkie-compositor-headless SOCKET WIDTHxHEIGHT OUT.ppm [SCALE]`. The latest frame is written to
-//! OUT.ppm (at most once a second; `save` writes it now). With SCALE the compositor runs in app mode
-//! (one app at that scale, with its popups). Input comes from stdin, one command per line:
-//! `key CODE 0|1`, `tap X Y`, `move X Y`, `button CODE 0|1`, `scroll DX DY`, `size W H`, `save`,
-//! `quit`. `stats` prints the compositor's stats as JSON.
+//! `selkie-compositor-headless SOCKET WIDTHxHEIGHT OUT.ppm`. The latest frame is written to OUT.ppm
+//! (at most once a second). Input comes from stdin, one command per line:
+//! `key CODE 0|1`, `tap X Y`, `move X Y`, `button CODE 0|1`, `scroll DX DY`, `size W H`, `quit`.
+//! `stats` prints the compositor's stats as JSON.
 
 use selkie_compositor::{server, Frame, FrameSink, Input};
 use std::io::BufRead;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 struct FileSink {
     path: std::path::PathBuf,
     last: Option<Instant>,
-    latest: Arc<Mutex<Option<Frame>>>,
-}
-
-fn write(path: &std::path::Path, frame: &Frame) {
-    let tmp = path.with_extension("tmp");
-    if std::fs::write(&tmp, frame.to_ppm()).is_ok() {
-        let _ = std::fs::rename(&tmp, path);
-    }
 }
 
 impl FrameSink for FileSink {
     fn present(&mut self, frame: &Frame) {
-        *self.latest.lock().unwrap() = Some(frame.clone());
         if self
             .last
             .is_some_and(|t| t.elapsed() < Duration::from_secs(1))
@@ -33,36 +22,28 @@ impl FrameSink for FileSink {
             return;
         }
         self.last = Some(Instant::now());
-        write(&self.path, frame);
+        let tmp = self.path.with_extension("tmp");
+        if std::fs::write(&tmp, frame.to_ppm()).is_ok() {
+            let _ = std::fs::rename(&tmp, &self.path);
+        }
     }
 }
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
-    if a.len() != 4 && a.len() != 5 {
-        eprintln!("usage: {} SOCKET WIDTHxHEIGHT OUT.ppm [SCALE]", a[0]);
+    if a.len() != 4 {
+        eprintln!("usage: {} SOCKET WIDTHxHEIGHT OUT.ppm", a[0]);
         std::process::exit(2);
     }
     let (w, h) = a[2]
         .split_once('x')
         .map(|(w, h)| (w.parse().unwrap(), h.parse().unwrap()))
         .expect("WIDTHxHEIGHT");
-    let latest = Arc::new(Mutex::new(None));
-    let path: std::path::PathBuf = a[3].clone().into();
     let sink = FileSink {
-        path: path.clone(),
+        path: a[3].clone().into(),
         last: None,
-        latest: latest.clone(),
     };
-    let socket = std::path::Path::new(&a[1]);
-    let c = match a.get(4) {
-        Some(scale) => {
-            let scale: f64 = scale.parse().expect("SCALE");
-            server::start_app(socket, w, h, scale, Some(Box::new(sink)))
-        }
-        None => server::start(socket, w, h, Some(Box::new(sink))),
-    }
-    .expect("start");
+    let c = server::start(std::path::Path::new(&a[1]), w, h, Some(Box::new(sink))).expect("start");
     eprintln!("listening on {}", a[1]);
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -92,12 +73,6 @@ fn main() {
                     width: n(1) as u32,
                     height: n(2) as u32,
                 });
-                continue;
-            }
-            Some("save") => {
-                if let Some(f) = latest.lock().unwrap().as_ref() {
-                    write(&path, f);
-                }
                 continue;
             }
             Some("stats") => {

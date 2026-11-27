@@ -58,8 +58,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -77,10 +75,6 @@ class SessionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(ServiceState())
     val state: StateFlow<ServiceState> = _state.asStateFlow()
-
-    private val _keepAwake = MutableStateFlow(false)
-    /** A desktop app asks the screen to stay on (an idle inhibitor, through `droidc host-link`). */
-    val keepAwake: StateFlow<Boolean> = _keepAwake.asStateFlow()
 
     private var opJob: Job? = null
     /** The watch remote: a no-op in builds without Play services. */
@@ -749,18 +743,12 @@ class SessionService : Service() {
     private fun stopLink() {
         link?.stop()
         link = null
-        _keepAwake.value = false
         scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
     }
 
     private fun onLinkMessage(m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> {
-                sendAppearance()
-                // Android locks and blanks the device; GNOME's own lock would be a second one.
-                link?.send("""{"kind":"screen-lock","by_android":true}""")
-            }
-            "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
+            "ready" -> sendAppearance()
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
                 scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
             }
