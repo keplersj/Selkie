@@ -27,6 +27,7 @@ device in a build made before it was merged.
 | In-app terminal (Termux `terminal-view`/`terminal-emulator` v0.118.3, Apache-2.0) | Works | used interactively on both devices: login shell, `id`, `busctl`, `curl`, `fastfetch`; the e2e also drives proot non-interactively with the same argv builder |
 | Foreground service (`specialUse`) owning operations and terminal sessions | Partly exercised | an install kept running to completion on the phone while its screen was locked; closing the activity and checking a terminal session survives is untested |
 | "Disable child process restrictions" detection and first-run explainer | Detection works on the emulator | e2e asserts the check returns OK (source `settings.global`) after `settings put global settings_enable_monitor_phantom_procs false`. On the Razr the first-run screen blocked until the Developer-options toggle was turned on, then moved on, so reading the property path works on a real device. `adb shell setprop` of that property is refused on that device |
+| Pair the guest's adb with Wireless debugging (notification and Settings link, as Shizuku does) | Implemented | unit tests for the commands, output parsing and Settings row; not yet run on a device |
 | Error kinds network / signature / storage | Implemented | signature and not-found tested in CI; network and storage-space errors are unit-level only |
 
 Emulator end-to-end (CI, `reactivecircus/android-emulator-runner`, API 34 google_apis x86_64,

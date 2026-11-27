@@ -3,6 +3,7 @@ package io.github.keplersj.selkie.ui
 import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Process
 import android.os.StatFs
 import android.os.storage.StorageManager
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -33,6 +35,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.BuildConfig
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
+import io.github.keplersj.selkie.platform.adb.AdbBridge
+import io.github.keplersj.selkie.platform.adb.AdbStatus
+import io.github.keplersj.selkie.service.AdbPairingService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -46,6 +51,25 @@ internal fun phantomText(state: PhantomProcessCheck.State): Pair<String, String>
         "Selkie couldn't read the setting on this device. Check it in developer options."
     PhantomProcessCheck.State.NOT_APPLICABLE -> "No child process setting" to
         "This Android version has no restriction to turn off."
+}
+
+/** The adb pairing row: its two lines and its button, from [AdbStatus], for the container shown on Home. */
+internal data class AdbRow(val title: String, val body: String, val action: String)
+
+internal fun adbRow(container: String, status: AdbStatus, notificationsOn: Boolean): AdbRow {
+    val paired = status.pairedContainer
+    return when {
+        paired == null -> AdbRow("Pair adb with this device",
+            if (notificationsOn) "Use adb in $container on this device, no computer needed. Selkie opens Wireless " +
+                "debugging and asks for its pairing code in a notification."
+            else "Pairing asks for the code in a notification. Turn Selkie's notifications on first.",
+            if (notificationsOn) "Pair" else "Turn on")
+        status.connectedPort != null -> AdbRow("adb connected",
+            "adb in $paired is connected to this device on port ${status.connectedPort}", "Pair again")
+        status.problem != null -> AdbRow("adb paired, not connected", status.problem, "Pair again")
+        else -> AdbRow("adb paired with this device",
+            "adb in $paired connects while Wireless debugging is on and a terminal or the desktop is open", "Pair again")
+    }
 }
 
 /**
@@ -66,6 +90,9 @@ fun SettingsContent(
     onPhantomHelp: () -> Unit,
     onNotificationSettings: () -> Unit,
     onAbout: () -> Unit,
+    /** The adb pairing row, or null where Android has no Wireless debugging (before 11). */
+    adb: AdbRow? = null,
+    onPairAdb: () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     Column(
@@ -110,6 +137,9 @@ fun SettingsContent(
 
             SectionTitle("Advanced", Modifier.padding(top = 8.dp))
             Group {
+                if (adb != null) GroupItem(adb.title, supporting = adb.body,
+                    leading = { Icon(SelkieIcons.DeveloperOptions, contentDescription = null) },
+                    trailing = { TextButton(onClick = onPairAdb) { Text(adb.action) } })
                 GroupItem("Container logs in logcat",
                     supporting = if (debugLogs) "On in this debug build. Logs can include paths and user names."
                         else "Only debug builds send them",
@@ -126,8 +156,11 @@ fun SettingsContent(
 /** [SettingsContent] for this device. */
 @Composable
 fun SettingsScreen(rail: Boolean, phantom: PhantomProcessCheck.State, suFound: Boolean,
+                   /** The container shown on Home, whose adb pairing pairs. */
+                   container: String,
                    onPhantomHelp: () -> Unit, onAbout: () -> Unit) {
     val ctx = LocalContext.current
+    val adbStatus by AdbBridge.get(ctx).status.collectAsState()
     var notificationsOn by remember { mutableStateOf(NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
     LifecycleResumeEffect(Unit) {
         notificationsOn = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
@@ -137,15 +170,22 @@ fun SettingsScreen(rail: Boolean, phantom: PhantomProcessCheck.State, suFound: B
     val free by produceState(0L) {
         value = withContext(Dispatchers.IO) { runCatching { StatFs(ctx.filesDir.path).availableBytes }.getOrDefault(0L) }
     }
+    val notificationSettings = {
+        runCatching {
+            ctx.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName))
+        }
+        Unit
+    }
     SettingsContent(rail, phantom, notificationsOn, used, free, suFound, BuildConfig.DEBUG, BuildConfig.VERSION_NAME,
         onPhantomHelp = onPhantomHelp,
-        onNotificationSettings = {
-            runCatching {
-                ctx.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName))
-            }
-        },
-        onAbout = onAbout)
+        onNotificationSettings = notificationSettings,
+        onAbout = onAbout,
+        adb = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) adbRow(container, adbStatus, notificationsOn) else null,
+        onPairAdb = {
+            if (!notificationsOn) notificationSettings()
+            else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) AdbPairingService.begin(ctx, container)
+        })
 }
 
 /** App, data and cache bytes, as Android's storage settings count them; null if Android won't say. */

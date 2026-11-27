@@ -3,6 +3,7 @@ package io.github.keplersj.selkie.proot
 import io.github.keplersj.selkie.BuildConfig
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ShellSpec
+import io.github.keplersj.selkie.platform.adb.GuestAdb
 import java.io.File
 
 /** A fully-resolved process to launch: argv + a *complete* (clean) environment. */
@@ -63,6 +64,9 @@ class ProotCommandBuilder(
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
         if (spec.shims.isNotEmpty()) put("DROIDC_SPAWNER", env.spawnerSocket)
+        // The guest's adb talks to Selkie's server on a socket in /run, never TCP 5037 on the localhost every
+        // app shares (GuestAdb). Unless the image sets its own.
+        putIfAbsent("ADB_SERVER_SOCKET", GuestAdb.SERVER_SOCKET_SPEC)
         put("PROOT_LOADER", env.prootLoader.path)
         put("PROOT_TMP_DIR", env.prootTmp.path)
     }

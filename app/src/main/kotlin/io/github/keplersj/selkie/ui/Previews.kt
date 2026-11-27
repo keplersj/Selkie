@@ -27,6 +27,7 @@ import io.github.keplersj.selkie.engine.AppOrigin
 import io.github.keplersj.selkie.engine.ContainerDeployment
 import io.github.keplersj.selkie.engine.HiddenApp
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
+import io.github.keplersj.selkie.platform.adb.AdbStatus
 import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DeployStats
 import io.github.keplersj.selkie.engine.Deployment
@@ -533,6 +534,22 @@ private fun SettingsSection(phantom: PhantomProcessCheck.State, suFound: Boolean
 @PhonePreviews @TabletPreview
 @Composable
 fun SettingsPreview() = SettingsSection(PhantomProcessCheck.State.OK, suFound = false)
+
+@PhonePreviews
+@Composable
+fun SettingsAdbConnectedPreview() = InSection(Section.Settings) { rail ->
+    SettingsContent(rail, PhantomProcessCheck.State.OK, true, usedBytes = 19_756_849_152, freeBytes = FREE, suFound = false,
+        debugLogs = false, version = "0.2.0", onPhantomHelp = noop, onNotificationSettings = noop, onAbout = noop,
+        adb = adbRow("default", AdbStatus(pairedContainer = "default", connectedPort = 37_215), notificationsOn = true))
+}
+
+@PhonePreviews
+@Composable
+fun SettingsAdbUnpairedPreview() = InSection(Section.Settings) { rail ->
+    SettingsContent(rail, PhantomProcessCheck.State.OK, true, usedBytes = 19_756_849_152, freeBytes = FREE, suFound = false,
+        debugLogs = false, version = "0.2.0", onPhantomHelp = noop, onNotificationSettings = noop, onAbout = noop,
+        adb = adbRow("default", AdbStatus(), notificationsOn = true))
+}
 
 @PhonePreviews
 @Composable

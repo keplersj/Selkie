@@ -34,6 +34,7 @@ import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.RootAccess
+import io.github.keplersj.selkie.platform.adb.AdbBridge
 import io.github.keplersj.selkie.proot.EnterCommandBuilder
 import io.github.keplersj.selkie.proot.GuestFiles
 import io.github.keplersj.selkie.proot.Invocation
@@ -130,6 +131,7 @@ class SessionService : Service() {
         stopDesktop()
         terminals.values.forEach { it.session.finishIfRunning() }
         stopAllServices()
+        AdbBridge.get(this).stop()
         watchLink?.close()
         scope.cancel()
         super.onDestroy()
@@ -650,6 +652,9 @@ class SessionService : Service() {
                 spawner = if (b.hasShims) startService(b.spawnServer(), env.spawnerLog) else null,
             )
         }
+        // A container whose adb is paired with this device gets its adb server and connection back.
+        val adb = AdbBridge.get(this)
+        if (adb.status.value.pairedContainer == env.container) adb.keepConnected()
     }
 
     private fun startService(inv: Invocation, log: File): Process? = try {

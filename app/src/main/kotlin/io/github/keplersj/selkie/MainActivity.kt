@@ -273,7 +273,7 @@ class MainActivity : ComponentActivity() {
                                     service.terminalSessions().forEach { service.closeSession(it) }
                                 },
                                 onDismissDesktopError = { service.dismissDesktopError() })
-                            Section.Settings -> SettingsScreen(rail, phantom, state.suFound,
+                            Section.Settings -> SettingsScreen(rail, phantom, state.suFound, state.container,
                                 onPhantomHelp = { screen = "phantom" },
                                 onAbout = { screen = "about" })
                         }

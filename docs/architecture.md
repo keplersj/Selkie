@@ -151,6 +151,23 @@ The Developer-options toggle writes the system property `persist.sys.fflag.overr
 the check follows AOSP `FeatureFlagUtils`: Settings.Global key first, then that property, then default "true".
 `"false"` is OK. Unreadable shows "couldn't verify". Which source answered is logged under tag `SelkiePhantom`.
 
+## adb pairing (Android 11+)
+
+Settings > Advanced > Pair adb pairs the Home container's own `adb` with this device's Wireless debugging,
+the way Shizuku pairs: `AdbPairingService` (foreground, `specialUse`) opens Developer options at Wireless
+debugging (`:settings:fragment_args_key=toggle_adb_wireless`), finds `_adb-tls-pairing._tcp` by mDNS once the
+user taps "Pair device with pairing code", and asks for the code in a notification reply, so Settings stays on
+screen. A service counts only if it resolves to one of this device's addresses and its port is taken on loopback.
+
+The guest's adb does the pairing (`adb pair 127.0.0.1:<port>`, code on stdin), so the key stays in the guest's
+`~/.android` and Selkie holds none. `AdbBridge` keeps that container's adb server running in a proot of its own
+(`adb nodaemon server`), listening on `localfilesystem:/run/selkie-adb.sock`; every guest session gets
+`ADB_SERVER_SOCKET` pointing there. It never listens on TCP 5037, because every app shares localhost. While a
+terminal or the desktop runs, it watches `_adb-tls-connect._tcp` and runs `adb connect 127.0.0.1:<port>` each time
+Wireless debugging comes on, so turning it off and on or a reboot needs only turning it on again. The pairing lasts
+until the user revokes it in Wireless debugging. Root mode is not supported yet. Selkie does not turn Wireless
+debugging on by itself (that would need `WRITE_SECURE_SETTINGS`).
+
 ## Testing limits
 
 The CI emulator is x86_64 API 34. It exercises the Kotlin code, droidc and proot end to end but not the
