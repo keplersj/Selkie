@@ -17,7 +17,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.AppEntry
@@ -159,7 +162,48 @@ class MainActivity : ComponentActivity() {
         val driving = rememberCarDriving()
         val car = currentDeviceClass() == DeviceClass.Car
 
-        LifecycleResumeEffect(Unit) { phantom = check.check(); onPauseOrDispose {} }
+        // Whether battery optimisation applies to Selkie, which can let Android close it in the background.
+        val power = remember { ctx.getSystemService(android.os.PowerManager::class.java) }
+        val batteryLimited = { power?.isIgnoringBatteryOptimizations(ctx.packageName) == false }
+        var limited by remember { mutableStateOf(batteryLimited()) }
+        LifecycleResumeEffect(Unit) { phantom = check.check(); limited = batteryLimited(); onPauseOrDispose {} }
+
+        // Start again on an app in another container waits for that container's apps to be read.
+        var reopenApp by remember { mutableStateOf<Pair<String, String>?>(null) }
+        LaunchedEffect(reopenApp, state.container, state.apps) {
+            val (c, id) = reopenApp ?: return@LaunchedEffect
+            if (state.container != c) return@LaunchedEffect
+            val apps = state.apps ?: return@LaunchedEffect
+            reopenApp = null
+            val app = apps.apps.firstOrNull { it.id == id }
+            if (app != null) openApp(app) else openDesktop()
+        }
+        val closedNotices: @Composable () -> Unit = {
+            ClosedNotices(state.closed,
+                phantomRestricted = phantom == PhantomProcessCheck.State.RESTRICTED,
+                batteryLimited = limited,
+                onDismiss = { service.dismissClosed(it.container) },
+                onStartAgain = { c ->
+                    service.dismissClosed(c.container)
+                    if (c.container != state.container) service.selectContainer(c.container)
+                    when {
+                        c.desktop && c.appId != null -> reopenApp = c.container to c.appId
+                        c.desktop -> openDesktop()
+                        else -> openTerminal()
+                    }
+                },
+                onFixPhantom = { screen = "phantom" },
+                onBattery = {
+                    runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                        .onFailure {
+                            runCatching {
+                                ctx.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", ctx.packageName, null)))
+                            }
+                        }
+                },
+                time = { closedTime(ctx, it) })
+        }
 
         val op = state.operation
         val needPhantom = (phantom == PhantomProcessCheck.State.RESTRICTED || phantom == PhantomProcessCheck.State.UNVERIFIED) && !acknowledged
@@ -284,7 +328,12 @@ class MainActivity : ComponentActivity() {
                                 newInList = !rail,
                                 onDetailShown = { homeDetail = it },
                                 openDetail = detailRequest,
-                                listNote = if (car) ({ CarParkedNote() }) else null)
+                                listNote = if (car || state.closed.isNotEmpty()) ({
+                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        if (car) CarParkedNote()
+                                        closedNotices()
+                                    }
+                                }) else null)
                             Section.Images -> ImagesScreen(state, rail,
                                 onNewContainer = { ref -> newRef = ref; screen = "new" },
                                 onCleanUp = { done -> service.cleanUpImages(done) })

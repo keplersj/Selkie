@@ -37,6 +37,8 @@ import io.github.keplersj.selkie.engine.Signature
 import io.github.keplersj.selkie.engine.StatusData
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.OpKind
+import io.github.keplersj.selkie.service.Closed
+import io.github.keplersj.selkie.service.ClosedCause
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionInfo
@@ -207,6 +209,22 @@ fun HomeInstalledPreview() = Home(Fixtures.homeInstalled)
 @PhonePreviews @TabletPreview
 @Composable
 fun HomeContainersPreview() = Home(Fixtures.homeContainers)
+
+/** Android closed a container while Selkie was in the background: what ended, and why it happens. */
+@PhonePreviews
+@Composable
+fun HomeKilledPreview() = PreviewFrame {
+    SectionScaffold(Section.Containers, onSection = {}, onNewContainer = noop) { rail ->
+        HomeScreen(Fixtures.homeContainers, onOpenTerminal = noop, onOpenDesktop = noop, onConfigureDesktop = noop,
+            onUpgrade = noop, onRollback = noop, onSwitch = noop, onRefresh = noop, newInList = !rail, free = FREE,
+            listNote = {
+                ClosedNotices(listOf(Closed("default", at = 0L, desktop = true, terminals = 2,
+                    cause = ClosedCause.ChildProcesses, logTail = "gnome-shell: Exiting\n")),
+                    phantomRestricted = true, batteryLimited = true, onDismiss = {}, onStartAgain = {},
+                    onFixPhantom = noop, onBattery = noop, time = { "14:02" })
+            })
+    }
+}
 
 /** A foldable open like a book: the list and the container on either side of the canvas's 24dp hinge. */
 @Preview(name = "fold-book", device = "spec:width=840dp,height=700dp", showBackground = true)
