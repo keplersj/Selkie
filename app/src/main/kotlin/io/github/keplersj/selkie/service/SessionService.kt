@@ -36,6 +36,7 @@ import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.BatteryWatcher
+import io.github.keplersj.selkie.link.NetworkWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
 import io.github.keplersj.selkie.link.OpenUri
@@ -510,6 +511,7 @@ class SessionService : Service() {
     @Volatile private var link: GuestLink? = null
     private var appearanceWatcher: AppearanceWatcher? = null
     private var batteryWatcher: BatteryWatcher? = null
+    private var networkWatcher: NetworkWatcher? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -650,6 +652,11 @@ class SessionService : Service() {
                     start()
                     current?.let { link?.send(it) }
                 }
+            if (link != null && networkWatcher == null)
+                networkWatcher = NetworkWatcher(this@SessionService) { line -> link?.send(line) }.apply {
+                    start()
+                    current?.let { link?.send(it) }
+                }
         }
     }
 
@@ -660,6 +667,7 @@ class SessionService : Service() {
         scope.launch(Dispatchers.Main) {
             appearanceWatcher?.stop(); appearanceWatcher = null
             batteryWatcher?.stop(); batteryWatcher = null
+            networkWatcher?.stop(); networkWatcher = null
         }
     }
 
@@ -670,6 +678,7 @@ class SessionService : Service() {
                 // Android locks and blanks the device; GNOME's own lock would be a second one.
                 link?.send("""{"kind":"screen-lock","by_android":true}""")
                 batteryWatcher?.current?.let { link?.send(it) }
+                networkWatcher?.current?.let { link?.send(it) }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
