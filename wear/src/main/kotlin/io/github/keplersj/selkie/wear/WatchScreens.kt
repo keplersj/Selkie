@@ -112,10 +112,14 @@ fun WatchContainerScreen(
     c: WatchContainer,
     onStopDesktop: () -> Unit,
     onCloseTerminals: () -> Unit,
+    /** Shows this container in Selkie on [device]. Null where the phone can't be reached. */
+    onOpenOnPhone: (() -> Unit)? = null,
     initialConfirm: WatchAction? = null,
+    initialOpened: Boolean = false,
     state: ScalingLazyListState = rememberScalingLazyListState(),
 ) {
     var confirm by remember(c.name) { mutableStateOf(initialConfirm) }
+    var opened by remember(c.name) { mutableStateOf(initialOpened) }
     ScalingLazyColumn(
         Modifier.fillMaxSize(), state = state, autoCentering = null, contentPadding = ListPadding,
     ) {
@@ -147,6 +151,15 @@ fun WatchContainerScreen(
             }
         }
         if (!c.running) item { Muted("Nothing is running here. Start it on $device.") }
+        if (onOpenOnPhone != null) {
+            item {
+                OutlinedButton(
+                    onClick = { opened = true; onOpenOnPhone() }, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Open on phone") },
+                    secondaryLabel = { Text(if (opened) "Check $device" else device) },
+                )
+            }
+        }
     }
 }
 
