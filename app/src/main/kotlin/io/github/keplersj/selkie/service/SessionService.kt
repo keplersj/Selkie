@@ -37,6 +37,8 @@ import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.GuestNotification
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.RootAccess
 import io.github.keplersj.selkie.proot.EnterCommandBuilder
@@ -126,6 +128,10 @@ class SessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == GuestNotifier.ACTION_BUTTON || intent?.action == GuestNotifier.ACTION_DISMISSED) {
+            onGuestNotificationIntent(intent)
+            return START_NOT_STICKY
+        }
         // Entering the foreground promptly satisfies startForegroundService().
         updateForeground(force = true)
         return START_NOT_STICKY
@@ -501,6 +507,8 @@ class SessionService : Service() {
     /** The desktop's channel to Android (`droidc host-link`), while the desktop runs. */
     @Volatile private var link: GuestLink? = null
     private var appearanceWatcher: AppearanceWatcher? = null
+    /** The guest's notifications in Android's shade (and so on a paired watch). */
+    private val guestNotifier by lazy { GuestNotifier(this) }
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -642,12 +650,40 @@ class SessionService : Service() {
     private fun stopLink() {
         link?.stop()
         link = null
+        guestNotifier.cancelAll()
         scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
     }
 
     private fun onLinkMessage(m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> sendAppearance()
+            "ready" -> {
+                // A restarted link knows none of the notifications already up, so they can't be acted on.
+                guestNotifier.cancelAll()
+                sendAppearance()
+            }
+            "notify" -> GuestNotification.parse(m.body)?.let { guestNotifier.show(it) }
+            "close-notification" -> (m.body["key"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?.let { guestNotifier.cancel(it) }
+        }
+    }
+
+    /** The user tapped a guest notification: the activity opens the desktop, the app hears of it. */
+    fun openedGuestNotification(key: String) {
+        link?.send(GuestNotification.actionLine(key, null, null))
+    }
+
+    /** A button or a dismissal on a guest notification, from its pending intent. */
+    private fun onGuestNotificationIntent(intent: Intent) {
+        val key = intent.getStringExtra(GuestNotifier.EXTRA_KEY) ?: return
+        val l = link
+        when (intent.action) {
+            GuestNotifier.ACTION_BUTTON -> {
+                val text = GuestNotifier.replyText(intent)
+                l?.send(GuestNotification.actionLine(key, intent.getStringExtra(GuestNotifier.EXTRA_BUTTON), text))
+                // Done with it here; the app updates or withdraws it in the guest as it sees fit.
+                guestNotifier.cancel(key)
+            }
+            GuestNotifier.ACTION_DISMISSED -> l?.send(GuestNotification.closedLine(key))
         }
     }
 
