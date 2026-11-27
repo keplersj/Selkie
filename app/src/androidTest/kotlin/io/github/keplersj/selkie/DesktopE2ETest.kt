@@ -242,7 +242,7 @@ class DesktopE2ETest {
         """.trimIndent())
         guestProbe("sound-wp", """
             echo "wireplumber.log (${'$'}(wc -l < /tmp/wireplumber.log 2>/dev/null) lines):"
-            grep -E 's-linking|s-node|si-|^[EW] ' /tmp/wireplumber.log 2>&1 | grep -v 'mod.rt' | cut -c1-14,50-300 | tail -78
+            grep -E 's-linking|s-node|si-|^[EW] ' /tmp/wireplumber.log 2>&1 | grep -v 'mod.rt' | sed 's#../[^ ]*: ##' | tail -78
         """.trimIndent())
         val deadline = SystemClock.uptimeMillis() + 15_000
         while (SystemClock.uptimeMillis() < deadline && (s.audioBytes()?.first ?: 0) == 0L) Thread.sleep(500)
