@@ -160,6 +160,8 @@ class DroidcClient(private val env: EngineEnv) {
     suspend fun status(): DroidcOutcome = run(listOf("status"))
     suspend fun shellSpec(): DroidcOutcome = run(listOf("shell-spec"))
     suspend fun platform(): DroidcOutcome = run(listOf("platform"))
+    /** The current deployment's applications, from its desktop entries (`droidc apps`). */
+    suspend fun apps(): DroidcOutcome = run(listOf("apps"))
     /** Every container under the root (`droidc container list`); the env's own container doesn't matter. */
     suspend fun listContainers(): DroidcOutcome = run(DroidcArgs.containerList)
     /** Removes deployments and blobs no container references. */

@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.Deployment
+import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
@@ -54,8 +55,8 @@ private val LIST_DETAIL_WIDTH = 840.dp
 /** The detail pane puts Overview in two columns from this width. */
 private val DETAIL_COLUMNS_WIDTH = 600.dp
 
-/** A container's tabs. The canvas's Apps tab waits for droidc to read .desktop entries. */
-enum class ContainerTab(val label: String) { Overview("Overview"), Updates("Updates"), Settings("Settings") }
+/** A container's tabs. */
+enum class ContainerTab(val label: String) { Overview("Overview"), Apps("Apps"), Updates("Updates"), Settings("Settings") }
 
 /** What the list shows about one container. */
 data class ContainerSummary(
@@ -115,6 +116,8 @@ fun HomeScreen(
     onNewContainer: () -> Unit = {},
     onRemoveContainer: (name: String, onDone: (String?) -> Unit) -> Unit = { _, _ -> },
     onRootMode: (Boolean) -> Unit = {},
+    /** Opens one of the selected container's apps on its own; returns why it can't, or null. */
+    onOpenApp: (AppEntry) -> String? = { null },
     /** False where the navigation rail carries the New container button instead. */
     newInList: Boolean = true,
     /** Told when a phone shows one container on its own screen, so the navigation bar steps aside. */
@@ -141,6 +144,7 @@ fun HomeScreen(
         onOpenTerminal = onOpenTerminal, onOpenDesktop = onOpenDesktop, onConfigureDesktop = onConfigureDesktop,
         onUpgrade = onUpgrade, onRollback = onRollback, onChangeImage = onSwitch,
         onRemove = { removing = state.container }, onRootMode = onRootMode, onRefresh = onRefresh,
+        onOpenApp = onOpenApp,
     )
 
     val remove: (String) -> Unit = { name -> removing = name }
@@ -205,6 +209,7 @@ private class DetailActions(
     val onRemove: () -> Unit,
     val onRootMode: (Boolean) -> Unit,
     val onRefresh: () -> Unit,
+    val onOpenApp: (AppEntry) -> String?,
 )
 
 /** The desktop belongs to another container. Selkie runs one desktop at a time. */
@@ -439,6 +444,8 @@ private fun ContainerDetail(
             when {
                 !state.statusLoaded -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }
                 tab == ContainerTab.Overview -> Overview(state, actions, columns)
+                tab == ContainerTab.Apps -> AppsTab(state.container, state.apps, state.appsError,
+                    installed = cur != null, onOpen = actions.onOpenApp, onOpenDesktop = actions.onOpenDesktop)
                 tab == ContainerTab.Updates -> Updates(state, actions)
                 else -> Settings(state, actions)
             }
