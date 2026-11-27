@@ -65,4 +65,38 @@ class GuestLinkTest {
         assertNull(OpenUri.uriFrom(GuestLinkMessage.parse("""{"kind":"open-uri"}""")!!))
         assertNull(OpenUri.uriFrom(GuestLinkMessage.parse("""{"kind":"ready","uri":"https://x"}""")!!))
     }
+
+    @Test fun batteryLineFollowsAndroidsExtras() {
+        // BatteryManager: status 2 charging, 3 discharging, 4 not charging, 5 full; plugged 1 = AC.
+        val charging = SelkieJson.parseToJsonElement(BatteryState.of(true, 46, 100, 2, 1, 1_800_000).toLine()) as JsonObject
+        assertEquals("battery", charging["kind"]!!.jsonPrimitive.content)
+        assertEquals("46", charging["percent"]!!.jsonPrimitive.content)
+        assertEquals("charging", charging["status"]!!.jsonPrimitive.content)
+        assertEquals("true", charging["plugged"]!!.jsonPrimitive.content)
+        assertEquals("1800", charging["time_to_full"]!!.jsonPrimitive.content)
+
+        val low = BatteryState.of(true, 9, 100, 3, 0)
+        assertEquals(BatteryState(true, 9, "discharging", false, null), low)
+        assertEquals("full", BatteryState.of(true, 100, 100, 5, 2).status)
+        assertEquals("not-charging", BatteryState.of(true, 80, 100, 4, 1).status)
+        assertNull(BatteryState.of(true, -1, 100, 1, 0).percent)
+        assertEquals(50, BatteryState.of(true, 128, 256, 3, 0).percent)
+        assertFalse('\n' in low.toLine())
+    }
+
+    @Test fun networkLineFollowsTheDefaultNetwork() {
+        val wifi = NetworkState.of(validated = true, portal = false, notMetered = true, wifi = true)
+        assertEquals(
+            """{"kind":"network","connected":true,"validated":true,"portal":false,"metered":false,"transport":"wifi"}""",
+            wifi.toLine(),
+        )
+        val phone = NetworkState.of(validated = true, portal = false, notMetered = false, cellular = true)
+        assertTrue(phone.metered)
+        assertEquals("cellular", phone.transport)
+        // A VPN over Wi-Fi is the VPN.
+        assertEquals("vpn", NetworkState.of(true, false, true, wifi = true, vpn = true).transport)
+        val hotel = NetworkState.of(validated = false, portal = true, notMetered = true, wifi = true)
+        assertTrue(hotel.portal)
+        assertEquals("""{"kind":"network","connected":false}""", NetworkState.NONE.toLine())
+    }
 }
