@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.service.DesktopState
@@ -123,9 +124,12 @@ class MainActivity : ComponentActivity() {
         val setSpace = rememberXrSpace()
         var xrDesktop by remember { mutableStateOf(false) }
         var xrTerminal by remember { mutableStateOf(false) }
-        val openDesktop: () -> Unit = {
+        val showCompositor: () -> Unit = {
             if (full) xrDesktop = true else screen = if (tv && !inputs.pointer) "tv-pointer" else "desktop"
         }
+        // The whole desktop, unless one is already running (an app left prepared but never opened is dropped).
+        val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor() }
+        val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(); null } }
         val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
         // In a car, Selkie is parked-only: while driving one screen stands in for all of it.
         val driving = rememberCarDriving()
@@ -250,6 +254,7 @@ class MainActivity : ComponentActivity() {
                                 onNewContainer = newContainer,
                                 onRemoveContainer = { name, done -> service.removeContainer(name, done) },
                                 onRootMode = { service.setRootMode(it) },
+                                onOpenApp = openApp,
                                 newInList = !rail,
                                 onDetailShown = { homeDetail = it },
                                 listNote = if (car) ({ CarParkedNote() }) else null)

@@ -37,6 +37,16 @@ class ProotCommandBuilderTest {
         assertEquals("/run/droidc/root", inv.env["DROIDC_ROOT"])
     }
 
+    @Test fun anAppRunsOnItsOwnInTheCompositor() {
+        val inv = ProotCommandBuilder(TestEnv.env(), spec).app(listOf("gnome-text-editor", "--new-window"))
+        assertEquals(listOf("/usr/bin/droidc", "supervise", "--systemd", "auto", "--", "gnome-text-editor", "--new-window"),
+            inv.argv.takeLast(7))
+        assertEquals("wayland-0", inv.env["WAYLAND_DISPLAY"])
+        assertEquals("wayland", inv.env["GDK_BACKEND"])
+        assertEquals("10", inv.env["DROIDC_USER_SERVICES_WAIT"])
+        assertEquals("1", inv.env["LIBGL_ALWAYS_SOFTWARE"])
+    }
+
     @Test fun sessionsJoinTheContainersUserServices() {
         val b = ProotCommandBuilder(TestEnv.env(), spec)
         assertEquals("10", b.interactiveShell().env["DROIDC_USER_SERVICES_WAIT"])
