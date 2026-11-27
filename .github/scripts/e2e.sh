@@ -61,6 +61,10 @@ echo "== HomeDetailTest"
 timeout 300 adb shell am instrument -w -e class $PKG.HomeDetailTest $RUNNER | tee "$OUT/home-detail.txt"
 grep -q '^OK (' "$OUT/home-detail.txt" || { echo "home detail test failed"; rc=1; diag; }
 
+echo "== DesktopControlsPhoneTest"
+timeout 300 adb shell am instrument -w -e class $PKG.DesktopControlsPhoneTest $RUNNER | tee "$OUT/desktop-controls.txt"
+grep -q '^OK (' "$OUT/desktop-controls.txt" || { echo "desktop controls test failed"; rc=1; diag; }
+
 echo "== EngineE2ETest (pull + unpack in an emulator can take 10-20 min)"
 timeout 3000 adb shell am instrument -w -e class $PKG.EngineE2ETest $RUNNER | tee "$OUT/e2e.txt"
 grep -q '^OK (' "$OUT/e2e.txt" || { echo "e2e test failed"; rc=1; diag; }

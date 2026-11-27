@@ -421,6 +421,15 @@ fun DesktopControlsTabletPreview() = DesktopControlsFrame(1280 to 800)
 @Composable
 fun DesktopControlsPhonePreview() = DesktopControlsFrame(null)
 
+/** The desktop once its controls have gone: only the tab that brings them back. */
+@Preview(name = "phone-portrait", device = "spec:width=411dp,height=891dp", showBackground = true)
+@Composable
+fun DesktopControlsHiddenPreview() = SelkieTheme(dark = true, dynamicColor = false) {
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF101418))) {
+        DesktopControlsLayer(remember { DesktopControlsState(showing = false) }, onLeave = noop) {}
+    }
+}
+
 @PhonePreviews
 @Composable
 fun StopDesktopDialogPreview() = PreviewFrame { StopDesktopDialog("default", onDismiss = noop, onConfirm = noop) }

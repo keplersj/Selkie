@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import io.github.keplersj.selkie.display.NativeCompositor
@@ -54,21 +56,9 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
     // In an XR panel the system bars aren't over the desktop, so there is nothing to hide.
     if (immersive) ImmersiveMode()
 
-    // The controls show when the desktop opens and on Back, then go. Back while they show leaves the desktop
-    // running and returns to Selkie.
-    var controls by remember { mutableStateOf(true) }
-    var shownAt by remember { mutableIntStateOf(0) }
+    val controls = remember { DesktopControlsState() }
     var stopping by remember { mutableStateOf(false) }
-    val poke: () -> Unit = { controls = true; shownAt++ }
-    LaunchedEffect(controls, shownAt, stopping) {
-        if (controls && !stopping && desktopControlsAutoHide) { delay(DESKTOP_CONTROLS_MILLIS); controls = false }
-    }
-    BackHandler {
-        when (desktopBack(controlsShowing = controls)) {
-            DesktopBack.Leave -> onBack()
-            DesktopBack.ShowControls -> poke()
-        }
-    }
+    val poke: () -> Unit = controls::show
 
     // The view's surface usually exists before the compositor: hand it over once the session runs.
     LaunchedEffect(desktop is DesktopState.Running || desktop is DesktopState.Starting, viewRef) {
@@ -117,7 +107,7 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
             else -> {}
         }
         if (desktop !is DesktopState.Failed) {
-            AnimatedVisibility(controls, Modifier.fillMaxSize(), enter = fadeIn(), exit = fadeOut()) {
+            DesktopControlsLayer(controls, paused = stopping, onLeave = onBack) {
                 DesktopControls(
                     container = state.desktopContainer ?: state.container,
                     size = (desktop as? DesktopState.Running)?.let { it.width to it.height },
@@ -133,7 +123,7 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
                     onTerminal = onTerminal,
                     onBack = onBack,
                     onStop = { stopping = true },
-                    onHide = { controls = false },
+                    onHide = controls::hide,
                 )
             }
         }
@@ -142,6 +132,70 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
     if (stopping) StopDesktopDialog(state.desktopContainer ?: state.container,
         onDismiss = { stopping = false; poke() },
         onConfirm = { stopping = false; service.stopDesktop(); onBack() })
+}
+
+/** Whether Selkie's controls show over the desktop. [show] also restarts their time on screen. */
+@Stable
+class DesktopControlsState(showing: Boolean = true) {
+    var showing by mutableStateOf(showing)
+        private set
+    internal var shownAt by mutableIntStateOf(0)
+        private set
+    fun show() { showing = true; shownAt++ }
+    fun hide() { showing = false }
+}
+
+/** Says what the tab over a desktop with its controls hidden does, for TalkBack and the tests. */
+internal const val SHOW_DESKTOP_CONTROLS = "Show Selkie's controls"
+
+/**
+ * The controls over a desktop, and how they come back. They show when the desktop opens, then go after
+ * [DESKTOP_CONTROLS_MILLIS] unless [paused]. While they're hidden a small tab stays at the top edge, and
+ * tapping it brings them back: touch is otherwise all the guest's, and Back alone isn't enough on a phone,
+ * where the edge swipe in immersive mode first reveals the system bars. Back shows them too, and Back
+ * while they show calls [onLeave].
+ */
+@Composable
+fun DesktopControlsLayer(
+    state: DesktopControlsState,
+    paused: Boolean = false,
+    onLeave: () -> Unit,
+    controls: @Composable () -> Unit,
+) {
+    LaunchedEffect(state.showing, state.shownAt, paused) {
+        if (state.showing && !paused && desktopControlsAutoHide) { delay(DESKTOP_CONTROLS_MILLIS); state.hide() }
+    }
+    BackHandler {
+        when (desktopBack(controlsShowing = state.showing)) {
+            DesktopBack.Leave -> onLeave()
+            DesktopBack.ShowControls -> state.show()
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        AnimatedVisibility(state.showing, Modifier.fillMaxSize(), enter = fadeIn(), exit = fadeOut()) { controls() }
+        // Below a camera cutout at the top of an upright phone, which would otherwise sit over the tab.
+        AnimatedVisibility(!state.showing,
+            Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top)),
+            enter = fadeIn(), exit = fadeOut()) {
+            DesktopControlsTab(onClick = state::show)
+        }
+    }
+}
+
+/** The tab at the top edge of a desktop whose controls are hidden: a small pull-down handle. */
+@Composable
+internal fun DesktopControlsTab(onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(width = 64.dp, height = 28.dp).semantics { contentDescription = SHOW_DESKTOP_CONTROLS },
+        shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
+        color = cs.surfaceContainerHigh.copy(alpha = 0.85f), contentColor = cs.onSurface, shadowElevation = 2.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(SelkieIcons.Chevron, contentDescription = null, modifier = Modifier.size(18.dp).rotate(90f))
+        }
+    }
 }
 
 internal enum class DesktopBack { Leave, ShowControls }
@@ -161,7 +215,7 @@ private fun sendKey(service: SessionService, code: Int) {
     }
 }
 
-/** How long the controls stay after the desktop opens or Back shows them. */
+/** How long the controls stay after the desktop opens, or Back or the tab shows them. */
 internal const val DESKTOP_CONTROLS_MILLIS = 4_000L
 
 /** Set false by the GUI test, which presses Super long after the controls would have gone. */
