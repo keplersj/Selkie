@@ -49,7 +49,7 @@ if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
 fi
 echo "::group::sound: audio-out.log, the guest's tone probe, Selkie's player"
 tail -40 "$OUT/audio-out.log" | cut -c1-400
-grep -a -h -E "SELKIE_GUEST sound|SelkieAudio|AudioTrack" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"
+grep -a -h -E "SELKIE_GUEST sound|SELKIE_PROCS sound|SelkieAudio|AudioTrack" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"
 echo "::group::desktop.log (journal, warnings)"
 grep -a -E "^(journal|warn):|systemd|dbus|cgshim" "$OUT/desktop.log" | head -400; echo "::endgroup::"
 echo "::group::user-services.log (the container's bus and systemd --user, started by Selkie)"
