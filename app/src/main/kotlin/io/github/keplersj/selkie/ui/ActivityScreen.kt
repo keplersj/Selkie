@@ -38,6 +38,8 @@ internal data class ActivityItems(
     /** The desktop's session name, where Selkie knows it (only for the selected container's). */
     val desktopName: String?,
     val terminals: List<SessionInfo>,
+    /** The app shown on its own in place of the desktop, if that is what runs. */
+    val app: String? = null,
 ) {
     val empty: Boolean get() = desktop == null && terminals.isEmpty()
 }
@@ -50,6 +52,7 @@ internal fun activityItems(state: ServiceState): ActivityItems {
         desktopStarting = state.desktop is DesktopState.Starting,
         desktopName = state.graphical?.name?.takeIf { desktop != null && desktop == state.container },
         terminals = state.sessions.filter { it.running },
+        app = state.desktopApp?.name?.takeIf { desktop != null },
     )
 }
 
@@ -106,7 +109,7 @@ fun ActivityScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Mark { Icon(SelkieIcons.Desktop, contentDescription = null) }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(listOfNotNull("Desktop", items.desktopName).joinToString(" · "),
+                            Text(items.app ?: listOfNotNull("Desktop", items.desktopName).joinToString(" · "),
                                 style = MaterialTheme.typography.titleMedium)
                             MutedText("$container · ${if (items.desktopStarting) "starting" else "running"}")
                         }
@@ -141,7 +144,7 @@ fun ActivityScreen(
     }
 
     stopping?.let { container ->
-        StopDesktopDialog(container, onDismiss = { stopping = null }, onConfirm = { stopping = null; onStopDesktop() })
+        StopDesktopDialog(container, app = items.app, onDismiss = { stopping = null }, onConfirm = { stopping = null; onStopDesktop() })
     }
     if (stoppingAll) {
         val n = items.terminals.size

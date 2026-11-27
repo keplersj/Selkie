@@ -184,6 +184,62 @@ data class ShellSpec(
     val shims: List<String> = emptyList(),
 )
 
+/** Where a desktop entry came from (droidc `apps`). */
+@Serializable
+enum class AppOrigin {
+    @SerialName("image") IMAGE,
+    @SerialName("flatpak") FLATPAK,
+    @SerialName("user") USER,
+    @SerialName("user-flatpak") USER_FLATPAK,
+}
+
+@Serializable
+data class AppIcon(
+    val name: String,
+    /** The icon file, readable by Selkie; null when the theme has none. */
+    @SerialName("host_path") val hostPath: String? = null,
+    /** `png`, `svg` or `xpm`. */
+    val format: String? = null,
+)
+
+@Serializable
+data class AppAction(val id: String, val name: String, val argv: List<String>)
+
+/** One application of a container (droidc `apps`), read from its desktop entry. */
+@Serializable
+data class AppEntry(
+    /** Desktop ID, such as `org.gnome.TextEditor.desktop`. */
+    val id: String,
+    val name: String,
+    @SerialName("generic_name") val genericName: String? = null,
+    val comment: String? = null,
+    val categories: List<String> = emptyList(),
+    val keywords: List<String> = emptyList(),
+    @SerialName("mime_types") val mimeTypes: List<String> = emptyList(),
+    val exec: String = "",
+    /** `Exec` split into arguments, without the field codes for files and URLs. */
+    val argv: List<String> = emptyList(),
+    val terminal: Boolean = false,
+    @SerialName("only_show_in") val onlyShowIn: List<String> = emptyList(),
+    /** The entry names desktops it belongs to: Selkie opens it inside the full desktop. */
+    @SerialName("needs_desktop") val needsDesktop: Boolean = false,
+    val origin: AppOrigin = AppOrigin.IMAGE,
+    /** Guest path of the entry. */
+    val path: String = "",
+    val icon: AppIcon? = null,
+    val actions: List<AppAction> = emptyList(),
+)
+
+@Serializable
+data class HiddenApp(val id: String, val origin: AppOrigin = AppOrigin.IMAGE, val reason: String = "")
+
+@Serializable
+data class AppList(
+    val container: String = "",
+    val apps: List<AppEntry> = emptyList(),
+    val hidden: List<HiddenApp> = emptyList(),
+)
+
 /** Final outcome of a droidc invocation. */
 sealed interface DroidcOutcome {
     data class Success(val data: JsonElement?) : DroidcOutcome
@@ -198,3 +254,5 @@ fun DroidcOutcome.Success.containers(): List<ContainerInfo> =
     SelkieJson.decodeFromJsonElement<ContainerList>(data ?: JsonObject(emptyMap())).containers
 fun DroidcOutcome.Success.shellSpec(): ShellSpec =
     SelkieJson.decodeFromJsonElement(data ?: error("shell-spec returned no data"))
+fun DroidcOutcome.Success.apps(): AppList =
+    SelkieJson.decodeFromJsonElement(data ?: error("apps returned no data"))
