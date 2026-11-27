@@ -47,8 +47,6 @@ if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
   echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
   grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
 fi
-echo "::group::links: the guest's xdg-open and the Android side"
-grep -a -h -E "SELKIE_GUEST links|SelkieLink" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"
 echo "::group::sound: audio-out.log, the guest's tone probe, Selkie's player"
 tail -40 "$OUT/audio-out.log" | cut -c1-400
 grep -a -h -E "SELKIE_GUEST sound|SELKIE_PROCS sound|SelkieAudio|AudioTrack" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"

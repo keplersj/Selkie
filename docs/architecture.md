@@ -151,6 +151,22 @@ The Developer-options toggle writes the system property `persist.sys.fflag.overr
 the check follows AOSP `FeatureFlagUtils`: Settings.Global key first, then that property, then default "true".
 `"false"` is OK. Unreadable shows "couldn't verify". Which source answered is logged under tag `SelkiePhantom`.
 
+## adb pairing (`droidc adb`, Android 11+)
+
+`droidc adb pair`, run in a container, pairs that container's own `adb` with this device's Wireless
+debugging the way Shizuku pairs. Its request reaches Selkie through host-link (`adb-pair`, see `AdbRequests`):
+`AdbPairingService` (foreground, `specialUse`) opens Developer options at Wireless debugging
+(`:settings:fragment_args_key=toggle_adb_wireless`), finds `_adb-tls-pairing._tcp` by mDNS once the user taps
+"Pair device with pairing code", and takes the code in a notification reply, so Settings stays on screen. A
+service counts only if it resolves to one of this device's addresses and its port is taken on loopback. The
+port and code go back to the guest, whose adb pairs, so the key stays in the guest's `~/.android`.
+
+Every other `droidc adb ARGS` asks Selkie for Wireless debugging's current port (`adb-port`, by mDNS on
+`_adb-tls-connect._tcp`), runs `adb connect`, then `adb ARGS`. Guest sessions get
+`ADB_SERVER_SOCKET=localfilesystem:/run/droidc-adb.sock`, so the server never listens on TCP 5037, which every
+app shares. host-link runs with each container's services, for terminals as well as the desktop, so
+`droidc adb` works from a terminal alone. Selkie doesn't turn Wireless debugging on by itself.
+
 ## Testing limits
 
 The CI emulator is x86_64 API 34. It exercises the Kotlin code, droidc and proot end to end but not the

@@ -27,6 +27,7 @@ device in a build made before it was merged.
 | In-app terminal (Termux `terminal-view`/`terminal-emulator` v0.118.3, Apache-2.0) | Works | used interactively on both devices: login shell, `id`, `busctl`, `curl`, `fastfetch`; the e2e also drives proot non-interactively with the same argv builder |
 | Foreground service (`specialUse`) owning operations and terminal sessions | Partly exercised | an install kept running to completion on the phone while its screen was locked; closing the activity and checking a terminal session survives is untested |
 | "Disable child process restrictions" detection and first-run explainer | Detection works on the emulator | e2e asserts the check returns OK (source `settings.global`) after `settings put global settings_enable_monitor_phantom_procs false`. On the Razr the first-run screen blocked until the Developer-options toggle was turned on, then moved on, so reading the property path works on a real device. `adb shell setprop` of that property is refused on that device |
+| `droidc adb pair`: pair the guest's adb with Wireless debugging from a notification, as Shizuku does | Implemented | JVM tests for the host-link answers; droidc tests drive `droidc adb pair` against a fake host and adb; not yet run on a device |
 | Error kinds network / signature / storage | Implemented | signature and not-found tested in CI; network and storage-space errors are unit-level only |
 
 Emulator end-to-end (CI, `reactivecircus/android-emulator-runner`, API 34 google_apis x86_64,
@@ -78,10 +79,6 @@ refused, so use the Developer options toggle.
   AudioTrack) is built but has not been heard on a device yet; the emulator runs with `-noaudio`.
 - The desktop follows Android's look (dark mode, accent, font size, "Remove animations", high
   contrast) through `droidc host-link`. The emulator test checks night mode only; not yet seen on a device.
-- Web, mail, phone, SMS and map links opened in the desktop (`xdg-open`, GNOME apps) open in Android's
-  own apps, also through `droidc host-link`. The emulator test opens one web link; not yet seen on a device.
-- The screen stays on while a desktop app asks it to (a playing video), and GNOME's own lock screen
-  and idle blank are off, since Android locks the device. Not yet seen on a device.
 - **Graphical sessions (after the MVP release; see "Graphical sessions" below) are verified on Linux
   only.** The emulator GUI test (`emulator-gui` job) passes on x86_64. One manual run on a Galaxy Tab S11 (arm64, Android 16, debug APK of `449b4aa`; PR #7 comment) showed GNOME rendering, touch, the Super button, Nautilus, soft-keyboard typing and Stop working, with no crashes. Not covered there: frame rate, the Back button, hardware keys, the nested-compositor preset, long sessions. No GPU (llvmpipe),
   no audio (it came later; see above), no Steam.
