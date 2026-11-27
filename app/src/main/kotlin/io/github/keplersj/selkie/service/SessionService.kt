@@ -29,6 +29,7 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.apps
@@ -637,11 +638,13 @@ class SessionService : Service() {
     }
 
     /**
-     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
-     * view size). After [prepareApp], the app runs instead, on its own. The session keeps running without the activity; the compositor holds frames while
-     * nothing shows them.
+     * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
+     * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
+     * display's density; see [DisplayScale]). After [prepareApp], the app runs instead, on its own.
+     * The session keeps running without the activity; the compositor holds frames while nothing
+     * shows them.
      */
-    fun startDesktop(width: Int, height: Int) {
+    fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
@@ -666,7 +669,8 @@ class SessionService : Service() {
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
                     startLink(b, env)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
+                    val (sw, sh) = DisplayScale.sessionSize(width, height)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
