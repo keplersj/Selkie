@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FloatingActionButton
@@ -60,15 +61,13 @@ fun SectionScaffold(
     val book = LocalFold.current?.book == true
     BoxWithConstraints(modifier.fillMaxSize()) {
         val rail = useRail(maxWidth, book)
-        when {
-            !showNavigation -> content(rail)
-            rail -> Row(Modifier.fillMaxSize()) {
-                SectionRail(section, onSection, onNewContainer, railFooter)
-                Box(Modifier.weight(1f).fillMaxHeight()) { content(true) }
-            }
-            else -> Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { content(false) }
-                SectionBar(section, onSection)
+        // [content] keeps one place in the tree whether the bar or rail shows or not. Moving it between
+        // branches would start it over, and Home would lose the container it had just opened.
+        Row(Modifier.fillMaxSize()) {
+            if (showNavigation && rail) SectionRail(section, onSection, onNewContainer, railFooter)
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                Box(Modifier.weight(1f).fillMaxWidth()) { content(rail) }
+                if (showNavigation && !rail) SectionBar(section, onSection)
             }
         }
     }
