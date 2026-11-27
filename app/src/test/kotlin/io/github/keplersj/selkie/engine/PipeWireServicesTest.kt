@@ -27,4 +27,16 @@ class PipeWireServicesTest {
             assertTrue(s[2], s[2].contains("\$i -ge 100"))
         }
     }
+
+    @Test
+    fun wirePlumberGivesFullAccessBackToClientsWhoseFlatpakCheckFailed() {
+        val wp = services[1][2]
+        assertTrue(wp, wp.contains("wireplumber/wireplumber.conf.d/50-selkie-access.conf"))
+        assertTrue(wp, wp.contains("export XDG_CONFIG_DIRS="))
+        assertTrue(wp, wp.indexOf("export XDG_CONFIG_DIRS=") < wp.indexOf("exec wireplumber"))
+        val rule = PipeWireServices.WIREPLUMBER_ACCESS
+        assertTrue(rule, rule.contains("pipewire.sec.flatpak = \"true\""))
+        assertTrue(rule, rule.contains("pipewire.access.portal.app_id = null"))
+        assertTrue(rule, rule.contains("default_permissions = \"all\""))
+    }
 }

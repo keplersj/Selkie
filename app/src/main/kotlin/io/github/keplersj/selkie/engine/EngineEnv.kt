@@ -139,9 +139,14 @@ data class EngineEnv(
  * not every client uses it. PipeWire therefore starts from a copy of its own configuration whose
  * `access.socket` makes the default socket `unrestricted` too.
  *
- * WirePlumber and `pipewire-pulse` wait until that PipeWire answers. All three start at once, and PipeWire
- * takes a moment to write its configuration; a WirePlumber that came up first, or met a socket left by the
- * previous session, stayed running but linked nothing, so no stream reached a sink.
+ * The same check also fails, now and then, for a client that has only just started, and PipeWire then
+ * marks it `pipewire.sec.flatpak` with no app ID. WirePlumber limits such a client to read and execute,
+ * and when that client is WirePlumber's own connection it can no longer link anything, so no stream
+ * reaches a sink. WirePlumber therefore also reads [WIREPLUMBER_ACCESS], from a directory this session
+ * puts first on `XDG_CONFIG_DIRS`, which gives full access back to a client marked Flatpak without an
+ * app ID. A real Flatpak app has one, so it keeps going through the portal.
+ *
+ * WirePlumber and `pipewire-pulse` start once that PipeWire answers, since all three start at once.
  */
 object PipeWireServices {
     private const val SCRIPT =
@@ -150,6 +155,17 @@ object PipeWireServices {
         "sed 's/^\\([[:space:]]*\\)#access\\.socket = .*/\\1access.socket = { pipewire-0 = \"unrestricted\", pipewire-0-manager = \"unrestricted\" }/' " +
         "\"\$f\" > \"\$c\" " +
         "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && exec pipewire -c \"\$c\"; done; exec pipewire"
+
+    /** WirePlumber `access.rules` for clients whose Flatpak check failed (see the class comment). */
+    internal const val WIREPLUMBER_ACCESS =
+        "access.rules = [ { matches = [ { pipewire.sec.flatpak = \"true\", pipewire.access.portal.app_id = null } ] " +
+            "actions = { update-props = { default_permissions = \"all\", access = \"unrestricted\" } } } ]"
+
+    /** Writes [WIREPLUMBER_ACCESS] where WirePlumber looks and puts that directory first. */
+    private const val WIREPLUMBER_CONFIG =
+        "x=\"\${XDG_RUNTIME_DIR:-/tmp}/selkie-xdg\"; mkdir -p \"\$x/wireplumber/wireplumber.conf.d\" && " +
+            "printf '%s\\n' '$WIREPLUMBER_ACCESS' > \"\$x/wireplumber/wireplumber.conf.d/50-selkie-access.conf\"; " +
+            "export XDG_CONFIG_DIRS=\"\$x:\${XDG_CONFIG_DIRS:-/etc/xdg}\"; "
 
     /** Waits up to about 20 s for PipeWire to answer, then runs the program anyway. */
     internal fun afterPipeWire(program: String) =
@@ -161,10 +177,10 @@ object PipeWireServices {
 
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
-        "[${shell(SCRIPT)},${shell(afterPipeWire("wireplumber"))},${shell(afterPipeWire("pipewire-pulse"))}]"
+        "[${shell(SCRIPT)},${shell(WIREPLUMBER_CONFIG + afterPipeWire("wireplumber"))},${shell(afterPipeWire("pipewire-pulse"))}]"
 
     /** [JSON] with WirePlumber logging its linking decisions to `/tmp/wireplumber.log` (tests). */
     internal val DEBUG_JSON: String =
-        "[${shell(SCRIPT)},${shell("export WIREPLUMBER_DEBUG='3,s-*:5,si-*:5,wp-node:5,wp-proxy:4,wp-object-manager:4,wp-registry:4'; " + afterPipeWire("wireplumber 2>/tmp/wireplumber.log"))}," +
+        "[${shell(SCRIPT)},${shell(WIREPLUMBER_CONFIG + "export WIREPLUMBER_DEBUG='3,s-client:5,s-linking*:5,s-node*:5'; " + afterPipeWire("wireplumber 2>/tmp/wireplumber.log"))}," +
             "${shell(afterPipeWire("pipewire-pulse"))}]"
 }
