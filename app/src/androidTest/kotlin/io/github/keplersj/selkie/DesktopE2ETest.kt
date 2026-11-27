@@ -202,8 +202,8 @@ class DesktopE2ETest {
      * Runs [script] in a second proot against the live session (same /run, so the user bus and the
      * display are there) and logs its output as SELKIE_GUEST lines.
      */
-    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90) {
-        try {
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90): String {
+        return try {
             val env = engineEnvFrom(ctx)
             val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
             val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
@@ -216,7 +216,35 @@ class DesktopE2ETest {
             if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
             t.join(5000)
             text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
-        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
+            text.toString()
+        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e"); "" }
+    }
+
+    /**
+     * Turns Android's night mode on and checks that GNOME's color scheme follows it through
+     * `droidc host-link`, then puts night mode back. Logged as a metric, like the sound check.
+     */
+    private fun checkAppearance() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+        // Under the supervisor, as host-link runs, so gsettings reaches the same session bus and dconf.
+        val read = listOf("color-scheme", "accent-color", "text-scaling-factor").joinToString("\n") { key ->
+            "echo \"$key=$(DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- " +
+                "gsettings get org.gnome.desktop.interface $key 2>&1 | tail -1)\""
+        }
+        guestProbe("appearance-before", read)
+        shell("cmd uimode night yes")
+        var dark = false
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline && !dark) {
+            Thread.sleep(2000)
+            dark = "color-scheme='prefer-dark'" in guestProbe("appearance-dark", read)
+        }
+        log("SELKIE_METRIC appearance_follows_night_mode=$dark")
+        shell("cmd uimode night no")
+        val linkLog = engineEnvFrom(ctx).hostLinkLog
+        val text = if (linkLog.exists()) linkLog.readText() else "(no ${linkLog.name})"
+        text.lines().takeLast(20).forEach { log("SELKIE_GUEST host-link-log ${it.take(300)}") }
     }
 
     /**
@@ -316,6 +344,7 @@ class DesktopE2ETest {
         settle(s)
         screenshot("gnome-1.png")
         checkSound(s)
+        checkAppearance()
 
         // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
         // Android key path then closes GNOME's first-run dialog if it is up. The compositor's input

@@ -105,6 +105,14 @@ class ProotCommandBuilder(
             .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
 
     /**
+     * The desktop's channel to Android: `droidc host-link` under the supervisor (for the session bus and
+     * the session's settings), JSON lines both ways. See [io.github.keplersj.selkie.link.GuestLink].
+     */
+    fun hostLink(): Invocation =
+        command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "host-link"))
+            .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
+
+    /**
      * `droidc spawn-server` on the host, behind the guest's sudo/su/pkexec: for each request it starts this
      * container's proot again as fake root (`-0`) with the requested command. Only our own uid is served.
      */
