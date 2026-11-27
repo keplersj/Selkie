@@ -226,7 +226,7 @@ class DesktopE2ETest {
     private fun checkSound(s: SessionService) {
         val tone = File(ctx.filesDir, "guest/tmp/selkie-tone.wav")
         writeTone(tone)
-        val before = s.audioBytesPlayed()
+        val before = s.audioBytes()
         guestProbe("sound", """
             uid=${'$'}(id -u)
             export XDG_RUNTIME_DIR=/run/user/${'$'}uid PIPEWIRE_REMOTE=pipewire-0-manager
@@ -235,8 +235,8 @@ class DesktopE2ETest {
             echo "pw-play exit=${'$'}?"
         """.trimIndent())
         Thread.sleep(1500)
-        val after = s.audioBytesPlayed()
-        log("SELKIE_METRIC audio_bytes_before=$before audio_bytes_after=$after")
+        val after = s.audioBytes()
+        log("SELKIE_METRIC audio_bytes received/played before=$before after=$after")
         tone.delete()
     }
 

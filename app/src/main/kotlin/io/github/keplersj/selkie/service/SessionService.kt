@@ -568,8 +568,8 @@ class SessionService : Service() {
         stopIdleServices()
     }
 
-    /** Bytes of the desktop's sound played on Android so far, or null without a desktop. */
-    fun audioBytesPlayed(): Long? = audio?.played
+    /** Bytes of the desktop's sound received from the guest and played on Android so far, or null without a desktop. */
+    fun audioBytes(): Pair<Long, Long>? = audio?.let { it.received to it.played }
 
     private fun stopAudio() {
         audio?.stop()

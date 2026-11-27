@@ -17,7 +17,9 @@ import java.io.InputStream
  */
 class GuestAudio(private val inv: Invocation, private val log: File) {
     @Volatile private var stopped = false
-    /** Bytes handed to the [AudioTrack] so far, for tests and diagnostics. */
+    /** Bytes read from `audio-out`, and of those written to the [AudioTrack], for tests and diagnostics. */
+    @Volatile var received = 0L
+        private set
     @Volatile var played = 0L
         private set
     @Volatile private var process: Process? = null
@@ -74,6 +76,7 @@ class GuestAudio(private val inv: Invocation, private val log: File) {
         if (stopped) p.destroy()
         try {
             pumpFrames(p.inputStream, FRAME_BYTES) { buf, n ->
+                received += n
                 var off = 0
                 while (off < n && !stopped) {
                     val w = track.write(buf, off, n - off)
