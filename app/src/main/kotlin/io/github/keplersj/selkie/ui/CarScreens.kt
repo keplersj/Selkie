@@ -62,6 +62,17 @@ internal fun carDrivingLine(state: ServiceState): String {
     return "$what in the background. $back"
 }
 
+/** Root requests are answered only while parked; while driving the screen says one is waiting. */
+internal fun carRootLine(state: ServiceState): String? {
+    val waiting = state.rootRequests
+    return when {
+        waiting.isEmpty() -> null
+        waiting.size == 1 ->
+            "A root request from ${waiting[0].container} waits until you park."
+        else -> "${waiting.size} root requests wait until you park."
+    }
+}
+
 /** Selkie while the car moves: nothing to press, only what keeps running. */
 @Composable
 fun CarDrivingScreen(state: ServiceState) {
@@ -72,6 +83,10 @@ fun CarDrivingScreen(state: ServiceState) {
                 style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
             Text(carDrivingLine(state), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            carRootLine(state)?.let {
+                Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.tertiary)
+            }
         }
     }
 }

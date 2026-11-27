@@ -44,12 +44,18 @@ class PhoneLink(context: Context) {
         messages.sendMessage(node, WatchProtocol.CLOSE_TERMINALS_PATH, container.toByteArray(Charsets.UTF_8))
     }
 
+    /** Refuses a root request on the phone. The watch can't allow one. */
+    fun refuseRoot(node: String, container: String, id: Long) {
+        messages.sendMessage(node, WatchProtocol.REFUSE_ROOT_PATH, WatchProtocol.refusal(container, id))
+    }
+
     private fun read(item: DataItem): PhoneState? {
         if (item.uri.path != WatchProtocol.STATE_PATH) return null
         val map = DataMapItem.fromDataItem(item).dataMap
         return PhoneState(
             device = map.getString(WatchProtocol.KEY_DEVICE)?.takeIf { it.isNotBlank() } ?: "your phone",
             containers = WatchProtocol.decode(map.getString(WatchProtocol.KEY_CONTAINERS)),
+            rootRequests = WatchProtocol.decodeRoot(map.getString(WatchProtocol.KEY_ROOT)),
             node = item.uri.host,
         )
     }

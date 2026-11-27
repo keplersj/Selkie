@@ -518,6 +518,26 @@ fun ActivityPreview() = Activity(activityState)
 @Composable
 fun ActivityEmptyPreview() = Activity(Fixtures.homeEmpty)
 
+private val sudoRequest = io.github.keplersj.selkie.service.RootRequest(1, "default", "sudo",
+    listOf("dnf", "install", "-y", "htop"), "/var/home/kepler", from = "bash", program = "/usr/bin/dnf")
+
+@PhonePreviews
+@Composable
+fun ActivityRootRequestPreview() = Activity(activityState.copy(rootRequests = listOf(sudoRequest)))
+
+@PhonePreviews @TabletPreview
+@Composable
+fun RootRequestPreview() = PreviewFrame {
+    RootRequestScreen(sudoRequest, image = "Bluefin LTS", waiting = 0, onAnswer = {}, awake = true)
+}
+
+@PhonePreviews
+@Composable
+fun RootRequestUnnamedPreview() = PreviewFrame {
+    RootRequestScreen(sudoRequest.copy(via = "pkexec", argv = listOf("/usr/libexec/helper"), from = null,
+        program = "/usr/libexec/helper", cwd = "/"), image = null, waiting = 2, onAnswer = {}, awake = true)
+}
+
 @PhonePreviews
 @Composable
 fun ActivityDesktopFailedPreview() = Activity(Fixtures.homeEmpty.copy(
@@ -611,6 +631,12 @@ fun CarHomePreview() = PreviewFrame {
 @CarPreview
 @Composable
 fun CarDrivingPreview() = PreviewFrame { CarDrivingScreen(Fixtures.homeContainers) }
+
+@CarPreview
+@Composable
+fun CarDrivingRootRequestPreview() = PreviewFrame {
+    CarDrivingScreen(Fixtures.homeContainers.copy(rootRequests = listOf(sudoRequest)))
+}
 
 @CarPreview
 @Composable

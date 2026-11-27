@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.keplersj.selkie.watch.WatchContainer
 import io.github.keplersj.selkie.watch.WatchDesktop
+import io.github.keplersj.selkie.watch.WatchRootRequest
 
 // Each @Preview here is a screenshot test (wear/screenshots/). The round mask stands in for a round watch.
 
@@ -48,6 +49,14 @@ fun WatchConfirmPreview() = Round {
     WatchContainerScreen(tablet.device, WatchContainer("dev", WatchDesktop.None, 2), onStopDesktop = {},
         onCloseTerminals = {}, initialConfirm = WatchAction.CloseTerminals)
 }
+
+private val sudo = WatchRootRequest("default", 1, "dnf install -y htop")
+
+@WatchPreview @Composable
+fun WatchRootPreview() = Round { WatchRootScreen(tablet.device, sudo, onRefuse = {}, onLater = {}) }
+
+@WatchPreview @Composable
+fun WatchHomeRootPreview() = Round { WatchHome(tablet.copy(rootRequests = listOf(sudo)), loaded = true, onOpen = {}) }
 
 @WatchPreview @Composable
 fun WatchIdlePreview() = Round {

@@ -76,6 +76,9 @@ class ProotCommandBuilderTest {
         assertEquals(b.prootArgs(rootMode = true), launcher)
         assertEquals("/lib/libproot-loader.so", server.env["PROOT_LOADER"])
         assertNull("the server's own environment is the host's, not the guest's", server.env["DROIDC_ROOT"])
+        // Selkie asks the person before each root command; only tests run it without asking.
+        assertEquals("1", server.env["DROIDC_SPAWNER_ASK"])
+        assertNull(b.spawnServer(ask = false).env["DROIDC_SPAWNER_ASK"])
     }
 
     @Test fun noShimsNoSpawner() {

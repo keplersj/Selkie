@@ -30,13 +30,26 @@ private fun WatchApp(link: PhoneLink) {
         onDispose { watching.close() }
     }
     var open by rememberSaveable { mutableStateOf<String?>(null) }
+    // Root requests left for the phone with Later, as container and id. They stay listed on Home.
+    var later by remember { mutableStateOf(setOf<Pair<String, Long>>()) }
+    var openRoot by remember { mutableStateOf<Pair<String, Long>?>(null) }
     val current = phone
     // A container the phone no longer lists closes its screen.
     val shown = current?.containers?.firstOrNull { it.name == open }
-    BackHandler(enabled = shown != null) { open = null }
-    BasicSwipeToDismissBox(onDismissed = { open = null }, userSwipeEnabled = shown != null) { isBackground ->
-        if (isBackground || shown == null || current == null) {
-            WatchHome(current, loaded, onOpen = { open = it })
+    // A new request comes up by itself; one that the phone settled goes away.
+    val root = current?.rootRequests?.firstOrNull { (it.container to it.id) == openRoot }
+        ?: current?.rootRequests?.firstOrNull { (it.container to it.id) !in later }
+    val leaveRoot = { r: io.github.keplersj.selkie.watch.WatchRootRequest -> later = later + (r.container to r.id); openRoot = null }
+    BackHandler(enabled = root != null) { root?.let(leaveRoot) }
+    BackHandler(enabled = root == null && shown != null) { open = null }
+    BasicSwipeToDismissBox(onDismissed = { if (root != null) leaveRoot(root) else open = null },
+        userSwipeEnabled = root != null || shown != null) { isBackground ->
+        if (!isBackground && root != null && current != null) {
+            WatchRootScreen(current.device, root,
+                onRefuse = { current.node?.let { link.refuseRoot(it, root.container, root.id) }; leaveRoot(root) },
+                onLater = { leaveRoot(root) })
+        } else if (isBackground || shown == null || current == null) {
+            WatchHome(current, loaded, onOpen = { open = it }, onOpenRoot = { openRoot = it.container to it.id })
         } else {
             WatchContainerScreen(
                 current.device, shown,

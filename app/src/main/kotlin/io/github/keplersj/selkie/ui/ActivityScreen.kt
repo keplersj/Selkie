@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.service.DesktopState
+import io.github.keplersj.selkie.service.RootRequest
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionInfo
 
@@ -40,8 +41,10 @@ internal data class ActivityItems(
     val terminals: List<SessionInfo>,
     /** The app shown on its own in place of the desktop, if that is what runs. */
     val app: String? = null,
+    /** Guest commands waiting for root, which need the person before anything else here. */
+    val rootRequests: List<RootRequest> = emptyList(),
 ) {
-    val empty: Boolean get() = desktop == null && terminals.isEmpty()
+    val empty: Boolean get() = desktop == null && terminals.isEmpty() && rootRequests.isEmpty()
 }
 
 internal fun activityItems(state: ServiceState): ActivityItems {
@@ -53,6 +56,7 @@ internal fun activityItems(state: ServiceState): ActivityItems {
         desktopName = state.graphical?.name?.takeIf { desktop != null && desktop == state.container },
         terminals = state.sessions.filter { it.running },
         app = state.desktopApp?.name?.takeIf { desktop != null },
+        rootRequests = state.rootRequests,
     )
 }
 
@@ -68,6 +72,8 @@ fun ActivityScreen(
     onOpenTerminal: (SessionInfo) -> Unit,
     onStopAll: () -> Unit,
     onDismissDesktopError: () -> Unit,
+    /** Shows a waiting root request again. */
+    onOpenRootRequest: (RootRequest) -> Unit = {},
 ) {
     val items = activityItems(state)
     var stopping by remember { mutableStateOf<String?>(null) }
@@ -101,6 +107,18 @@ fun ActivityScreen(
                         Text("Nothing is running", style = MaterialTheme.typography.titleMedium)
                         MutedText("Terminals and desktops you open show here, so you can get back to them.")
                     }
+                }
+            }
+
+            if (items.rootRequests.isNotEmpty()) {
+                SectionTitle("Needs you")
+                Group {
+                    for (r in items.rootRequests) GroupItem(r.commandLine,
+                        supporting = "${r.container} · waiting for a root prompt",
+                        leading = { Icon(SelkieIcons.Root, contentDescription = null) },
+                        trailing = { StatusChip("Needs you", tone = ChipTone.Bad) },
+                        onClick = { onOpenRootRequest(r) },
+                        onClickLabel = "Check it")
                 }
             }
 
