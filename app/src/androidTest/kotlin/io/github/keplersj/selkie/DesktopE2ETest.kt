@@ -236,10 +236,11 @@ class DesktopE2ETest {
             echo "default sink:"; timeout 10 pw-metadata 0 default.configured.audio.sink 2>&1 | tail -2
             echo "links:"; timeout 10 pw-link -l 2>&1 | head -20
             echo "capture:"; timeout 10 pw-dump 2>/dev/null | grep -E '"node.name": "selkie-out(-capture)?"|"state"|"error"|"node.driver-id"|"node.target"|"target.object"' | head -40
-            echo "conf.d:"; ls /usr/share/pipewire/pipewire.conf.d /etc/pipewire/pipewire.conf.d 2>&1 | head
+            echo "wpctl:"; timeout 10 wpctl status 2>&1 | head -40
             timeout 20 pw-play /tmp/selkie-tone.wav 2>&1 | head -10
             echo "pw-play exit=${'$'}?"
             echo "after links:"; timeout 10 pw-link -l 2>&1 | head -20
+            echo "wireplumber.log:"; grep -viE 'spa.bluez|bluetooth|alsa|v4l2|libcamera' /tmp/wireplumber.log 2>&1 | tail -60
         """.trimIndent())
         val deadline = SystemClock.uptimeMillis() + 15_000
         while (SystemClock.uptimeMillis() < deadline && (s.audioBytes()?.first ?: 0) == 0L) Thread.sleep(500)
@@ -316,7 +317,7 @@ class DesktopE2ETest {
         val s = service()
         ensureBluefin(s)
         configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
-            PipeWireServices.JSON, "GNOME")
+            PipeWireServices.DEBUG_JSON, "GNOME")
         openDesktop(s, 50, "gnome")
         settle(s)
         screenshot("gnome-1.png")

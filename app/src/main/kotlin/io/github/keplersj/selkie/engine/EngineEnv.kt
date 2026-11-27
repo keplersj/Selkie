@@ -162,4 +162,9 @@ object PipeWireServices {
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
         "[${shell(SCRIPT)},${shell(afterPipeWire("wireplumber"))},${shell(afterPipeWire("pipewire-pulse"))}]"
+
+    /** [JSON] with WirePlumber logging its linking decisions to `/tmp/wireplumber.log` (tests). */
+    internal val DEBUG_JSON: String =
+        "[${shell(SCRIPT)},${shell("export WIREPLUMBER_DEBUG=3; " + afterPipeWire("wireplumber 2>/tmp/wireplumber.log"))}," +
+            "${shell(afterPipeWire("pipewire-pulse"))}]"
 }
