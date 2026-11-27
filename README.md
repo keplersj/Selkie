@@ -24,7 +24,7 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Download
 
-- **Latest `main`:** the [`latest` prerelease](https://github.com/keplersj/Selkie/releases/tag/latest) is replaced on every push to `main` that passes CI (unit tests and the emulator E2E). Grab `selkie-latest.apk` from it; no GitHub login needed.
+- **Latest `main`:** the [`latest` prerelease](https://github.com/keplersj/Selkie/releases/tag/latest) is replaced on every push to `main` that passes CI (unit tests and the emulator E2E). Grab `selkie-latest.apk` from it, and `selkie-watch-latest.apk` for a paired Wear OS watch; no GitHub login needed.
 - **Versioned builds:** prereleases tagged `v*` (see [Releases](https://github.com/keplersj/Selkie/releases)).
 
 Both are signed with the public MVP test key, for testing only (see [docs/signing.md](docs/signing.md)).
