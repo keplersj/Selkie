@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.EngineEnv
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
@@ -50,6 +51,9 @@ class MainActivity : ComponentActivity() {
     /** What Ctrl+T, Ctrl+N and Ctrl+1 to 4 do while a section is showing; null on every other screen. */
     private var homeShortcuts: HomeShortcuts? = null
 
+    /** A guest notification tapped in the shade, waiting for the service and the desktop to open. */
+    private val tappedNotification = mutableStateOf<String?>(null)
+
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -60,10 +64,21 @@ class MainActivity : ComponentActivity() {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         bindService(SessionService.intent(this), conn, Context.BIND_AUTO_CREATE)
+        takeNotificationTap(intent)
         setContent {
             val fold by rememberFold(this)
             SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeNotificationTap(intent)
+    }
+
+    private fun takeNotificationTap(intent: Intent?) {
+        if (intent?.action == GuestNotifier.ACTION_TAP)
+            tappedNotification.value = intent.getStringExtra(GuestNotifier.EXTRA_KEY)
     }
 
     override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
@@ -129,6 +144,15 @@ class MainActivity : ComponentActivity() {
         }
         // The whole desktop, unless one is already running (an app left prepared but never opened is dropped).
         val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor() }
+        // A desktop notification tapped in the shade: tell its app, and show the desktop it came from.
+        val tapped = tappedNotification.value
+        LaunchedEffect(tapped) {
+            if (tapped != null) {
+                tappedNotification.value = null
+                service.openedGuestNotification(tapped)
+                openDesktop()
+            }
+        }
         val openApp: (AppEntry) -> String? = { app -> service.prepareApp(app) ?: run { showCompositor(); null } }
         val openTerminal: () -> Unit = { if (full) xrTerminal = true else screen = "terminal" }
         // In a car, Selkie is parked-only: while driving one screen stands in for all of it.
