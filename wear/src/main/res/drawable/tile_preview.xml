@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The tile picker's picture of the tile: three lines and the Open list button, on a watch's black. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="192dp"
+    android:height="192dp"
+    android:viewportWidth="192"
+    android:viewportHeight="192">
+    <path android:fillColor="#FF000000" android:pathData="M96,0a96,96 0,1 1,0 192a96,96 0,1 1,0 -192z" />
+    <path android:fillColor="#FFBEC9C6" android:pathData="M56,52h80v6h-80z" />
+    <path android:fillColor="#FFDDE4E1" android:pathData="M64,66h64v16h-64z" />
+    <path android:fillColor="#FF82D5C8" android:pathData="M70,90h52v7h-52z" />
+    <path android:fillColor="#FF2F3635" android:pathData="M74,108h44a18,18 0,0 1,0 36h-44a18,18 0,0 1,0 -36z" />
+    <path android:fillColor="#FFDDE4E1" android:pathData="M80,123h32v6h-32z" />
+</vector>
