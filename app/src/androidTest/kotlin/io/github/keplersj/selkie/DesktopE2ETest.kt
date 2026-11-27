@@ -240,9 +240,13 @@ class DesktopE2ETest {
             echo "pw-play exit=${'$'}?"
             echo "after links:"; timeout 10 pw-link -l 2>&1 | head -20
         """.trimIndent())
+        guestProbe("sound-clients", """
+            export XDG_RUNTIME_DIR=/run/user/${'$'}(id -u) PIPEWIRE_REMOTE=pipewire-0-manager
+            timeout 10 pw-dump 2>/dev/null | grep -E '"type": "PipeWire:Interface:(Client|Node)"|"id":|"client.id"|"application.name"|"pipewire.access|"pipewire.sec.pid"|"node.name"|"permissions"' | tr -d ' ' | paste -sd' ' | sed 's/"id":/\n&/g' | grep -E 'Interface:(Client|Node)' | grep -vE '"node.name":"(Dummy|Freewheel)' | cut -c1-290 | tail -40
+        """.trimIndent())
         guestProbe("sound-wp", """
             echo "wireplumber.log (${'$'}(wc -l < /tmp/wireplumber.log 2>/dev/null) lines):"
-            grep -E 's-linking|s-node|si-|^[EW] ' /tmp/wireplumber.log 2>&1 | grep -v 'mod.rt' | sed 's#../[^ ]*: ##' | tail -78
+            grep -E ' s-|si-|wp-node|wp-proxy|wp-object-manager|wp-registry|^[EW] ' /tmp/wireplumber.log 2>&1 | grep -v 'mod.rt' | sed 's#../[^ ]*: ##' | tail -78
         """.trimIndent())
         val deadline = SystemClock.uptimeMillis() + 15_000
         while (SystemClock.uptimeMillis() < deadline && (s.audioBytes()?.first ?: 0) == 0L) Thread.sleep(500)

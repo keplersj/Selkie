@@ -165,6 +165,6 @@ object PipeWireServices {
 
     /** [JSON] with WirePlumber logging its linking decisions to `/tmp/wireplumber.log` (tests). */
     internal val DEBUG_JSON: String =
-        "[${shell(SCRIPT)},${shell("export WIREPLUMBER_DEBUG='3,s-linking*:5,s-node*:5,si-*:5'; " + afterPipeWire("wireplumber 2>/tmp/wireplumber.log"))}," +
+        "[${shell(SCRIPT)},${shell("export WIREPLUMBER_DEBUG='3,s-*:5,si-*:5,wp-node:5,wp-proxy:4,wp-object-manager:4,wp-registry:4'; " + afterPipeWire("wireplumber 2>/tmp/wireplumber.log"))}," +
             "${shell(afterPipeWire("pipewire-pulse"))}]"
 }
