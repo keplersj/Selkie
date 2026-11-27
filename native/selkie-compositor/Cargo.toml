@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wayland-server = "0.31"
-wayland-protocols = { version = "0.32", features = ["server"] }
+wayland-protocols = { version = "0.32", features = ["server", "staging"] }
 rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
@@ -20,7 +20,7 @@ rustix = { version = "1", features = ["fs", "mm", "event", "pipe", "net", "use-l
 
 [dev-dependencies]
 wayland-client = "=0.31.15"
-wayland-protocols = { version = "=0.32.13", features = ["client", "server"] }
+wayland-protocols = { version = "=0.32.13", features = ["client", "server", "staging"] }
 tempfile = "=3.27.0"
 
 [profile.release]

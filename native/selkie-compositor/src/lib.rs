@@ -10,6 +10,7 @@
 
 #[cfg(target_os = "android")]
 mod android;
+pub mod scene;
 pub mod server;
 
 /// A client frame, `0xAARRGGBB` per pixel (alpha forced to opaque for xrgb buffers), tightly packed.

@@ -107,22 +107,51 @@ fn handle<'a>(h: jlong) -> Option<&'a server::Handle> {
 
 #[no_mangle]
 pub extern "system" fn Java_io_github_keplersj_selkie_display_NativeCompositor_nativeStart<'l>(
-    mut env: JNIEnv<'l>,
+    env: JNIEnv<'l>,
     _: JClass<'l>,
     socket: JString<'l>,
     width: jint,
     height: jint,
 ) -> jlong {
+    start(env, socket, width, height, None)
+}
+
+/// App mode: one app on its own at `scale` (Android's density).
+#[no_mangle]
+pub extern "system" fn Java_io_github_keplersj_selkie_display_NativeCompositor_nativeStartApp<
+    'l,
+>(
+    env: JNIEnv<'l>,
+    _: JClass<'l>,
+    socket: JString<'l>,
+    width: jint,
+    height: jint,
+    scale: jfloat,
+) -> jlong {
+    start(env, socket, width, height, Some(scale as f64))
+}
+
+fn start(
+    mut env: JNIEnv<'_>,
+    socket: JString<'_>,
+    width: jint,
+    height: jint,
+    scale: Option<f64>,
+) -> jlong {
     let path: String = match env.get_string(&socket) {
         Ok(s) => s.into(),
         Err(_) => return 0,
     };
-    match server::start(
+    let (path, w, h) = (
         std::path::Path::new(&path),
         width.max(1) as u32,
         height.max(1) as u32,
-        None,
-    ) {
+    );
+    let started = match scale {
+        Some(s) => server::start_app(path, w, h, s, None),
+        None => server::start(path, w, h, None),
+    };
+    match started {
         Ok(h) => Box::into_raw(Box::new(h)) as jlong,
         Err(e) => {
             let _ = env.throw_new("java/io/IOException", e.to_string());
