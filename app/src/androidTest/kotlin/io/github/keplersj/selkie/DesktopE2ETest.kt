@@ -179,6 +179,17 @@ class DesktopE2ETest {
         rule.waitForIdle()
     }
 
+    /** From the desktop screen back to the home screen: Back shows Selkie's controls, Back again leaves. */
+    private fun backToHome() {
+        val open = hasTestTag(OPEN_DESKTOP_TAG)
+        repeat(4) {
+            if (rule.onAllNodes(open).fetchSemanticsNodes().isNotEmpty()) return
+            rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
+            pause(1_000)
+        }
+        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodes(open).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     /** Types [text] with key events delivered straight to the compositor view (letters, digits, - / space, \n). */
     private fun typeText(text: String) {
         for (c in text) {
@@ -562,6 +573,7 @@ class DesktopE2ETest {
             val kept = changeScale(s, 1.5, "scale-tablet-2-150")
             // The scale the user kept is saved, and wins over the density next time.
             stop(s)
+            backToHome()
             openDesktop(s, 50, "scale_tablet_restart")
             settle(s)
             val st = displayState()
