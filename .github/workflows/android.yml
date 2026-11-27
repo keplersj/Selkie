@@ -121,19 +121,21 @@ jobs:
         # Previews render on the JVM, so the native binaries aren't needed. Clearing first drops PNGs of
         # previews that no longer exist.
         run: |
-          rm -f app/screenshots/*.png
+          rm -f app/screenshots/*.png wear/screenshots/*.png
           ./gradlew --no-daemon -Pselkie.allowMissingNative=true recordRoborazziDebug
-          ls app/screenshots
+          ls app/screenshots wear/screenshots
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: recorded-screenshots
-          path: app/screenshots
+          path: |
+            app/screenshots
+            wear/screenshots
       - name: Commit changed screenshots
         # A push made with GITHUB_TOKEN starts no new workflow run; the branch's next push runs CI on them.
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
-          git add -A app/screenshots
+          git add -A app/screenshots wear/screenshots
           if git diff --cached --quiet; then
             echo "Screenshots unchanged."
             exit 0
@@ -174,22 +176,34 @@ jobs:
         # Renders every @Preview with Robolectric and compares it to app/screenshots/ (docs/ui-previews.md).
         # If a change is intended, re-record with recordRoborazziDebug and commit the new PNGs.
         run: ./gradlew --no-daemon verifyRoborazziDebug
+      - name: Build without Google Play services
+        # F-Droid-style builds pass -Pselkie.wear=false: the phone app must still compile, minus the watch remote.
+        run: ./gradlew --no-daemon -Pselkie.wear=false :app:compileReleaseKotlin
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: screenshot-diffs
-          path: app/build/outputs/roborazzi
+          path: |
+            app/build/outputs/roborazzi
+            wear/build/outputs/roborazzi
       - name: Name the APK
         run: |
           VERSION=$(sed -n 's/^val selkieVersion = "\(.*\)"/\1/p' app/build.gradle.kts)
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/selkie-${VERSION}.apk"
+          # Kept out of dist/ so the release jobs, which take every dist/selkie-*.apk, stay as they are.
+          mkdir -p dist-watch
+          cp wear/build/outputs/apk/release/wear-release.apk "dist-watch/selkie-watch-${VERSION}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk dist/
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk dist/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: selkie-apk
           path: dist/selkie-*.apk
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: selkie-watch-apk
+          path: dist-watch/selkie-watch-*.apk
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-apks
@@ -200,7 +214,9 @@ jobs:
         if: always()
         with:
           name: unit-test-reports
-          path: app/build/reports/tests
+          path: |
+            app/build/reports/tests
+            wear/build/reports/tests
 
   emulator-e2e:
     name: Emulator E2E (x86_64, API 34)

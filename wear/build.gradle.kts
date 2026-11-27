@@ -1,0 +1,88 @@
+// Selkie's watch remote for Wear OS. It shares the phone app's applicationId and signing key, which the
+// Wear Data Layer needs before the two apps will talk to each other.
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.roborazzi)
+}
+
+android {
+    namespace = "io.github.keplersj.selkie.wear"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "io.github.keplersj.selkie"
+        minSdk = 30
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1.0-mvp.1"
+    }
+
+    signingConfigs {
+        create("mvp") {
+            storeFile = rootProject.file("keystore/selkie-mvp.jks")
+            storePassword = "selkie-mvp-insecure"
+            keyAlias = "selkie-mvp"
+            keyPassword = "selkie-mvp-insecure"
+        }
+    }
+
+    buildTypes {
+        debug { signingConfig = signingConfigs.getByName("mvp") }
+        release { signingConfig = signingConfigs.getByName("mvp") }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures { compose = true }
+    sourceSets.getByName("main").kotlin.srcDir("src/main/kotlin")
+    // What the phone and the watch say to each other, shared with :app.
+    sourceSets.getByName("main").kotlin.srcDir(rootProject.file("shared/watch/kotlin"))
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperties["robolectric.pixelCopyRenderMode"] = "hardware"
+            it.maxHeapSize = "4096m"
+        }
+    }
+}
+
+// Every @Preview in the wear package becomes a Robolectric screenshot test, as in :app.
+roborazzi {
+    outputDir.set(layout.projectDirectory.dir("screenshots"))
+    compare { outputDir.set(layout.buildDirectory.dir("outputs/roborazzi")) }
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    generateComposePreviewRobolectricTests {
+        enable = true
+        packages = listOf("io.github.keplersj.selkie.wear")
+        robolectricConfig = mapOf("sdk" to "[35]")
+    }
+}
+
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+
+dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.wear.compose.material3)
+    implementation(libs.wear.compose.foundation)
+    implementation(libs.play.services.wearable)
+
+    testImplementation(libs.junit)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.preview.scanner.support)
+    testImplementation(libs.composable.preview.scanner)
+    debugImplementation(libs.compose.ui.test.manifest)
+}
