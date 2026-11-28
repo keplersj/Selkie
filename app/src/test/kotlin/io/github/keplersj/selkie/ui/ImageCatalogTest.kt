@@ -7,10 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImageCatalogTest {
-    /** The catalog with its published images trusted, as the design assumes. */
-    private val published = ImageCatalog.tuned.map { if (it.ready) it.copy(signed = true) else it }
-
-    private fun names(d: DeviceClass, v: List<TunedVariant> = published) = ImageCatalog.orderedFor(d, v).map { it.name }
+    private fun names(d: DeviceClass, v: List<TunedVariant> = ImageCatalog.tuned) = ImageCatalog.orderedFor(d, v).map { it.name }
 
     @Test fun phoneOrderPutsTheFittingVariantFirstThenAnyDevice() {
         assertEquals(
@@ -34,18 +31,19 @@ class ImageCatalogTest {
         )
     }
 
-    @Test fun onceTrustedTheFittingImageIsPreselected() {
-        assertEquals(ImageSelection.Tuned("Hooded"), ImageCatalog.defaultSelection(DeviceClass.Phone, published))
-        assertEquals(ImageSelection.Tuned("Harbor"), ImageCatalog.defaultSelection(DeviceClass.Tablet, published))
-        assertEquals(ImageSelection.Tuned("Monk"), ImageCatalog.defaultSelection(DeviceClass.Tv, published))
+    @Test fun theFittingSignedImageIsPreselected() {
+        assertEquals(ImageSelection.Tuned("Hooded"), ImageCatalog.defaultSelection(DeviceClass.Phone))
+        assertEquals(ImageSelection.Tuned("Harbor"), ImageCatalog.defaultSelection(DeviceClass.Tablet))
+        assertEquals(ImageSelection.Tuned("Monk"), ImageCatalog.defaultSelection(DeviceClass.Tv))
     }
 
     @Test fun withNoSignedTunedImageTheSignedBluefinIsPreselected() {
         val nothing = ImageCatalog.tuned.map { it.copy(ref = null) }
+        val unsigned = ImageCatalog.tuned.map { it.copy(signed = false) }
         for (d in DeviceClass.entries) {
             assertEquals(ImageSelection.Known("bluefin"), ImageCatalog.defaultSelection(d, nothing))
-            // Harbor, Monk and Hooded are published but unsigned, so they can be chosen and are never preselected.
-            assertEquals(ImageSelection.Known("bluefin"), ImageCatalog.defaultSelection(d))
+            // An unsigned image can be chosen but is never preselected.
+            assertEquals(ImageSelection.Known("bluefin"), ImageCatalog.defaultSelection(d, unsigned))
         }
     }
 
@@ -104,11 +102,10 @@ class ImageCatalogTest {
         assertEquals("ghcr.io/pinniped-os/hooded:45-droidc", PinnipedOs.droidcRef("hooded"))
     }
 
-    @Test fun tunedVariantsAreUnsignedUntilDroidcTrustsThem() {
-        assertTrue(ImageCatalog.tuned.none { it.signed })
+    @Test fun publishedPinnipedOsImagesAreSigned() {
+        assertEquals(ImageCatalog.tuned.filter { it.ready }, ImageCatalog.tuned.filter { it.signed })
         for (name in listOf("Harbor", "Monk", "Hooded")) {
-            assertFalse(ImageCatalog.resolve(ImageSelection.Tuned(name), "")!!.signed)
+            assertTrue(ImageCatalog.resolve(ImageSelection.Tuned(name), "")!!.signed)
         }
-        assertTrue(ImageCatalog.resolve(ImageSelection.Tuned("Monk"), "", published)!!.signed)
     }
 }

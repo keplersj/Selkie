@@ -290,8 +290,8 @@ fun HomeErrorPreview() = Home(Fixtures.homeError)
 
 // --- New container and change image ---
 
-/** The published Pinniped OS images as if trusted, to show the design's preselection. */
-private val publishedVariants = ImageCatalog.tuned.map { if (it.ready) it.copy(signed = true) else it }
+/** The published Pinniped OS images as if droidc couldn't verify them, so Bluefin LTS is preselected. */
+private val unsignedVariants = ImageCatalog.tuned.map { it.copy(signed = false) }
 
 @PhonePreviews @TabletPreview
 @Composable
@@ -302,10 +302,10 @@ fun NewContainerPreview() = PreviewFrame {
 
 @PhonePreviews @TabletPreview
 @Composable
-fun NewContainerPublishedPreview() = PreviewFrame {
+fun NewContainerUnsignedPreview() = PreviewFrame {
     NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = noop, free = 96_636_764_160,
         device = deviceClassForWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp),
-        variants = publishedVariants)
+        variants = unsignedVariants)
 }
 
 @PhonePreviews

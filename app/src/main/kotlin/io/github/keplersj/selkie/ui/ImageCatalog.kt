@@ -47,17 +47,17 @@ sealed interface ImageSelection {
 }
 
 object ImageCatalog {
-    // Harbor, Monk and Hooded are Pinniped OS's droidc overlays, all published. Ringed and the rest have no
-    // Pinniped OS image yet, so their refs stay null. Set signed = true once Selkie's pinned droidc trusts
-    // Pinniped OS (droidc-dev/droidc#62).
+    // Harbor, Monk and Hooded are Pinniped OS's droidc overlays, all published and signed with its cosign key,
+    // which the droidc pinned in droidc.ref trusts by default (droidc-dev/droidc#148). Ringed and the rest have
+    // no Pinniped OS image yet, so their refs stay null.
     val tuned: List<TunedVariant> = listOf(
         TunedVariant("Harbor", "Pinniped OS with GNOME", "Tablet, desktop window, XR panels, parked car",
             setOf(DeviceClass.Foldable, DeviceClass.Tablet, DeviceClass.Desktop, DeviceClass.Xr, DeviceClass.Car),
-            ref = PinnipedOs.droidcRef("harbor")),
+            ref = PinnipedOs.droidcRef("harbor"), signed = true),
         TunedVariant("Monk", "Pinniped OS, terminal only", "Any device", emptySet(),
-            ref = PinnipedOs.droidcRef("monk"), anyDevice = true),
+            ref = PinnipedOs.droidcRef("monk"), signed = true, anyDevice = true),
         TunedVariant("Hooded", "Pinniped OS with Phosh", "Phone", setOf(DeviceClass.Phone, DeviceClass.Foldable),
-            ref = PinnipedOs.droidcRef("hooded")),
+            ref = PinnipedOs.droidcRef("hooded"), signed = true),
         TunedVariant("Ringed", "Plasma Mobile", "Phone", setOf(DeviceClass.Phone, DeviceClass.Foldable), ref = null),
         TunedVariant("Elephant", "Plasma Bigscreen", "TV", setOf(DeviceClass.Tv), ref = null),
         TunedVariant("Baikal", "A watch-sized system", "Watch", setOf(DeviceClass.Watch), ref = null),
@@ -83,7 +83,7 @@ object ImageCatalog {
     }
 
     /**
-     * The first ready, signed variant in [orderedFor] order (Hooded on a phone, once droidc trusts it), else
+     * The first ready, signed variant in [orderedFor] order (Hooded on a phone), else
      * Bluefin LTS. An unsigned variant can be chosen but is never preselected, since the preselection note
      * promises a signature check.
      */
