@@ -48,6 +48,7 @@ import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
 import io.github.keplersj.selkie.link.GuestNotification
 import io.github.keplersj.selkie.link.GuestNotifier
+import io.github.keplersj.selkie.link.NetworkWatcher
 import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
@@ -637,6 +638,7 @@ class SessionService : Service() {
     /** The guest's notifications in Android's shade (and so on a paired watch). */
     private val guestNotifier by lazy { GuestNotifier(this) }
     private var batteryWatcher: BatteryWatcher? = null
+    private var networkWatcher: NetworkWatcher? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -822,6 +824,8 @@ class SessionService : Service() {
                 appearanceWatcher = AppearanceWatcher(this@SessionService) { sendAppearance() }.apply { start() }
             if (batteryWatcher == null)
                 batteryWatcher = BatteryWatcher(this@SessionService) { line -> sendToLinks(line) }.apply { start() }
+            if (networkWatcher == null)
+                networkWatcher = NetworkWatcher(this@SessionService) { line -> sendToLinks(line) }.apply { start() }
         }
         return link
     }
@@ -838,6 +842,7 @@ class SessionService : Service() {
                     // Android locks and blanks the device; GNOME's own lock would be a second one.
                     l.send("""{"kind":"screen-lock","by_android":true}""")
                     batteryWatcher?.current?.let { l.send(it) }
+                    networkWatcher?.current?.let { l.send(it) }
                 }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
@@ -999,24 +1004,26 @@ class SessionService : Service() {
         busy += starting.keys
         val idle = synchronized(services) { services.keys.filter { it !in busy }.map { services.remove(it)!! } }
         idle.forEach { stopServices(it, wait = false) }
-        stopAppearanceWatcherIfIdle()
+        stopLinkWatchersIfIdle()
     }
 
     private fun stopAllServices() {
         val all = synchronized(services) { services.values.toList().also { services.clear() } }
         all.forEach { stopServices(it, wait = false) }
-        stopAppearanceWatcherIfIdle()
+        stopLinkWatchersIfIdle()
     }
 
-    /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
-    private fun stopAppearanceWatcherIfIdle() {
+    /** Stops following Android's look, battery and network once no container's host-link runs. */
+    private fun stopLinkWatchersIfIdle() {
         if (synchronized(services) { services.isEmpty() })
             scope.launch(Dispatchers.Main) {
                 appearanceWatcher?.stop(); appearanceWatcher = null
                 batteryWatcher?.stop(); batteryWatcher = null
+                networkWatcher?.stop(); networkWatcher = null
             }
     }
 
+    /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
     private fun stopServices(s: ContainerServices, wait: Boolean) {
         s.link?.stop()
         guestNotifier.cancelContainer(s.container)

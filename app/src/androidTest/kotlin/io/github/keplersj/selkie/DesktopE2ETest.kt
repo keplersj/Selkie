@@ -477,8 +477,24 @@ class DesktopE2ETest {
             } catch (e: Exception) { log("could not keep desktop.log: $e") }
         }
         log("SELKIE_METRIC terminal_command_ran=true")
+        checkNetwork()
         checkLinks()
         stop(s)
+    }
+
+    /**
+     * Reads the NetworkManager stand-in's connectivity on the container's system bus, which host-link
+     * feeds from Android's default network: 4 (full) on the emulator's validated network.
+     */
+    private fun checkNetwork() {
+        val text = guestProbe("network", """
+            DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- gdbus call --system \
+              --dest org.freedesktop.NetworkManager --object-path /org/freedesktop/NetworkManager \
+              --method org.freedesktop.DBus.Properties.GetAll org.freedesktop.NetworkManager 2>&1 | tail -2
+        """.trimIndent())
+        val connectivity = Regex("'Connectivity': <uint32 (\\d+)>").find(text)?.groupValues?.get(1)
+        val metered = Regex("'Metered': <uint32 (\\d+)>").find(text)?.groupValues?.get(1)
+        log("SELKIE_METRIC network_connectivity=$connectivity metered=$metered")
     }
 
     /**
