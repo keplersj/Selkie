@@ -248,8 +248,8 @@ class DesktopE2ETest {
     }
 
     /**
-     * Plays a short tone in the guest (the default sink is droidc audio-out's) and reports whether it came
-     * out on Android, as metrics: the emulator runs with -noaudio, so this measures, it doesn't gate.
+     * Plays a short tone in the guest (the default sink is droidc audio-out's) and checks that the guest's
+     * sound reaches Selkie. Android's side is only measured: the emulator runs with -noaudio.
      */
     private fun checkSound(s: SessionService) {
         val tone = File(ctx.filesDir, "guest/tmp/selkie-tone.wav")
@@ -274,6 +274,7 @@ class DesktopE2ETest {
         val text = if (audioLog.exists()) audioLog.readText() else "(no ${audioLog.name})"
         text.lines().takeLast(20).forEach { log("SELKIE_GUEST sound-log ${it.take(300)}") }
         tone.delete()
+        assertTrue("no guest sound reached Selkie (audio_bytes $before -> $after)", (after?.first ?: 0) > 0L)
     }
 
     /** One second of a 440 Hz tone at half scale, 48 kHz stereo S16LE, as a WAV file. */
