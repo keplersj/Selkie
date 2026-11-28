@@ -23,10 +23,14 @@ screen_text() {
 }
 
 # Waits up to $2 seconds until the screen has a line matching $1 (or, with $4 = absent, has none).
+# Prints each new screen into the job log (the artifacts aren't readable from everywhere).
 wait_for() {
-  local re=$1 secs=$2 name=$3 want=${4:-present} i
-  for ((i = 0; i < secs; i += 3)); do
+  local re=$1 secs=$2 name=$3 want=${4:-present} end=$((SECONDS + $2)) last=""
+  while ((SECONDS < end)); do
     screen_text > "$OUT/$name.txt"
+    if [ "$(cat "$OUT/$name.txt")" != "$last" ]; then
+      last=$(cat "$OUT/$name.txt"); echo "  screen: $(tr '\n' '|' < "$OUT/$name.txt")"
+    fi
     if [ "$want" = present ]; then grep -qE "$re" "$OUT/$name.txt" && return 0
     else grep -qE "$re" "$OUT/$name.txt" || return 0; fi
     sleep 3
