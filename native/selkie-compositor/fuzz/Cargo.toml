@@ -1,0 +1,32 @@
+[package]
+name = "selkie-compositor-fuzz"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+selkie-compositor = { path = ".." }
+
+# Its own workspace, so the compositor's builds and lints don't pick it up.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "scene_compose"
+path = "fuzz_targets/scene_compose.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "popup_place"
+path = "fuzz_targets/popup_place.rs"
+test = false
+doc = false
+bench = false
