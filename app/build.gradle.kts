@@ -7,6 +7,14 @@ plugins {
 }
 
 val selkieVersion = "0.1.0-mvp.1"
+// The release workflow passes the tag's version as -Pselkie.version; every other build keeps selkieVersion.
+val appVersion = (findProperty("selkie.version") as String?) ?: selkieVersion
+// major * 1,000,000 + minor * 1,000 + patch, so each release installs over the one before. selkieVersion is 1.
+val appVersionCode = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(appVersion)?.destructured
+    ?.let { (major, minor, patch) -> major.toInt() * 1_000_000 + minor.toInt() * 1_000 + patch.toInt() } ?: 1
+// A private release key that only the release workflow has (from the GitHub environment `release`).
+// Without it, release builds keep the public MVP test key in keystore/, as debug and CI builds always do.
+val releaseKeystore: String? = System.getenv("SELKIE_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
 val abis = listOf("arm64-v8a", "x86_64")
 val nativeLibs = listOf(
     "libdroidc.so", "libdroidc-guest.so", "libcgshim.so", "libifshim.so", "libproot.so", "libproot-loader.so",
@@ -63,12 +71,12 @@ android {
         applicationId = "io.github.keplersj.selkie"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = selkieVersion
+        versionCode = appVersionCode
+        versionName = appVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += abis }
         buildConfigField("String", "PROOT_SOURCE_URL",
-            "\"https://github.com/keplersj/Selkie/releases/tag/v$selkieVersion\"")
+            "\"https://github.com/keplersj/Selkie/releases/tag/v$appVersion\"")
     }
 
     signingConfigs {
@@ -78,12 +86,20 @@ android {
             keyAlias = "selkie-mvp"
             keyPassword = "selkie-mvp-insecure"
         }
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("SELKIE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SELKIE_KEY_ALIAS")
+                keyPassword = System.getenv("SELKIE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         debug { signingConfig = signingConfigs.getByName("mvp") }
         release {
-            signingConfig = signingConfigs.getByName("mvp")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "mvp")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
