@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.contentDescription
@@ -41,8 +43,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.github.keplersj.selkie.display.CompositorView
+import androidx.compose.ui.platform.LocalConfiguration
+import io.github.keplersj.selkie.engine.OnShapeChange
 import io.github.keplersj.selkie.engine.SessionChoice
 import io.github.keplersj.selkie.engine.SessionEntry
+import io.github.keplersj.selkie.engine.ShapeChange
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.SessionService
 
@@ -70,6 +75,23 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
         state.desktopContainer == state.container && state.graphicalSessions.count { it.runnable } > 1
     val poke: () -> Unit = controls::show
 
+    // The window's size now: a fold or a display changes it after the session started at [size].
+    var viewSize by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // A fold opening or closing, or a dock or display, can make another session suit the device better.
+    val shape = ShapeChange.shapeOf(LocalConfiguration.current)
+    var shownShape by remember { mutableStateOf(shape) }
+    var reshape by remember { mutableStateOf<Reshape?>(null) }
+    LaunchedEffect(shape) {
+        if (shape == shownShape) return@LaunchedEffect
+        shownShape = shape
+        val s = service.state.value
+        val c = s.desktopContainer
+        reshape = if (c == null || c != s.container || s.desktopApp != null || s.desktop !is DesktopState.Running ||
+            service.onShapeChange(c) != OnShapeChange.Ask) null
+        else ShapeChange.offer(s.graphicalSessions, s.graphical?.id, s.desktopSessionId, service.pickFor(c, shape))
+            ?.let { Reshape(c, shape, s.desktopSession ?: "This session", it) }
+    }
+
     // The view's surface usually exists before the compositor: hand it over once the session runs.
     LaunchedEffect(desktop is DesktopState.Running || desktop is DesktopState.Starting, viewRef) {
         viewRef?.attach()
@@ -87,7 +109,10 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
     // Asked again once the session runs: the first request can come before the focus target is attached.
     LaunchedEffect(desktop is DesktopState.Running) { runCatching { keyFocus.requestFocus() } }
     Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged {
-        if (it.width > 0 && it.height > 0 && size == null) size = it.width to it.height
+        if (it.width > 0 && it.height > 0) {
+            if (size == null) size = it.width to it.height
+            viewSize = it.width to it.height
+        }
     }.focusRequester(keyFocus).focusable().onPreviewKeyEvent { viewRef?.dispatchKeyEvent(it.nativeKeyEvent) ?: false }) {
         AndroidView(
             factory = { c -> CompositorView(c) { service.compositor() }.also { viewRef = it } },
@@ -145,12 +170,24 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
         onDismiss = { stopping = false; poke() },
         onConfirm = { stopping = false; service.stopDesktop(); onBack() })
     if (switching) SwitchSessionDialog(state.container, state.graphicalSessions, state.sessionPick.formFactor,
-        current = service.chosenSession()?.id,
+        current = state.desktopSessionId ?: service.chosenSession()?.id,
         onDismiss = { switching = false; poke() },
         onSwitch = { id ->
             switching = false
-            size?.let { service.switchSession(id, it.first, it.second) }
+            (viewSize ?: size)?.let { service.switchSession(id, it.first, it.second) }
         })
+    reshape?.let { r ->
+        ReshapeDialog(r,
+            onKeep = { always ->
+                reshape = null
+                if (always) service.keepSessionOnShapeChange(r.container)
+                poke()
+            },
+            onSwitch = {
+                reshape = null
+                (viewSize ?: size)?.let { service.switchSession(r.offer.id, it.first, it.second) }
+            })
+    }
 }
 
 /** Whether Selkie's controls show over the desktop. [show] also restarts their time on screen. */
@@ -410,6 +447,61 @@ fun SwitchSessionDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** The device changed shape under [container]'s desktop, and [offer] suits the new [shape] where [running] doesn't. */
+data class Reshape(val container: String, val shape: String, val running: String, val offer: SessionEntry)
+
+/**
+ * Asks whether to keep the running session, which resizes to the new screen, or switch to the one made
+ * for the new shape. Keeping is chosen to start with, since switching closes the desktop's apps.
+ */
+@Composable
+fun ReshapeDialog(r: Reshape, onKeep: (always: Boolean) -> Unit, onSwitch: () -> Unit) {
+    val shape = shapeName(r.shape)
+    var switch by remember { mutableStateOf(false) }
+    var always by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { onKeep(false) },
+        icon = { Icon(SelkieIcons.Desktop, contentDescription = null) },
+        title = { Text("Use a session made for this $shape?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("${r.container} is showing ${r.running}, which isn't made for a $shape. ${r.offer.title} is.")
+                ReshapeOption("Keep ${r.running}", "It resizes to fit. Nothing closes.", selected = !switch) { switch = false }
+                ReshapeOption("Switch to ${r.offer.title}",
+                    "Apps open on ${r.container}'s desktop close, and anything unsaved in them is lost.",
+                    selected = switch) { switch = true }
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .toggleable(value = always && !switch, enabled = !switch, role = Role.Checkbox,
+                        onValueChange = { always = it }),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Checkbox(checked = always && !switch, onCheckedChange = null, enabled = !switch)
+                    Text("Always keep the session for ${r.container}", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { if (switch) onSwitch() else onKeep(always) }) {
+                Text(if (switch) "Switch to ${r.offer.title}" else "Keep ${r.running}")
+            }
+        },
+        dismissButton = { TextButton(onClick = { onKeep(false) }) { Text("Not now") } },
+    )
+}
+
+@Composable
+private fun ReshapeOption(title: String, body: String, selected: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+        .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        RadioButton(selected = selected, onClick = null)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 /** Keeps the screen on while [on] and this screen is showing, as a desktop app playing video asks. */

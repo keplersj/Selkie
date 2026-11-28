@@ -88,6 +88,8 @@ data class ServiceState(
     val sessionPick: SessionPick = SessionPick(),
     /** Name of the session the desktop runs, while it runs. */
     val desktopSession: String? = null,
+    /** Id of the session the desktop runs, while it runs; null with older droidc, which lists none. */
+    val desktopSessionId: String? = null,
     val desktop: DesktopState = DesktopState.Stopped,
     /** Container the desktop belongs to while it is starting or running. One desktop at a time. */
     val desktopContainer: String? = null,

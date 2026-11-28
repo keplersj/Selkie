@@ -34,6 +34,9 @@ import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.SessionChoice
 import io.github.keplersj.selkie.engine.SessionEntry
+import io.github.keplersj.selkie.engine.SessionPick
+import io.github.keplersj.selkie.engine.OnShapeChange
+import io.github.keplersj.selkie.engine.ShapeChange
 import io.github.keplersj.selkie.ui.deviceClassOf
 import io.github.keplersj.selkie.engine.apps
 import io.github.keplersj.selkie.engine.containers
@@ -282,6 +285,7 @@ class SessionService : Service() {
             if (outcome is DroidcOutcome.Success) {
                 setRootModeEnabled(this@SessionService, name, false)
                 SessionChoice.forget(prefs, name)
+                ShapeChange.forget(prefs, name)
             }
             onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
             // refreshStatus moves Home to the next listed container when the shown one has gone.
@@ -667,6 +671,20 @@ class SessionService : Service() {
     private fun formFactor(): String = SessionChoice.formFactor(deviceClassOf(resources.configuration))
 
     /** The session [startDesktop] would start for the selected container on this device. */
+    /** The session that would start for [container] if the device were [formFactor]'s shape. */
+    fun pickFor(container: String, formFactor: String): SessionPick = SessionChoice.read(prefs, container, formFactor)
+
+    /** What to do for [container] when the device changes shape under its desktop. */
+    fun onShapeChange(container: String): OnShapeChange = ShapeChange.read(prefs, container)
+
+    /** The choice for every container, and the containers told to keep their session. */
+    fun shapeChangeChoice(): Pair<OnShapeChange, List<String>> = ShapeChange.read(prefs) to ShapeChange.keptContainers(prefs)
+
+    fun setShapeChange(v: OnShapeChange) = ShapeChange.write(prefs, v)
+
+    /** Keeps [container]'s session from now on when the device changes shape. */
+    fun keepSessionOnShapeChange(container: String) = ShapeChange.keep(prefs, container)
+
     fun chosenSession(): SessionEntry? = _state.value.let {
         SessionChoice.choose(it.graphicalSessions, it.graphical?.id, it.sessionPick)
     }
@@ -714,7 +732,7 @@ class SessionService : Service() {
                     val pick = SessionChoice.read(prefs, env.container, formFactor())
                     val chosen = if (app == null) SessionChoice.choose(spec.sessions, spec.session?.id, pick) else null
                     if (app == null && spec.session?.configured != true && chosen == null) error("This image declares no graphical session. Configure one first.")
-                    _state.update { it.copy(desktopSession = chosen?.title ?: spec.session?.name) }
+                    _state.update { it.copy(desktopSession = chosen?.title ?: spec.session?.name, desktopSessionId = chosen?.id) }
                     // Root mode leaves the files image-owned, which the app-uid proot below can't write to.
                     if (env.useRoot) error(if (app != null) "Apps don't open in root mode yet. Turn root mode off for this container to use them."
                         else "The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
@@ -745,7 +763,7 @@ class SessionService : Service() {
                 _keepAwake.value = false
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
-                    desktopContainer = null, desktopSession = null) }
+                    desktopContainer = null, desktopSession = null, desktopSessionId = null) }
                 updateForeground(force = true)
                 stopIdleServices()
                 return@launch
@@ -773,7 +791,7 @@ class SessionService : Service() {
                 _state.update { it.copy(desktop =
                     if (code == 0 || killed) DesktopState.Stopped
                     else DesktopState.Failed("${app?.name ?: "The session"} exited with status $code", logTail(env)),
-                    desktopContainer = null, desktopSession = null, desktopApp = if (code == 0 || killed) null else app) }
+                    desktopContainer = null, desktopSession = null, desktopSessionId = null, desktopApp = if (code == 0 || killed) null else app) }
                 updateForeground(force = true)
                 stopIdleServices()
             }
@@ -808,7 +826,7 @@ class SessionService : Service() {
         }
         stopCompositor()
         pendingApp = null
-        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopSession = null, desktopApp = null) }
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopSession = null, desktopSessionId = null, desktopApp = null) }
         updateForeground(force = true)
         stopIdleServices()
     }

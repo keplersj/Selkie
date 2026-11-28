@@ -286,6 +286,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = "session" })
                 }
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
+                screen == "shape" -> { BackHandler { screen = "auto" }; ShapeSettingsScreen(service) { screen = "auto" } }
                 screen == "phantom" -> {
                     BackHandler { screen = "auto" }
                     PhantomScreen(phantom == PhantomProcessCheck.State.RESTRICTED,
@@ -381,7 +382,8 @@ class MainActivity : ComponentActivity() {
                                 onDismissDesktopError = { service.dismissDesktopError() })
                             Section.Settings -> SettingsScreen(rail, phantom, state.suFound,
                                 onPhantomHelp = { screen = "phantom" },
-                                onAbout = { screen = "about" })
+                                onAbout = { screen = "about" },
+                                onShape = { screen = "shape" })
                         }
                     }
                     if (tv) {
