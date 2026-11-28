@@ -70,6 +70,21 @@ data class GuestNotification(
             )
         }
 
+        /**
+         * The Android-side key of a notification from [container]'s link: each container has its own
+         * host-link, and two guests can use the same key. Length-prefixed, so any container name works.
+         */
+        fun scopedKey(container: String, key: String): String = "${container.length}:$container:$key"
+
+        /** The container and the guest's own key back from [scopedKey]; null for anything else. */
+        fun splitScopedKey(scoped: String): Pair<String, String>? {
+            val colon = scoped.indexOf(':').takeIf { it > 0 } ?: return null
+            val n = scoped.substring(0, colon).toIntOrNull()?.takeIf { it >= 0 } ?: return null
+            val start = colon + 1
+            if (scoped.length < start + n + 1 || scoped[start + n] != ':') return null
+            return scoped.substring(start, start + n) to scoped.substring(start + n + 1)
+        }
+
         /** The host's tap on a button ([action]) or on the notification itself (null), with typed [text]. */
         fun actionLine(key: String, action: String?, text: String?): String = buildJsonObject {
             put("kind", "notification-action")
@@ -204,12 +219,13 @@ class GuestNotifier(private val context: Context) {
         shown -= key
     }
 
-    /** The desktop or its link went away: none of its notifications can be acted on any more. */
+    /** A container's link went away or restarted: none of its notifications can be acted on any more. */
     @Synchronized
-    fun cancelAll() {
+    fun cancelContainer(container: String) {
         val nm = NotificationManagerCompat.from(context)
-        shown.forEach { nm.cancel(it, NOTIFICATION_ID) }
-        shown.clear()
+        val gone = shown.filter { GuestNotification.splitScopedKey(it)?.first == container }
+        gone.forEach { nm.cancel(it, NOTIFICATION_ID) }
+        shown -= gone.toSet()
     }
 
     companion object {

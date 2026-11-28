@@ -4,6 +4,7 @@ import io.github.keplersj.selkie.engine.SelkieJson
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -45,5 +46,17 @@ class GuestNotificationTest {
         val closed = obj(GuestNotification.closedLine("fdo:7"))
         assertEquals("notification-closed", closed["kind"]!!.jsonPrimitive.content)
         assertEquals("fdo:7", closed["key"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun scopedKeysKeepContainersApart() {
+        val a = GuestNotification.scopedKey("bluefin", "gtk:a/b:c")
+        val b = GuestNotification.scopedKey("aurora", "gtk:a/b:c")
+        assertNotEquals(a, b)
+        assertEquals("bluefin" to "gtk:a/b:c", GuestNotification.splitScopedKey(a))
+        assertEquals("my:box" to "fdo:7", GuestNotification.splitScopedKey(GuestNotification.scopedKey("my:box", "fdo:7")))
+        assertEquals("" to "fdo:7", GuestNotification.splitScopedKey(GuestNotification.scopedKey("", "fdo:7")))
+        assertNull(GuestNotification.splitScopedKey("fdo:7"))
+        assertNull(GuestNotification.splitScopedKey("9:short:x"))
+        assertNull(GuestNotification.splitScopedKey(""))
     }
 }
