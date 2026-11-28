@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -39,6 +41,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.github.keplersj.selkie.display.CompositorView
+import io.github.keplersj.selkie.engine.SessionChoice
+import io.github.keplersj.selkie.engine.SessionEntry
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.SessionService
 
@@ -60,6 +64,10 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
 
     val controls = remember { DesktopControlsState() }
     var stopping by remember { mutableStateOf(false) }
+    var switching by remember { mutableStateOf(false) }
+    // Another session to switch to, only for the whole desktop and only when the image offers one.
+    val canSwitch = state.desktopApp == null && desktop is DesktopState.Running &&
+        state.desktopContainer == state.container && state.graphicalSessions.count { it.runnable } > 1
     val poke: () -> Unit = controls::show
 
     // The view's surface usually exists before the compositor: hand it over once the session runs.
@@ -109,7 +117,7 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
             else -> {}
         }
         if (desktop !is DesktopState.Failed) {
-            DesktopControlsLayer(controls, paused = stopping, onLeave = onBack) {
+            DesktopControlsLayer(controls, paused = stopping || switching, onLeave = onBack) {
                 DesktopControls(
                     container = state.desktopContainer ?: state.container,
                     app = state.desktopApp?.name,
@@ -127,6 +135,7 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
                     onBack = onBack,
                     onStop = { stopping = true },
                     onHide = controls::hide,
+                    onSwitch = if (canSwitch) ({ switching = true }) else null,
                 )
             }
         }
@@ -135,6 +144,13 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
     if (stopping) StopDesktopDialog(state.desktopContainer ?: state.container, app = state.desktopApp?.name,
         onDismiss = { stopping = false; poke() },
         onConfirm = { stopping = false; service.stopDesktop(); onBack() })
+    if (switching) SwitchSessionDialog(state.container, state.graphicalSessions, state.sessionPick.formFactor,
+        current = service.chosenSession()?.id,
+        onDismiss = { switching = false; poke() },
+        onSwitch = { id ->
+            switching = false
+            size?.let { service.switchSession(id, it.first, it.second) }
+        })
 }
 
 /** Whether Selkie's controls show over the desktop. [show] also restarts their time on screen. */
@@ -249,6 +265,8 @@ fun DesktopControls(
     onStop: () -> Unit,
     onHide: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Opens the session switcher; null when there is no other session to switch to. */
+    onSwitch: (() -> Unit)? = null,
 ) {
     val cs = MaterialTheme.colorScheme
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -280,6 +298,9 @@ fun DesktopControls(
                 }
                 IconButton(onClick = onTerminal, Modifier.size(56.dp)) {
                     Icon(SelkieIcons.Terminal, contentDescription = "Open a terminal, keep the desktop running")
+                }
+                if (onSwitch != null) IconButton(onClick = onSwitch, Modifier.size(56.dp)) {
+                    Icon(SelkieIcons.Desktop, contentDescription = "Switch session")
                 }
             }
             val leave: @Composable () -> Unit = {
@@ -332,6 +353,59 @@ fun StopDesktopDialog(container: String, onDismiss: () -> Unit, onConfirm: () ->
         confirmButton = {
             Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = cs.error, contentColor = cs.onError)) {
                 Text(if (app != null) "Close" else "Stop")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * Picks another session for the running desktop: those that fit this device first, then the rest.
+ * Switching stops this desktop, so it says what closes, as Stop does.
+ */
+@Composable
+fun SwitchSessionDialog(
+    container: String,
+    sessions: List<SessionEntry>,
+    formFactor: String,
+    current: String?,
+    onDismiss: () -> Unit,
+    onSwitch: (String) -> Unit,
+) {
+    val (fits, others) = SessionChoice.split(sessions, formFactor)
+    var picked by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(SelkieIcons.Desktop, contentDescription = null) },
+        title = { Text("Switch session?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Apps open on $container's desktop close, and anything unsaved in them is lost. " +
+                    "Its terminals keep running.")
+                for (e in fits + others) {
+                    val selected = (picked ?: current) == e.id
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .selectable(selected = selected, enabled = e.id != current, role = Role.RadioButton,
+                            onClick = { picked = e.id }),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        RadioButton(selected = selected, onClick = null, enabled = e.id != current)
+                        Column(Modifier.weight(1f)) {
+                            Text(e.title, style = MaterialTheme.typography.bodyLarge)
+                            val note = when {
+                                e.id == current -> "Running now"
+                                e in others -> "Made for " + e.formFactors.joinToString(", ") { shapeName(it) }
+                                else -> e.comment
+                            }
+                            if (note != null) Text(note, style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { picked?.let(onSwitch) }, enabled = picked != null && picked != current) {
+                Text(sessions.firstOrNull { it.id == picked }?.let { "Switch to ${it.title}" } ?: "Switch")
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

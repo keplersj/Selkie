@@ -764,6 +764,20 @@ class SessionService : Service() {
     }
 
     /** Stops the session (proot `--kill-on-exit` takes the guest processes with it) and the compositor. */
+    /**
+     * Stops the running desktop and starts session [id] in its place at [width]x[height], remembering it
+     * for this device shape as [chooseSession] does. The old session gets up to three seconds to end.
+     */
+    fun switchSession(id: String, width: Int, height: Int) {
+        chooseSession(id)
+        val old = desktop
+        stopDesktop()
+        scope.launch {
+            if (old != null) withContext(Dispatchers.IO) { old.waitFor(3, java.util.concurrent.TimeUnit.SECONDS) }
+            if (_state.value.desktop is DesktopState.Stopped) startDesktop(width, height)
+        }
+    }
+
     fun stopDesktop() {
         val p = desktop
         desktop = null
