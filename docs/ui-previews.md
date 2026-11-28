@@ -24,12 +24,11 @@ render to PNG on the JVM with no emulator and no native binaries.
 ## Re-recording in CI
 
 No local Android SDK is needed to update the goldens. The `record-screenshots` job in
-`.github/workflows/android.yml` clears `app/screenshots/`, runs `recordRoborazziDebug` and commits any changed
+`.github/workflows/screenshots.yml` clears `app/screenshots/`, runs `recordRoborazziDebug` and commits any changed
 PNGs back to the branch as `github-actions[bot]`. It also uploads them as the `recorded-screenshots` artifact.
 
 - Put `[record screenshots]` in a pushed commit's message to run it on that branch.
-- Once the workflow is on `main`, you can also start it from Actions > Android > Run workflow, with
-  `record_screenshots` ticked and the branch picked.
+- You can also start it from Actions > Record UI screenshots > Run workflow, with the branch picked.
 - It never runs on `main`. Its commit starts no CI run, so the branch's next push verifies the new PNGs.
 - Look over the PNGs in the bot's commit before merging: the job records whatever the previews render.
 
