@@ -34,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.EngineEnv
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.platform.AppShortcuts
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.service.DesktopState
@@ -57,6 +58,9 @@ class MainActivity : ComponentActivity() {
     /** What Ctrl+T, Ctrl+N and Ctrl+1 to 4 do while a section is showing; null on every other screen. */
     private var homeShortcuts: HomeShortcuts? = null
 
+    /** A guest notification tapped in the shade, waiting for the service and the desktop to open. */
+    private val tappedNotification = mutableStateOf<String?>(null)
+
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -68,6 +72,7 @@ class MainActivity : ComponentActivity() {
         }
         if (savedInstanceState == null) linkedContainer.value = WatchProtocol.containerFromLink(intent?.dataString)
         bindService(SessionService.intent(this), conn, Context.BIND_AUTO_CREATE)
+        if (savedInstanceState == null) takeNotificationTap(intent)
         setContent {
             val fold by rememberFold(this)
             SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }
@@ -78,6 +83,12 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         WatchProtocol.containerFromLink(intent.dataString)?.let { linkedContainer.value = it }
+        takeNotificationTap(intent)
+    }
+
+    private fun takeNotificationTap(intent: Intent?) {
+        if (intent?.action == GuestNotifier.ACTION_TAP)
+            tappedNotification.value = intent.getStringExtra(GuestNotifier.EXTRA_KEY)
     }
 
     override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
@@ -160,6 +171,15 @@ class MainActivity : ComponentActivity() {
         }
         // The whole desktop, unless one is already running (an app left prepared but never opened is dropped).
         val openDesktop: () -> Unit = { service.prepareDesktop(); showCompositor(true) }
+        // A desktop notification tapped in the shade: tell its app, and show the desktop it came from.
+        val tapped = tappedNotification.value
+        LaunchedEffect(tapped) {
+            if (tapped != null) {
+                tappedNotification.value = null
+                service.openedGuestNotification(tapped)
+                openDesktop()
+            }
+        }
         val openApp: (AppEntry) -> String? = { app ->
             service.prepareApp(app) ?: run {
                 // A whole app (not one of its actions) joins the shortcuts on a long press of Selkie's icon.
