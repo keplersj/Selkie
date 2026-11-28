@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.roborazzi)
+    alias(libs.plugins.kover)
 }
 
 val selkieVersion = "0.1.0-mvp.1"
@@ -142,6 +143,19 @@ roborazzi {
         enable = true
         packages = listOf("io.github.keplersj.selkie.ui")
         robolectricConfig = mapOf("sdk" to "[35]")
+    }
+}
+
+// Line coverage of the unit tests: ./gradlew koverHtmlReportRelease (CI's "Coverage" step reports it).
+// @Preview functions only exist to be drawn by the screenshot tests, so they don't count.
+kover {
+    reports {
+        filters {
+            excludes {
+                annotatedBy("androidx.compose.ui.tooling.preview.Preview")
+                classes("*.BuildConfig", "*.ComposableSingletons*")
+            }
+        }
     }
 }
 

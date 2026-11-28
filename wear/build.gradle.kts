@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.roborazzi)
+    alias(libs.plugins.kover)
 }
 
 // Same version and release key as the phone app (see app/build.gradle.kts): the Data Layer needs matching signatures.
@@ -76,6 +77,19 @@ roborazzi {
         enable = true
         packages = listOf("io.github.keplersj.selkie.wear")
         robolectricConfig = mapOf("sdk" to "[35]")
+    }
+}
+
+// Line coverage of the unit tests: ./gradlew koverHtmlReportRelease (CI's "Coverage" step reports it).
+// @Preview functions only exist to be drawn by the screenshot tests, so they don't count.
+kover {
+    reports {
+        filters {
+            excludes {
+                annotatedBy("androidx.compose.ui.tooling.preview.Preview")
+                classes("*.BuildConfig", "*.ComposableSingletons*")
+            }
+        }
     }
 }
 
