@@ -287,14 +287,8 @@ fun HomeErrorPreview() = Home(Fixtures.homeError)
 
 // --- New container and change image ---
 
-/** Harbor and Monk as if published and trusted, to show the design's preselection. */
-private val publishedVariants = ImageCatalog.tuned.map {
-    when (it.name) {
-        "Harbor" -> it.copy(ref = PinnipedOs.droidcRef("harbor"), signed = true)
-        "Monk" -> it.copy(ref = PinnipedOs.droidcRef("monk"), signed = true)
-        else -> it
-    }
-}
+/** The published Pinniped OS images as if trusted, to show the design's preselection. */
+private val publishedVariants = ImageCatalog.tuned.map { if (it.ready) it.copy(signed = true) else it }
 
 @PhonePreviews @TabletPreview
 @Composable
