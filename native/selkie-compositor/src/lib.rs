@@ -58,6 +58,20 @@ pub struct FrameSummary {
     pub sampled_colors: usize,
 }
 
+/// A frame up to this many pixels short of the output on each side is shown at its own size in the
+/// top-left corner (the rest black) instead of stretched over the output: Selkie sizes desktop
+/// sessions a few pixels under the view so GNOME can offer 150% and 200% (`DisplayScale.sessionSize`),
+/// and stretching by a few pixels would blur every frame.
+pub const PAD_MAX: u32 = 16;
+
+/// Whether a `frame`-sized frame is shown unscaled on an `output`-sized view (see [`PAD_MAX`]).
+pub fn unscaled(frame: (u32, u32), output: (u32, u32)) -> bool {
+    frame.0 <= output.0
+        && frame.1 <= output.1
+        && output.0 - frame.0 < PAD_MAX
+        && output.1 - frame.1 < PAD_MAX
+}
+
 /// Where frames go: an Android window, memory (tests), files (headless tool).
 pub trait FrameSink: Send {
     fn present(&mut self, frame: &Frame);
@@ -87,6 +101,8 @@ pub struct Stats {
     /// Input events delivered to the shown client (events with no client to receive them are dropped).
     pub inputs: u64,
     pub output: (u32, u32),
+    /// App mode's scale (output pixels per logical pixel); `None` in session mode.
+    pub app_scale: Option<f64>,
     pub frame: Option<FrameSummary>,
 }
 
@@ -99,9 +115,13 @@ impl Stats {
             ),
             None => "null".into(),
         };
+        let app_scale = match self.app_scale {
+            Some(v) if v.is_finite() => format!("{v}"),
+            _ => "null".into(),
+        };
         format!(
-            "{{\"clients\":{},\"toplevels\":{},\"commits\":{},\"presented\":{},\"inputs\":{},\"output\":[{},{}],\"frame\":{}}}",
-            self.clients, self.toplevels, self.commits, self.presented, self.inputs, self.output.0, self.output.1, f
+            "{{\"clients\":{},\"toplevels\":{},\"commits\":{},\"presented\":{},\"inputs\":{},\"output\":[{},{}],\"app_scale\":{},\"frame\":{}}}",
+            self.clients, self.toplevels, self.commits, self.presented, self.inputs, self.output.0, self.output.1, app_scale, f
         )
     }
 }
@@ -113,5 +133,33 @@ pub struct MemorySink(pub std::sync::Arc<std::sync::Mutex<Option<Frame>>>);
 impl FrameSink for MemorySink {
     fn present(&mut self, frame: &Frame) {
         *self.0.lock().unwrap() = Some(frame.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unscaled_only_a_few_pixels_short() {
+        assert!(unscaled((1920, 1428), (1920, 1432)));
+        assert!(unscaled((1080, 1848), (1080, 1857)));
+        assert!(unscaled((800, 600), (800, 600)));
+        assert!(!unscaled((1920, 1432), (1920, 1600)));
+        assert!(!unscaled((1930, 1432), (1920, 1432)));
+    }
+
+    #[test]
+    fn stats_json_says_app_mode_scale() {
+        assert!(Stats::default().to_json().contains("\"app_scale\":null,"));
+        let s = Stats {
+            app_scale: Some(2.625),
+            ..Stats::default()
+        };
+        assert!(
+            s.to_json().contains("\"app_scale\":2.625,"),
+            "{}",
+            s.to_json()
+        );
     }
 }

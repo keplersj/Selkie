@@ -29,6 +29,7 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.apps
@@ -36,6 +37,7 @@ import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
+import io.github.keplersj.selkie.link.AdbRequests
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.BatteryWatcher
@@ -598,11 +600,12 @@ class SessionService : Service() {
     // ---------------- graphical session ----------------
 
     @Volatile private var compositor: NativeCompositor? = null
+    /** Whether [compositor] runs in app mode (one app at the display's scale) or session mode. */
+    @Volatile private var compositorAppMode = false
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
-    /** The desktop's channel to Android (`droidc host-link`), while the desktop runs. */
-    @Volatile private var link: GuestLink? = null
+    /** Follows Android's look while any container's host-link runs. */
     private var appearanceWatcher: AppearanceWatcher? = null
     private var batteryWatcher: BatteryWatcher? = null
     private var networkWatcher: NetworkWatcher? = null
@@ -641,11 +644,13 @@ class SessionService : Service() {
     }
 
     /**
-     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
-     * view size). After [prepareApp], the app runs instead, on its own. The session keeps running without the activity; the compositor holds frames while
-     * nothing shows them.
+     * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
+     * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
+     * display's density; see [DisplayScale]). After [prepareApp], the app runs instead, on its own.
+     * The session keeps running without the activity; the compositor holds frames while nothing
+     * shows them.
      */
-    fun startDesktop(width: Int, height: Int) {
+    fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
@@ -669,9 +674,16 @@ class SessionService : Service() {
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
-                    startLink(b, env)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
-                    compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
+                    val (sw, sh) = DisplayScale.sessionSize(width, height)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
+                    // An app runs in app mode at the display's scale, so adaptive apps get about the
+                    // width an Android app has, and its menus and popovers show. The session's own
+                    // scale is [scale], applied by GNOME; its compositor stays 1x.
+                    val appMode = app != null
+                    if (compositor != null && compositorAppMode != appMode) stopCompositor()
+                    compositor = compositor ?: (if (appMode)
+                        NativeCompositor.startApp(env.waylandSocket, width, height, DisplayScale.of(this@SessionService))
+                    else NativeCompositor.start(env.waylandSocket, width, height)).also { compositorAppMode = appMode }
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
                     pb.environment().apply { clear(); putAll(inv.env) }
@@ -681,7 +693,7 @@ class SessionService : Service() {
                 // Throwable: a missing native library is an Error, and it must end up on screen too.
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w(TAG, "desktop failed to start", e)
-                stopLink()
+                _keepAwake.value = false
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
                     desktopContainer = null) }
@@ -699,7 +711,8 @@ class SessionService : Service() {
             if (desktop === p) {
                 desktop = null
                 stopAudio()
-                stopLink()
+                // The link stays for the container's terminals; the desktop's idle inhibitor went with it.
+                _keepAwake.value = false
                 stopCompositor()
                 // SIGKILL that Selkie didn't send: Android closed it, which the containers list explains.
                 val killed = code != 0 && isSigkill(code)
@@ -725,7 +738,7 @@ class SessionService : Service() {
         desktopJob?.cancel()
         desktopJob = null
         stopAudio()
-        stopLink()
+        _keepAwake.value = false
         if (p != null) {
             p.destroy()
             Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
@@ -740,56 +753,52 @@ class SessionService : Service() {
     /** Bytes of the desktop's sound received from the guest and played on Android so far, or null without a desktop. */
     fun audioBytes(): Pair<Long, Long>? = audio?.let { it.received to it.played }
 
-    /** Starts `droidc host-link` for the desktop; Android's state goes in each time it says `ready`. */
-    private fun startLink(b: ProotCommandBuilder, env: EngineEnv) {
-        stopLink()
-        link = GuestLink(b.hostLink(), env.hostLinkLog, ::onLinkMessage).apply { start() }
+    /**
+     * Starts `droidc host-link` for a container's sessions, terminals and desktop alike: the desktop follows
+     * Android's look through it, and `droidc adb` in any session reaches Android through it.
+     */
+    private fun startLink(b: ProotCommandBuilder, env: EngineEnv): GuestLink {
+        val container = env.container
+        val link = GuestLink(b.hostLink(), env.hostLinkLog) { m -> onLinkMessage(container, m) }.apply { start() }
         scope.launch(Dispatchers.Main) {
-            if (link != null && appearanceWatcher == null)
+            if (appearanceWatcher == null)
                 appearanceWatcher = AppearanceWatcher(this@SessionService) { sendAppearance() }.apply { start() }
-            if (link != null && batteryWatcher == null)
-                batteryWatcher = BatteryWatcher(this@SessionService) { line -> link?.send(line) }.apply {
-                    start()
-                    current?.let { link?.send(it) }
-                }
-            if (link != null && networkWatcher == null)
-                networkWatcher = NetworkWatcher(this@SessionService) { line -> link?.send(line) }.apply {
-                    start()
-                    current?.let { link?.send(it) }
-                }
+            if (batteryWatcher == null)
+                batteryWatcher = BatteryWatcher(this@SessionService) { line -> sendToLinks(line) }.apply { start() }
+            if (networkWatcher == null)
+                networkWatcher = NetworkWatcher(this@SessionService) { line -> sendToLinks(line) }.apply { start() }
         }
+        return link
     }
 
-    private fun stopLink() {
-        link?.stop()
-        link = null
-        _keepAwake.value = false
-        scope.launch(Dispatchers.Main) {
-            appearanceWatcher?.stop(); appearanceWatcher = null
-            batteryWatcher?.stop(); batteryWatcher = null
-            networkWatcher?.stop(); networkWatcher = null
-        }
-    }
+    private fun linkOf(container: String): GuestLink? = synchronized(services) { services[container]?.link }
 
-    private fun onLinkMessage(m: GuestLinkMessage) {
+    private fun onLinkMessage(container: String, m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> {
-                sendAppearance()
+            "ready" -> linkOf(container)?.let { l ->
+                l.send(Appearance.read(this).toLine())
                 // Android locks and blanks the device; GNOME's own lock would be a second one.
-                link?.send("""{"kind":"screen-lock","by_android":true}""")
-                batteryWatcher?.current?.let { link?.send(it) }
-                networkWatcher?.current?.let { link?.send(it) }
+                l.send("""{"kind":"screen-lock","by_android":true}""")
+                batteryWatcher?.current?.let { l.send(it) }
+                networkWatcher?.current?.let { l.send(it) }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
                 scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
             }
+            else -> AdbRequests.handle(this, container, m) { line -> linkOf(container)?.send(line) }
         }
     }
 
     private fun sendAppearance() {
-        val l = link ?: return
-        l.send(Appearance.read(this).toLine())
+        if (synchronized(services) { services.values.none { it.link != null } }) return
+        sendToLinks(Appearance.read(this).toLine())
+    }
+
+    /** Sends [line] to every container's link: Android's look and battery are the same for all of them. */
+    private fun sendToLinks(line: String) {
+        val links = synchronized(services) { services.values.mapNotNull { it.link } }
+        links.forEach { it.send(line) }
     }
 
     /** Night mode, font size and the wallpaper's accent arrive here; the desktop follows them. */
@@ -811,7 +820,8 @@ class SessionService : Service() {
      * of them, which no single session's proot can hold, since `--kill-on-exit` takes it along) and the
      * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither.
      */
-    private class ContainerServices(val keeper: Process?, val spawner: Process?) {
+    /** A container's background processes; [link] restarts itself, so it doesn't count toward [alive]. */
+    private class ContainerServices(val keeper: Process?, val spawner: Process?, val link: GuestLink?) {
         val alive: Boolean get() = keeper?.isAlive != false && spawner?.isAlive != false
     }
     /** By container; guarded by itself, since sessions start on IO threads. */
@@ -829,6 +839,7 @@ class SessionService : Service() {
             services[env.container] = ContainerServices(
                 keeper = startService(b.userServices(), env.userServicesLog),
                 spawner = if (b.hasShims) startService(b.spawnServer(), env.spawnerLog) else null,
+                link = startLink(b, env),
             )
         }
     }
@@ -852,15 +863,27 @@ class SessionService : Service() {
         busy += starting.keys
         val idle = synchronized(services) { services.keys.filter { it !in busy }.map { services.remove(it)!! } }
         idle.forEach { stopServices(it, wait = false) }
+        stopAppearanceWatcherIfIdle()
     }
 
     private fun stopAllServices() {
         val all = synchronized(services) { services.values.toList().also { services.clear() } }
         all.forEach { stopServices(it, wait = false) }
+        stopAppearanceWatcherIfIdle()
     }
 
     /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
+    private fun stopAppearanceWatcherIfIdle() {
+        if (synchronized(services) { services.isEmpty() })
+            scope.launch(Dispatchers.Main) {
+                appearanceWatcher?.stop(); appearanceWatcher = null
+                batteryWatcher?.stop(); batteryWatcher = null
+                networkWatcher?.stop(); networkWatcher = null
+            }
+    }
+
     private fun stopServices(s: ContainerServices, wait: Boolean) {
+        s.link?.stop()
         val procs = listOfNotNull(s.keeper, s.spawner)
         procs.forEach { it.destroy() }
         val reap = { procs.forEach { if (!it.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) it.destroyForcibly() } }

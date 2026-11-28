@@ -63,8 +63,12 @@ class ProotCommandBuilder(
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
         if (spec.shims.isNotEmpty()) put("DROIDC_SPAWNER", env.spawnerSocket)
+        // The guest's adb talks to its server on a socket in /run, never TCP 5037 on the localhost every app
+        // shares (as `droidc adb` does). Unless the image sets its own.
+        putIfAbsent("ADB_SERVER_SOCKET", ADB_SERVER_SOCKET)
         put("PROOT_LOADER", env.prootLoader.path)
         put("PROOT_TMP_DIR", env.prootTmp.path)
+        put("PROOT_L2S_DIR", env.prootL2s.path)
     }
 
     /** Whether the guest's sudo/su/pkexec need [spawnServer] (droidc lists shims only under proot). */
@@ -123,12 +127,14 @@ class ProotCommandBuilder(
             "HOME" to env.filesDir.path, "TMPDIR" to env.cacheDir.path, "PATH" to "/system/bin",
             // The launcher it starts is proot, which needs these as every other proot does.
             "PROOT_LOADER" to env.prootLoader.path, "PROOT_TMP_DIR" to env.prootTmp.path,
+            "PROOT_L2S_DIR" to env.prootL2s.path,
         ),
     )
 
     /**
      * The deployment's graphical session (`droidc supervise --session`), shown by Selkie's compositor on
-     * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels.
+     * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels, [scale] the
+     * session scale (`{scale}`; a `screencast` session sets its monitor to it, see `DisplayScale`).
      */
     fun graphicalSession(width: Int, height: Int, scale: Float = 1f): Invocation {
         val inv = command(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto",
@@ -177,6 +183,9 @@ class ProotCommandBuilder(
     )
 
     companion object {
+        /** Where the guest's adb server listens (`droidc adb`'s default too). */
+        const val ADB_SERVER_SOCKET = "localfilesystem:/run/droidc-adb.sock"
+
         /**
          * Seconds a session's `droidc supervise` waits for Selkie's [userServices] keeper before starting
          * one itself (inside its own proot, so it would end with that session).
