@@ -29,6 +29,7 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.apps
@@ -602,6 +603,8 @@ class SessionService : Service() {
     // ---------------- graphical session ----------------
 
     @Volatile private var compositor: NativeCompositor? = null
+    /** Whether [compositor] runs in app mode (one app at the display's scale) or session mode. */
+    @Volatile private var compositorAppMode = false
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
@@ -675,7 +678,14 @@ class SessionService : Service() {
                     ensureServices(env, b)
                     startLink(b, env)
                     val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
-                    compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
+                    // An app runs in app mode at the display's scale, so adaptive apps get about the
+                    // width an Android app has, and its menus and popovers show. The session keeps 1x
+                    // here; GNOME scales itself.
+                    val appMode = app != null
+                    if (compositor != null && compositorAppMode != appMode) stopCompositor()
+                    compositor = compositor ?: (if (appMode)
+                        NativeCompositor.startApp(env.waylandSocket, width, height, DisplayScale.of(this@SessionService))
+                    else NativeCompositor.start(env.waylandSocket, width, height)).also { compositorAppMode = appMode }
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
                     pb.environment().apply { clear(); putAll(inv.env) }
