@@ -88,6 +88,9 @@ refused, so use the Developer options toggle.
   connectivity back; not yet seen on a device.
 - The screen stays on while a desktop app asks it to (a playing video), and GNOME's own lock screen
   and idle blank are off, since Android locks the device. Not yet seen on a device.
+- Desktop media controls: the guest's MPRIS players (through `droidc media`) show as an Android
+  media session, on the lock screen and in the shade, with play, pause, next and previous going back
+  to the player. Covers come from `file://` art in the container; web art isn't fetched.
 - Desktop apps' notifications (libnotify and GNotification, Flatpaks included) show in Android's shade
   through `droidc host-link`, and from there on a paired Wear OS watch. Tapping one opens the desktop;
   GNotification buttons and replies reach the app; dismissing one closes it in GNOME. Checked against a

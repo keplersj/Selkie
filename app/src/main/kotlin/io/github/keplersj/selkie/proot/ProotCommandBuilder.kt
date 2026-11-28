@@ -117,6 +117,36 @@ class ProotCommandBuilder(
             .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
 
     /**
+     * The guest's media players for Android: `droidc media` under the supervisor (for the session bus),
+     * which prints them as JSON lines and takes commands such as `play-pause <player>` on stdin.
+     */
+    fun media(timeout: Int = AUDIO_OUT_WAIT_SECONDS): Invocation =
+        command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "media", "--timeout", timeout.toString()))
+            .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
+
+    /**
+     * The host file behind [guestPath] in this container: through the binds (the longest match wins),
+     * else under the rootfs. Null for relative paths, `..`, the kernel's own trees, and anything that
+     * resolves outside the rootfs and the bound directories (a symlink to elsewhere, say).
+     */
+    fun hostPath(guestPath: String): File? {
+        if (!guestPath.startsWith("/") || guestPath.split('/').any { it == ".." }) return null
+        if (listOf("/dev", "/proc", "/sys").any { guestPath == it || guestPath.startsWith("$it/") }) return null
+        val binds = listOf(env.guestTmp.path to "/tmp", env.guestRun.path to "/run") +
+            spec.binds.map { it.host to it.guest }
+        val hit = binds.filter { (_, g) ->
+            val dir = g.trimEnd('/')
+            guestPath == dir || guestPath.startsWith("$dir/")
+        }.maxByOrNull { it.second.length }
+        val (base, rest) = if (hit != null) File(hit.first) to guestPath.removePrefix(hit.second.trimEnd('/'))
+            else File(spec.rootfs) to guestPath
+        val f = File(base, rest.trimStart('/'))
+        val real = runCatching { f.canonicalFile }.getOrNull() ?: return null
+        val roots = (listOf(spec.rootfs) + binds.map { it.first }).mapNotNull { runCatching { File(it).canonicalFile }.getOrNull() }
+        return real.takeIf { r -> roots.any { root -> r == root || r.path.startsWith(root.path + File.separator) } }
+    }
+
+    /**
      * `droidc spawn-server` on the host, behind the guest's sudo/su/pkexec: for each request it starts this
      * container's proot again as fake root (`-0`) with the requested command. Only our own uid is served.
      * With [ask] (`DROIDC_SPAWNER_ASK`) it first asks Selkie on its stdout and waits for the answer on its
