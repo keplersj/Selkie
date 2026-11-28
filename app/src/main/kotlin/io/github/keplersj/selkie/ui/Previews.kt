@@ -90,7 +90,7 @@ object Fixtures {
         exec = listOf("gnome-shell", "--headless", "--virtual-monitor", "{width}x{height}"),
         configured = true, source = "label")
     val noSession = GraphicalSession(configured = false)
-    /** What a Ringed-style image offers: Phosh and Plasma Mobile for phones, desktops for others. */
+    /** What an image with several pocket sessions offers (Hooded has Phosh, Ringed will have Plasma Mobile): phone shells, desktops for others. */
     val pocketSessions = listOf(
         SessionEntry("sm.puri.Phosh", "xdg", "Phosh", "Phone shell", listOf("phone"), runnable = true, renderer = "wayland"),
         SessionEntry("plasma-mobile", "xdg", "Plasma Mobile", null, listOf("phone"), runnable = true, renderer = "wayland"),
