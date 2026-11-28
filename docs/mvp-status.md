@@ -78,6 +78,10 @@ refused, so use the Developer options toggle.
   AudioTrack) is built but has not been heard on a device yet; the emulator runs with `-noaudio`.
 - The desktop follows Android's look (dark mode, accent, font size, "Remove animations", high
   contrast) through `droidc host-link`. The emulator test checks night mode only; not yet seen on a device.
+- Web, mail, phone, SMS and map links opened in the desktop (`xdg-open`, GNOME apps) open in Android's
+  own apps, also through `droidc host-link`. The emulator test opens one web link; not yet seen on a device.
+- The screen stays on while a desktop app asks it to (a playing video), and GNOME's own lock screen
+  and idle blank are off, since Android locks the device. Not yet seen on a device.
 - Desktop apps' notifications (libnotify and GNotification, Flatpaks included) show in Android's shade
   through `droidc host-link`, and from there on a paired Wear OS watch. Tapping one opens the desktop;
   GNotification buttons and replies reach the app; dismissing one closes it in GNOME. Checked against a

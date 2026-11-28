@@ -440,7 +440,45 @@ class DesktopE2ETest {
             } catch (e: Exception) { log("could not keep desktop.log: $e") }
         }
         log("SELKIE_METRIC terminal_command_ran=true")
+        checkLinks()
         stop(s)
+    }
+
+    /**
+     * Opens a web link from the guest the way GNOME apps do (`gio open`, GIO's default handler) and
+     * checks that Android started an activity for it through `droidc host-link`. Last, since the browser
+     * takes the screen. Logged as a metric: the emulator image may have no browser.
+     */
+    private fun checkLinks() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString()
+        }
+        val url = "https://example.org/selkie-e2e-link"
+        guestProbe("links", """
+            run() { DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- "${'$'}@" 2>&1 | tail -3; }
+            echo "https handler: ${'$'}(run gio mime x-scheme-handler/https | head -1)"
+            echo "user default: ${'$'}(grep -s scheme-handler/https= ${'$'}HOME/.config/mimeapps.list)"
+            ls ${'$'}HOME/.local/share/applications/dev.droidc.AndroidOpen.desktop 2>&1
+            # GIO's default handler is the path GNOME apps and xdg-open take inside a GNOME session;
+            # a bare xdg-open here has no display, so it skips the scheme handlers for a text browser.
+            run gio open $url
+            echo "open exit=${'$'}?"
+        """.trimIndent())
+        // Selkie logs each link it hands to Android; dumpsys shows only the host of a web link.
+        var opened = false
+        var seen = false
+        val deadline = SystemClock.uptimeMillis() + 20_000
+        while (SystemClock.uptimeMillis() < deadline && !(opened && seen)) {
+            Thread.sleep(1000)
+            opened = opened || "opened a https link" in shell("logcat -d -s SelkieLink:I")
+            seen = seen || "example.org" in shell("dumpsys activity activities")
+        }
+        log("SELKIE_METRIC link_opened_on_android=$opened activity_seen=$seen")
+        shell("logcat -d -s SelkieLink:*").lines().filter { it.isNotBlank() }.takeLast(5)
+            .forEach { log("SELKIE_GUEST links-host ${it.trim().take(300)}") }
+        shell("dumpsys activity activities").lines().filter { "example.org" in it || "act=android.intent.action.VIEW" in it }.take(5)
+            .forEach { log("SELKIE_GUEST links-activity ${it.trim().take(300)}") }
     }
 
     @Test fun gtkAppNested() {
