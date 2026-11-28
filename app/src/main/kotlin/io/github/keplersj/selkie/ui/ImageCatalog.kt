@@ -47,14 +47,14 @@ sealed interface ImageSelection {
 }
 
 object ImageCatalog {
-    // Harbor and Monk are Pinniped OS's first two images. None can be offered yet, so every ref is null:
-    // - Monk: PinnipedOs.droidcRef("monk") is built, but ghcr.io doesn't serve it without a sign-in yet.
-    // - Harbor: only the generic harbor:45 is built; its droidc overlay comes after Monk's.
-    // Set a ref once its image can be pulled anonymously, and signed = true once droidc trusts Pinniped OS.
+    // Harbor and Monk are Pinniped OS's first two images. Monk's droidc overlay is published; Harbor only has the
+    // generic harbor:45 so far, so its ref stays null until PinnipedOs.droidcRef("harbor") is published. Set
+    // signed = true once droidc's default policy trusts Pinniped OS (droidc-dev/droidc#62).
     val tuned: List<TunedVariant> = listOf(
         TunedVariant("Harbor", "Pinniped OS with GNOME", "Tablet, desktop window, XR panels, parked car",
             setOf(DeviceClass.Foldable, DeviceClass.Tablet, DeviceClass.Desktop, DeviceClass.Xr, DeviceClass.Car), ref = null),
-        TunedVariant("Monk", "Pinniped OS, terminal only", "Any device", emptySet(), ref = null, anyDevice = true),
+        TunedVariant("Monk", "Pinniped OS, terminal only", "Any device", emptySet(),
+            ref = PinnipedOs.droidcRef("monk"), anyDevice = true),
         TunedVariant("Ringed", "Phosh or Plasma Mobile", "Phone", setOf(DeviceClass.Phone, DeviceClass.Foldable), ref = null),
         TunedVariant("Elephant", "Plasma Bigscreen", "TV", setOf(DeviceClass.Tv), ref = null),
         TunedVariant("Baikal", "A watch-sized system", "Watch", setOf(DeviceClass.Watch), ref = null),
@@ -79,9 +79,13 @@ object ImageCatalog {
         return fit + any + otherReady + notReady
     }
 
-    /** The first ready variant in [orderedFor] order (Monk on a phone, once published), else Bluefin LTS. */
+    /**
+     * The first ready, signed variant in [orderedFor] order (Monk on a phone, once droidc trusts it), else
+     * Bluefin LTS. An unsigned variant can be chosen but is never preselected, since the preselection note
+     * promises a signature check.
+     */
     fun defaultSelection(device: DeviceClass, variants: List<TunedVariant> = tuned): ImageSelection =
-        orderedFor(device, variants).firstOrNull { it.ready }?.let { ImageSelection.Tuned(it.name) }
+        orderedFor(device, variants).firstOrNull { it.ready && it.signed }?.let { ImageSelection.Tuned(it.name) }
             ?: ImageSelection.Known(known.first { it.signed }.id)
 
     /** The selection that matches an image already in use, or a custom address. */

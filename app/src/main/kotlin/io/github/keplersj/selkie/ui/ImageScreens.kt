@@ -199,8 +199,11 @@ private fun PreselectNote(preselected: ImageSelection, variants: List<TunedVaria
             "${v.name} is preselected" to "It's built for this kind of device. Every image's signature is checked " +
                 "before anything is downloaded."
         }
-        else -> "Bluefin LTS is preselected" to "The images built for Selkie aren't published yet. Bluefin LTS is " +
-            "signed and has a GNOME desktop. Every image's signature is checked before anything is downloaded."
+        else -> "Bluefin LTS is preselected" to (
+            if (variants.any { it.ready }) "The images built for Selkie aren't signed yet. " else
+                "The images built for Selkie aren't published yet. "
+            ) + "Bluefin LTS is signed and has a GNOME desktop. Every image's signature is checked before anything " +
+            "is downloaded."
     }
     SelkieCard(tone = CardTone.Low, shape = MaterialTheme.shapes.extraLarge) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
