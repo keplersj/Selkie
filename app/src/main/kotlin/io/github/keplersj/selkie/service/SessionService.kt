@@ -32,6 +32,9 @@ import io.github.keplersj.selkie.engine.ErrorKind
 import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
+import io.github.keplersj.selkie.engine.SessionChoice
+import io.github.keplersj.selkie.engine.SessionEntry
+import io.github.keplersj.selkie.ui.deviceClassOf
 import io.github.keplersj.selkie.engine.apps
 import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
@@ -194,9 +197,10 @@ class SessionService : Service() {
             }
             if (_state.value.status?.current != null) {
                 val spec = withContext(Dispatchers.IO) { c.shellSpec() }
-                val session = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec().session }.getOrNull() }
+                val parsed = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec() }.getOrNull() }
                 if (_state.value.container != container) return@launch
-                _state.update { it.copy(graphical = session) }
+                _state.update { it.copy(graphical = parsed?.session, graphicalSessions = parsed?.sessions.orEmpty(),
+                    sessionPick = SessionChoice.read(prefs, container, formFactor())) }
                 val apps = withContext(Dispatchers.IO) { c.apps() }
                 if (_state.value.container != container) return@launch
                 _state.update {
@@ -208,7 +212,7 @@ class SessionService : Service() {
                     }
                 }
             } else {
-                _state.update { it.copy(graphical = null, apps = null, appsError = null) }
+                _state.update { it.copy(graphical = null, graphicalSessions = emptyList(), apps = null, appsError = null) }
             }
         }
     }
@@ -226,7 +230,7 @@ class SessionService : Service() {
     private fun showContainer(name: String) {
         prefs.edit().putString(KEY_CONTAINER, name).apply()
         val root = newEnv(name).rootMode
-        _state.update { it.copy(container = name, status = null, statusError = null, statusLoaded = false, graphical = null,
+        _state.update { it.copy(container = name, status = null, statusError = null, statusLoaded = false, graphical = null, graphicalSessions = emptyList(),
             apps = null, appsError = null, rootMode = root, rootMessage = null) }
     }
 
@@ -258,7 +262,10 @@ class SessionService : Service() {
                 left?.let { stopServices(it, wait = true) }
                 client(EngineEnv.DEFAULT_CONTAINER).removeContainer(name, asRoot)
             }
-            if (outcome is DroidcOutcome.Success) setRootModeEnabled(this@SessionService, name, false)
+            if (outcome is DroidcOutcome.Success) {
+                setRootModeEnabled(this@SessionService, name, false)
+                SessionChoice.forget(prefs, name)
+            }
             onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
             // refreshStatus moves Home to the next listed container when the shown one has gone.
             refreshStatus()
@@ -639,6 +646,31 @@ class SessionService : Service() {
         _state.update { it.copy(desktop = DesktopState.Stopped, desktopApp = null) }
     }
 
+    /** This device's shape as droidc's session `form_factors` name it; it changes as a fold opens. */
+    private fun formFactor(): String = SessionChoice.formFactor(deviceClassOf(resources.configuration))
+
+    /** The session [startDesktop] would start for the selected container on this device. */
+    fun chosenSession(): SessionEntry? = _state.value.let {
+        SessionChoice.choose(it.graphicalSessions, it.graphical?.id, it.sessionPick)
+    }
+
+    /**
+     * Starts [id] from now on, on this device shape (or on every device when choosing by device is
+     * off); null goes back to the one made for the device. A running desktop keeps its session.
+     */
+    fun chooseSession(id: String?) {
+        val container = _state.value.container
+        SessionChoice.write(prefs, container, _state.value.sessionPick, id)
+        _state.update { it.copy(sessionPick = SessionChoice.read(prefs, container, formFactor())) }
+    }
+
+    /** Whether each device shape remembers its own session for the selected container. */
+    fun setChooseByDevice(on: Boolean) {
+        val container = _state.value.container
+        SessionChoice.writeByDevice(prefs, container, on)
+        _state.update { it.copy(sessionPick = SessionChoice.read(prefs, container, formFactor())) }
+    }
+
     /**
      * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
      * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
@@ -661,7 +693,11 @@ class SessionService : Service() {
                     val outcome = DroidcClient(env).shellSpec()
                     val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
                         ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
-                    if (app == null && spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")
+                    // Older droidc lists no sessions and starts its only one; then no id is passed.
+                    val pick = SessionChoice.read(prefs, env.container, formFactor())
+                    val chosen = if (app == null) SessionChoice.choose(spec.sessions, spec.session?.id, pick) else null
+                    if (app == null && spec.session?.configured != true && chosen == null) error("This image declares no graphical session. Configure one first.")
+                    _state.update { it.copy(desktopSession = chosen?.title ?: spec.session?.name) }
                     // Root mode leaves the files image-owned, which the app-uid proot below can't write to.
                     if (env.useRoot) error(if (app != null) "Apps don't open in root mode yet. Turn root mode off for this container to use them."
                         else "The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
@@ -672,7 +708,7 @@ class SessionService : Service() {
                     ensureServices(env, b)
                     startLink(b, env)
                     val (sw, sh) = DisplayScale.sessionSize(width, height)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale, sessionId = chosen?.id)
                     // An app runs in app mode at the display's scale, so adaptive apps get about the
                     // width an Android app has, and its menus and popovers show. The session's own
                     // scale is [scale], applied by GNOME; its compositor stays 1x.
@@ -693,7 +729,7 @@ class SessionService : Service() {
                 stopLink()
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
-                    desktopContainer = null) }
+                    desktopContainer = null, desktopSession = null) }
                 updateForeground(force = true)
                 stopIdleServices()
                 return@launch
@@ -720,7 +756,7 @@ class SessionService : Service() {
                 _state.update { it.copy(desktop =
                     if (code == 0 || killed) DesktopState.Stopped
                     else DesktopState.Failed("${app?.name ?: "The session"} exited with status $code", logTail(env)),
-                    desktopContainer = null, desktopApp = if (code == 0 || killed) null else app) }
+                    desktopContainer = null, desktopSession = null, desktopApp = if (code == 0 || killed) null else app) }
                 updateForeground(force = true)
                 stopIdleServices()
             }
@@ -741,7 +777,7 @@ class SessionService : Service() {
         }
         stopCompositor()
         pendingApp = null
-        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopApp = null) }
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopSession = null, desktopApp = null) }
         updateForeground(force = true)
         stopIdleServices()
     }
@@ -789,6 +825,9 @@ class SessionService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         sendAppearance()
+        // A fold opening or closing changes which session fits.
+        val container = _state.value.container
+        _state.update { it.copy(sessionPick = SessionChoice.read(prefs, container, formFactor())) }
     }
 
     private fun stopAudio() {

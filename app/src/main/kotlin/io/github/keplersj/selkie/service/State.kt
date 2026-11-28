@@ -6,6 +6,8 @@ import io.github.keplersj.selkie.engine.ContainerInfo
 import io.github.keplersj.selkie.engine.DroidcError
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.GraphicalSession
+import io.github.keplersj.selkie.engine.SessionEntry
+import io.github.keplersj.selkie.engine.SessionPick
 import io.github.keplersj.selkie.engine.StatusData
 
 enum class OpKind(val label: String) {
@@ -80,6 +82,12 @@ data class ServiceState(
     val sessions: List<SessionInfo> = emptyList(),
     /** The current deployment's graphical session (from `shell-spec`); null until known. */
     val graphical: GraphicalSession? = null,
+    /** Every session the current deployment offers (from `shell-spec`); empty with older droidc. */
+    val graphicalSessions: List<SessionEntry> = emptyList(),
+    /** How the selected container picks its session on this device. */
+    val sessionPick: SessionPick = SessionPick(),
+    /** Name of the session the desktop runs, while it runs. */
+    val desktopSession: String? = null,
     val desktop: DesktopState = DesktopState.Stopped,
     /** Container the desktop belongs to while it is starting or running. One desktop at a time. */
     val desktopContainer: String? = null,

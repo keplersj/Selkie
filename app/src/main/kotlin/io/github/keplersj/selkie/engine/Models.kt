@@ -162,15 +162,37 @@ data class Bind(val host: String, val guest: String)
  */
 @Serializable
 data class GraphicalSession(
+    /** Its id in [ShellSpec.sessions] (droidc 0.x with several sessions); null from older droidc. */
+    val id: String? = null,
     val name: String? = null,
     /** `wayland` (nested in Selkie's compositor) or `screencast` (headless, shown by droidc bridge). */
     val renderer: String? = null,
     val exec: List<String>? = null,
     val services: List<List<String>> = emptyList(),
     val configured: Boolean = false,
-    /** `label` or `override`. */
+    /** `label`, `override` or `xdg` (a `wayland-sessions` desktop entry). */
     val source: String? = null,
 )
+
+/**
+ * One session the deployment offers (droidc `session list`, `shell-spec` `sessions`): the user's
+ * override, the image's label session, or a `wayland-sessions` desktop entry.
+ */
+@Serializable
+data class SessionEntry(
+    val id: String,
+    val source: String? = null,
+    val name: String? = null,
+    val comment: String? = null,
+    /** Devices it says it suits: phone, tablet, desktop, tv, watch, xr, car. Empty: not said. */
+    @SerialName("form_factors") val formFactors: List<String> = emptyList(),
+    val runnable: Boolean = false,
+    val renderer: String? = null,
+    /** Why it can't start, when it can't. */
+    val problem: String? = null,
+) {
+    val title: String get() = name ?: id
+}
 
 @Serializable
 data class ShellSpec(
@@ -180,6 +202,8 @@ data class ShellSpec(
     val cwd: String = "/root",
     @SerialName("session_label") val sessionLabel: String? = null,
     val session: GraphicalSession? = null,
+    /** Every session the deployment offers; empty from older droidc, which has one at most. */
+    val sessions: List<SessionEntry> = emptyList(),
     /** Guest paths to bind the guest droidc over: the sudo/su/pkexec shims (proot only). */
     val shims: List<String> = emptyList(),
 )
