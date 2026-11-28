@@ -32,8 +32,11 @@ wait_for_text() {
   return 1
 }
 
-# Wear OS turns the screen off after a few seconds and then goes back to the watch face.
+# Wear OS turns the screen off after a few seconds and then goes back to the watch face. The emulator
+# also reports itself as charging, and a charging watch covers every app with its charging screen, so
+# unplug it first.
 keep_awake() {
+  adb shell dumpsys battery unplug
   adb shell svc power stayon true
   adb shell settings put system screen_off_timeout 1800000
   adb shell input keyevent KEYCODE_WAKEUP
@@ -46,7 +49,7 @@ crashed() { grep -q "AndroidRuntime: Process: $PKG" "$OUT/logcat.txt"; }
 
 apk=$(find "$APKS" -name 'selkie-watch-*.apk' | head -1)
 [ -n "$apk" ] || { echo "no selkie-watch-*.apk in $APKS"; exit 1; }
-adb install -r -t "$apk"
+adb install -r -t -g "$apk"
 
 adb logcat -c
 adb logcat -v threadtime > "$OUT/logcat.txt" &
