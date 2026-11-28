@@ -37,6 +37,8 @@ class MediaBridge(
     private val session = MediaSession(context, "Selkie desktop")
     @Volatile private var current: GuestPlayer? = null
     private var art: Pair<String, Bitmap?>? = null
+    /** Set on the main thread by [release]; a snapshot posted after it must not bring the notification back. */
+    private var released = false
 
     val token: MediaSession.Token get() = session.sessionToken
 
@@ -66,6 +68,7 @@ class MediaBridge(
     fun update(snapshot: GuestMediaSnapshot) = main.post { show(snapshot.current) }
 
     fun release() = main.post {
+        released = true
         current = null
         nm.cancel(NOTIF_ID)
         session.isActive = false
@@ -73,6 +76,7 @@ class MediaBridge(
     }
 
     private fun show(p: GuestPlayer?) {
+        if (released) return
         current = p
         if (p == null) {
             nm.cancel(NOTIF_ID)

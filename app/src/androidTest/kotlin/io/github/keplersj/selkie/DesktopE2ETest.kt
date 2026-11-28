@@ -318,7 +318,7 @@ class DesktopE2ETest {
     /**
      * Runs a small MPRIS player in the guest (Python and GObject, as GNOME images have) and checks that
      * Selkie's media session shows its track and that pausing it from Android reaches the player.
-     * Metrics, not a gate: an image without Python's GObject skips it.
+     * An image without Python's GObject has no player and skips it; once the player is up, both must work.
      */
     private fun checkMedia(s: SessionService) {
         val script = File(ctx.filesDir, "guest/tmp/selkie-mpris.py")
@@ -348,6 +348,10 @@ class DesktopE2ETest {
             .forEach { log("SELKIE_GUEST media-log ${it.take(300)}") }
         player.join(70_000)
         script.delete()
+        if (shown?.current?.title == "Selkie test tone") {
+            assertNotNull("a media session while the desktop plays", token)
+            assertEquals("pause from Android reaches the guest player (calls: $calls)", "Paused", paused)
+        }
     }
 
     /** One second of a 440 Hz tone at half scale, 48 kHz stereo S16LE, as a WAV file. */
