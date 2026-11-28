@@ -1,7 +1,8 @@
 # Nightly e2e across form factors, report-only.
 #
 # Runs the same instrumented e2e as android.yml on more device profiles, in the
-# order of priority: tablet, foldable, phone, TV. PR CI keeps one phone and one
+# order of priority: tablet, foldable, phone, TV, XR headset, and a phone on API 29
+# (minSdk, the oldest Android Selkie supports). PR CI keeps one phone and one
 # tablet leg so it stays fast; this catches layout and lifecycle breaks on the
 # rest without holding up merges. The watch and car legs have their own scripts:
 # e2e-wear.sh opens the watch remote and its tile, e2e-car.sh drives and parks
@@ -40,13 +41,15 @@ jobs:
           id=$(gh run list -R "$REPO" --workflow Android --branch main --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -z "$id" ]; then echo "::error::No green Android run on main yet"; exit 1; fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
-      # The TV, watch and car legs depend on which system images Google publishes; list them
-      # so a missing image is plain from this job's log.
-      - name: List TV, Wear and Automotive system images
+      # The TV, watch, car, XR and oldest-phone legs depend on which system images Google publishes;
+      # list them, and the device profiles, so a missing image is plain from this job's log.
+      - name: List TV, Wear, Automotive, XR and API 29 system images
         continue-on-error: true
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list 2>/dev/null \
-            | grep -E 'system-images;android-3[3-6];(android-tv|google-tv|android-wear|android-automotive)' | sort -u
+            | grep -E 'system-images;android-(29|3[3-6]);' | grep -E 'tv|wear|automotive|xr|google_apis;' | sort -u
+          echo "Device profiles:"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" list device -c 2>/dev/null | grep -iE 'xr|tv|wear|automotive|pixel' || true
 
   e2e:
     name: E2E (${{ matrix.label }})
@@ -79,6 +82,19 @@ jobs:
             api: 36
             target: android-tv
             profile: tv_1080p
+          - form: phone-api29
+            label: phone, API 29 (oldest supported)
+            # minSdk is 29: the oldest Android that Selkie installs on.
+            api: 29
+            target: google_apis
+            profile: pixel_7
+          - form: xr
+            label: XR headset, API 34
+            # Android XR's emulator image (Android 14 based). It is the newest of these images; if the
+            # name or profile changes, pick-run's list shows what Google publishes now.
+            api: 34
+            target: google-xr
+            profile: xr_headset_device
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
