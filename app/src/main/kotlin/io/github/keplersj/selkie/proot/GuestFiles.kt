@@ -51,7 +51,7 @@ object GuestFiles {
         kernel: () -> Kernel = { hostKernel() },
     ): Map<String, File> {
         listOf(env.guestTmp, env.guestRun, env.guestShm, env.guestCgroup, env.guestGenerated, env.prootTmp,
-            env.prootL2s)
+            env.prootL2s, env.usbDevDir, env.usbSysDir)
             .forEach { it.mkdirs() }
         // Binds whose guest path is under /run need their mount point to exist in the writable dir.
         for (b in spec.binds) if (b.guest.startsWith("/run/")) {

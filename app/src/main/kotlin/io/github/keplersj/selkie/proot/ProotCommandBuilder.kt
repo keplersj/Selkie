@@ -44,11 +44,17 @@ class ProotCommandBuilder(
         bind(env.droidcGuestBin.path, "/usr/bin/droidc")
         bind(env.cgshimLib.path, CGSHIM_GUEST_PATH)
         bind(env.ifshimLib.path, IFSHIM_GUEST_PATH)
+        bind(env.usbshimLib.path, USBSHIM_GUEST_PATH)
         bind(env.guestCgroup.path, "/sys/fs/cgroup")
         bind(env.guestTmp.path, "/tmp")
         bind(env.guestRun.path, "/run")
         bind(env.guestShm.path, "/dev/shm")
         bind(resolvConf.path, "/etc/resolv.conf")
+        // The USB devices Android granted (UsbBridge). A root-mode guest opens the real nodes instead.
+        if (!rootMode) {
+            bind(env.usbDevDir.path, "/dev/bus/usb")
+            bind(env.usbSysDir.path, "/sys/bus/usb/devices")
+        }
         for ((guest, host) in (fakeProc + overlays).toSortedMap()) bind(host.path, guest)
         for (b in spec.binds) bind(b.host, b.guest)
         // sudo/su/pkexec: the guest droidc again, which asks the container's spawn-server for root.
@@ -63,6 +69,7 @@ class ProotCommandBuilder(
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
         if (spec.shims.isNotEmpty()) put("DROIDC_SPAWNER", env.spawnerSocket)
+        put("DROIDC_USB_SOCKET", env.usbSocket)
         // The guest's adb talks to its server on a socket in /run, never TCP 5037 on the localhost every app
         // shares (as `droidc adb` does). Unless the image sets its own.
         putIfAbsent("ADB_SERVER_SOCKET", ADB_SERVER_SOCKET)
@@ -235,6 +242,8 @@ class ProotCommandBuilder(
         const val CGSHIM_GUEST_PATH = "/usr/lib/droidc/cgshim.so"
         /** Where `droidc supervise` looks for the network-interface shim (DROIDC_IFSHIM's default). */
         const val IFSHIM_GUEST_PATH = "/usr/lib/droidc/ifshim.so"
+        /** Where `droidc supervise` looks for the USB shim (DROIDC_USBSHIM's default). */
+        const val USBSHIM_GUEST_PATH = "/usr/lib/droidc/usbshim.so"
         /** Makes `droidc spawn-server` ask the host before each root command (droidc's `spawn::ASK_ENV`). */
         const val SPAWNER_ASK_ENV = "DROIDC_SPAWNER_ASK"
     }

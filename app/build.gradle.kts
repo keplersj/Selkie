@@ -18,7 +18,7 @@ val appVersionCode = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(appVersion)?.d
 val releaseKeystore: String? = System.getenv("SELKIE_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
 val abis = listOf("arm64-v8a", "x86_64")
 val nativeLibs = listOf(
-    "libdroidc.so", "libdroidc-guest.so", "libcgshim.so", "libifshim.so", "libproot.so", "libproot-loader.so",
+    "libdroidc.so", "libdroidc-guest.so", "libcgshim.so", "libifshim.so", "libusbshim.so", "libproot.so", "libproot-loader.so",
     // native/selkie-compositor (cargo ndk), the in-app Wayland compositor.
     "libselkie_compositor.so",
 )

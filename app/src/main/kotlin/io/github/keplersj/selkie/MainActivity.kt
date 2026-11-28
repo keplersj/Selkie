@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -30,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.keplersj.selkie.engine.AppEntry
@@ -42,6 +45,7 @@ import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
 import io.github.keplersj.selkie.service.SessionService
 import io.github.keplersj.selkie.ui.*
+import io.github.keplersj.selkie.usb.UsbBridge
 import io.github.keplersj.selkie.watch.WatchProtocol
 
 class MainActivity : ComponentActivity() {
@@ -89,6 +93,11 @@ class MainActivity : ComponentActivity() {
     private fun takeNotificationTap(intent: Intent?) {
         if (intent?.action == GuestNotifier.ACTION_TAP)
             tappedNotification.value = intent.getStringExtra(GuestNotifier.EXTRA_KEY)
+        // Android opened Selkie for a plugged-in adb or fastboot device; opening it granted the device.
+        // A service that isn't running yet finds it when it starts.
+        if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                ?.let { UsbBridge.current?.openedFor(it) }
     }
 
     override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
