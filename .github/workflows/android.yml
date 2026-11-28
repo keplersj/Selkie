@@ -10,9 +10,12 @@ on:
         type: boolean
         default: false
 
+# On a PR branch a new push replaces the old run. On main every merge's run
+# finishes, so `latest` and the Release workflow always get a build; GitHub
+# still collapses queued main runs to the newest one waiting (#161).
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   droidc:
