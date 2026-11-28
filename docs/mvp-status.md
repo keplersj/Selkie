@@ -262,6 +262,7 @@ nested mode).
 | Compositor protocol (configure, shm, frame pacing, input, resize) | Works | `cargo test` with a real Wayland client |
 | GNOME → bridge → compositor on Android, through the app (frames in ~6-10 s, tap, Escape, Super) | Works on the x86_64 emulator; PipeWire needs `access.socket` unrestricted (Android hides `/proc/<pid>/root`); injected hardware keys reached the view on some runs only (test falls back to the view and logs `key_path`) | `DesktopE2ETest` (`emulator-gui` job) |
 | proot instead of bwrap | Works (GNOME and Nautilus run under proot on the emulator) | `emulator-gui` job; also seen on a Galaxy Tab S11 (manual, PR #7 comment) |
+| Offer the session made for a new device shape (a fold opening or closing, a dock), or keep the running one | Built, untested on a device | `ShapeChangeTest`; previews `ReshapeDialog` and `ShapeSettings` |
 
 Known gaps: popups are dismissed and subsurfaces are not drawn (fine for full-screen session compositors
 and the bridge, not for single apps with menus); no clipboard; US keymap only; the session size is fixed

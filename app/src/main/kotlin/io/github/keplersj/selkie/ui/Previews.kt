@@ -542,6 +542,28 @@ fun DesktopControlsHiddenPreview() = SelkieTheme(dark = true, dynamicColor = fal
 @Composable
 fun StopDesktopDialogPreview() = PreviewFrame { StopDesktopDialog("default", onDismiss = noop, onConfirm = noop) }
 
+@PhonePreviews
+@Composable
+fun SwitchSessionDialogPreview() = PreviewFrame {
+    SwitchSessionDialog("pocket", Fixtures.pocketSessions, "phone", current = "sm.puri.Phosh",
+        onDismiss = noop, onSwitch = {})
+}
+
+/** A fold opened under Phosh: Plasma Desktop is made for a tablet. */
+@PhonePreviews @TabletPreview
+@Composable
+fun ReshapeDialogPreview() = PreviewFrame {
+    ReshapeDialog(Reshape("pocket", "tablet", "Phosh", Fixtures.pocketSessions.first { it.id == "plasma" }),
+        onKeep = {}, onSwitch = noop)
+}
+
+@PhonePreviews @TabletPreview
+@Composable
+fun ShapeSettingsPreview() = PreviewFrame {
+    ShapeSettingsContent(io.github.keplersj.selkie.engine.OnShapeChange.Ask, kept = listOf("work"),
+        onChoose = {}, onBack = noop)
+}
+
 // --- Images, Activity and Settings ---
 
 @Composable

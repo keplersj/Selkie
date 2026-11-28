@@ -66,6 +66,7 @@ fun SettingsContent(
     onPhantomHelp: () -> Unit,
     onNotificationSettings: () -> Unit,
     onAbout: () -> Unit,
+    onShape: () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     Column(
@@ -102,6 +103,10 @@ fun SettingsContent(
 
             SectionTitle("Desktop", Modifier.padding(top = 8.dp))
             Group {
+                GroupItem("When the device changes shape", supporting = "Resize, or offer the session made for it",
+                    leading = { Icon(SelkieIcons.Desktop, contentDescription = null) },
+                    trailing = { Icon(SelkieIcons.Chevron, contentDescription = null) },
+                    onClick = onShape)
                 GroupItem("Keyboard layout", supporting = "US only for now",
                     leading = { Icon(SelkieIcons.Keyboard, contentDescription = null) })
                 GroupItem("User services", supporting = "Uses the image's own systemd user services when it has them",
@@ -126,7 +131,7 @@ fun SettingsContent(
 /** [SettingsContent] for this device. */
 @Composable
 fun SettingsScreen(rail: Boolean, phantom: PhantomProcessCheck.State, suFound: Boolean,
-                   onPhantomHelp: () -> Unit, onAbout: () -> Unit) {
+                   onPhantomHelp: () -> Unit, onAbout: () -> Unit, onShape: () -> Unit = {}) {
     val ctx = LocalContext.current
     var notificationsOn by remember { mutableStateOf(NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
     LifecycleResumeEffect(Unit) {
@@ -145,7 +150,7 @@ fun SettingsScreen(rail: Boolean, phantom: PhantomProcessCheck.State, suFound: B
                     .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName))
             }
         },
-        onAbout = onAbout)
+        onAbout = onAbout, onShape = onShape)
 }
 
 /** App, data and cache bytes, as Android's storage settings count them; null if Android won't say. */
