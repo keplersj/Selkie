@@ -6,7 +6,15 @@
 use libfuzzer_sys::fuzz_target;
 use selkie_compositor::scene::{Positioner, Rect};
 
-fuzz_target!(|input: ((i32, i32), (i32, i32, i32, i32), u32, u32, u32, (i32, i32), (i32, i32, i32, i32))| {
+fuzz_target!(|input: (
+    (i32, i32),
+    (i32, i32, i32, i32),
+    u32,
+    u32,
+    u32,
+    (i32, i32),
+    (i32, i32, i32, i32)
+)| {
     let (size, anchor_rect, anchor, gravity, constraint_adjustment, offset, bounds) = input;
     let positioner = Positioner {
         size,
