@@ -41,9 +41,9 @@ import io.github.keplersj.selkie.link.AdbRequests
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.BatteryWatcher
-import io.github.keplersj.selkie.link.NetworkWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.NetworkWatcher
 import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
@@ -923,17 +923,17 @@ class SessionService : Service() {
         busy += starting.keys
         val idle = synchronized(services) { services.keys.filter { it !in busy }.map { services.remove(it)!! } }
         idle.forEach { stopServices(it, wait = false) }
-        stopAppearanceWatcherIfIdle()
+        stopLinkWatchersIfIdle()
     }
 
     private fun stopAllServices() {
         val all = synchronized(services) { services.values.toList().also { services.clear() } }
         all.forEach { stopServices(it, wait = false) }
-        stopAppearanceWatcherIfIdle()
+        stopLinkWatchersIfIdle()
     }
 
-    /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
-    private fun stopAppearanceWatcherIfIdle() {
+    /** Stops following Android's look, battery and network once no container's host-link runs. */
+    private fun stopLinkWatchersIfIdle() {
         if (synchronized(services) { services.isEmpty() })
             scope.launch(Dispatchers.Main) {
                 appearanceWatcher?.stop(); appearanceWatcher = null
@@ -942,6 +942,7 @@ class SessionService : Service() {
             }
     }
 
+    /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
     private fun stopServices(s: ContainerServices, wait: Boolean) {
         s.link?.stop()
         val procs = listOfNotNull(s.keeper, s.spawner?.process)
