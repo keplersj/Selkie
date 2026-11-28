@@ -76,7 +76,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += abis }
         buildConfigField("String", "PROOT_SOURCE_URL",
-            "\"https://github.com/keplersj/Selkie/releases/tag/v$appVersion\"")
+            "\"https://github.com/droidc-dev/Selkie/releases/tag/v$appVersion\"")
     }
 
     signingConfigs {

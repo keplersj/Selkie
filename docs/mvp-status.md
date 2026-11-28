@@ -1,7 +1,7 @@
 # Selkie MVP status (v0.1.0-mvp.1)
 
 Date: 2026-11-17, updated 2026-11-18 with real-hardware results. Components: Selkie (this repo, MIT) and droidc
-([keplersj/droidc](https://github.com/keplersj/droidc), MIT), plus a patched proot (GPL-2,
+([droidc-dev/droidc](https://github.com/droidc-dev/droidc), MIT), plus a patched proot (GPL-2,
 separate binary).
 
 **Run on two physical devices on 2026-11-17/18** (both arm64, Android 16): a Samsung Galaxy Tab S11
@@ -35,7 +35,7 @@ Emulator end-to-end (CI, `reactivecircus/android-emulator-runner`, API 34 google
 `quay.io/centos-bootc/centos-bootc:stream10` with `--links link2symlink`, runs commands inside the
 deployment through the bundled proot (`cat /etc/os-release`, `droidc --json status`, `ls`, `id`,
 `id -u` under `-0`), upgrades, switches to a second stream10 digest, and rolls back.
-Result: **passes** (CI run [44081405858](https://github.com/keplersj/Selkie/actions/runs/44081405858)). Earlier runs found and fixed three Android-only problems: SIGSYS from musl on x86_64 (fixed by the bionic build), CentOS 10 needing x86-64-v3 (emulator `-cpu host`), and the test's second-digest lookup.
+Result: **passes** (CI run [44081405858](https://github.com/droidc-dev/Selkie/actions/runs/44081405858)). Earlier runs found and fixed three Android-only problems: SIGSYS from musl on x86_64 (fixed by the bionic build), CentOS 10 needing x86-64-v3 (emulator `-cpu host`), and the test's second-digest lookup.
 
 ## Real-hardware results
 
@@ -98,7 +98,7 @@ refused, so use the Developer options toggle.
 ## Release status
 
 `v0.1.0-mvp.1` is published as a GitHub prerelease:
-<https://github.com/keplersj/Selkie/releases/tag/v0.1.0-mvp.1> (APK, proot source tarball, droidc
+<https://github.com/droidc-dev/Selkie/releases/tag/v0.1.0-mvp.1> (APK, proot source tarball, droidc
 commit, SHA256SUMS). The `prerelease` job in `.github/workflows/android.yml` publishes it when a
 `v*-*` tag is pushed, only after the emulator e2e passes on that tag. The APK is signed with the
 public MVP test key.
@@ -106,7 +106,7 @@ public MVP test key.
 ## Install on the Galaxy Tab S11
 
 1. On the tablet, open the release page
-   <https://github.com/keplersj/Selkie/releases/tag/v0.1.0-mvp.1> and download
+   <https://github.com/droidc-dev/Selkie/releases/tag/v0.1.0-mvp.1> and download
    `selkie-0.1.0-mvp.1.apk`.
 2. Open the downloaded file. Allow your browser or Files app to "Install unknown apps" when prompted
    (Settings → Apps → Special access → Install unknown apps), then install.

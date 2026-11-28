@@ -3,7 +3,7 @@
 Selkie is an Android app that runs unmodified **bootc container images** (first target: Bluefin LTS
 arm64 on a Samsung Galaxy Tab S11, Android 16) under [proot](https://proot-me.github.io/), without root.
 
-The engine is **droidc**, a separate static Rust binary (`keplersj/droidc`). Selkie launches it as a
+The engine is **droidc**, a separate static Rust binary (`droidc-dev/droidc`). Selkie launches it as a
 subprocess and talks to it with newline-delimited JSON on stdout; Selkie itself is the Kotlin / Jetpack
 Compose frontend: image picker, progress, status, a Termux-based terminal, a foreground service that
 keeps everything alive, and the proot launch logic.
@@ -24,8 +24,8 @@ See [docs/architecture.md](docs/architecture.md).
 
 ## Download
 
-- **Latest `main`:** the [`latest` prerelease](https://github.com/keplersj/Selkie/releases/tag/latest) is replaced on every push to `main` that passes CI (unit tests and the emulator E2E). Grab `selkie-latest.apk` from it, and `selkie-watch-latest.apk` for a paired Wear OS watch; no GitHub login needed.
-- **Versioned builds:** prereleases tagged `v*` (see [Releases](https://github.com/keplersj/Selkie/releases)).
+- **Latest `main`:** the [`latest` prerelease](https://github.com/droidc-dev/Selkie/releases/tag/latest) is replaced on every push to `main` that passes CI (unit tests and the emulator E2E). Grab `selkie-latest.apk` from it, and `selkie-watch-latest.apk` for a paired Wear OS watch; no GitHub login needed.
+- **Versioned builds:** prereleases tagged `v*` (see [Releases](https://github.com/droidc-dev/Selkie/releases)).
 
 Both are signed with the public MVP test key, for testing only (see [docs/signing.md](docs/signing.md)).
 

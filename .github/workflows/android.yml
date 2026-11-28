@@ -31,7 +31,7 @@ jobs:
         run: echo "ref=$(tr -d '[:space:]' < droidc.ref)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: keplersj/droidc
+          repository: droidc-dev/droidc
           ref: ${{ steps.ref.outputs.ref }}
           path: droidc-src
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
