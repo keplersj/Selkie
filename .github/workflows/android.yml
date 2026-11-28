@@ -219,10 +219,24 @@ jobs:
             wear/build/reports/tests
 
   emulator-e2e:
-    name: Emulator E2E (x86_64, API 34)
+    name: Emulator E2E (${{ matrix.label }})
     needs: apk
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # The tablet run is new, so it reports without failing the workflow until it has been green for a while.
+    continue-on-error: ${{ matrix.advisory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - form: phone
+            label: x86_64, API 34
+            profile: ""
+            advisory: false
+          - form: tablet
+            label: tablet, x86_64, API 34
+            profile: pixel_tablet
+            advisory: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -240,6 +254,7 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
+          profile: ${{ matrix.profile }}
           disk-size: 12G
           ram-size: 4096M
           heap-size: 512M
@@ -251,7 +266,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: e2e-results
+          name: ${{ matrix.form == 'phone' && 'e2e-results' || format('e2e-results-{0}', matrix.form) }}
           path: out
 
   emulator-gui:
