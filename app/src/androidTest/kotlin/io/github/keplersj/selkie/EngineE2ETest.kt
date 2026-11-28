@@ -8,6 +8,10 @@ import io.github.keplersj.selkie.platform.PhantomProcessCheck
 import io.github.keplersj.selkie.proot.GuestFiles
 import io.github.keplersj.selkie.proot.Invocation
 import io.github.keplersj.selkie.proot.ProotCommandBuilder
+import io.github.keplersj.selkie.service.RootAskHost
+import io.github.keplersj.selkie.service.RootChoice
+import io.github.keplersj.selkie.service.RootRequest
+import io.github.keplersj.selkie.service.SpawnerEvent
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
@@ -151,13 +155,25 @@ class EngineE2ETest {
         assertTrue("ifshim not preloaded: $ifs", ifs.contains("/usr/lib/droidc/ifshim.so"))
         if (ifs.contains("names=")) assertTrue("no loopback listed: $ifs", Regex("names=.*\\blo\\b").containsMatchIn(ifs))
 
-        // sudo (droidc's spawner): the shim asks Selkie's host spawn-server, which runs proot -0.
+        // sudo (droidc's spawner): the shim asks Selkie's host spawn-server, which asks Selkie (here, this
+        // test) over its stdin and stdout and, once allowed, runs the command under proot -0.
         assertTrue("shell-spec lists no sudo/su/pkexec shims", spec.shims.isNotEmpty())
-        val spawner = startHost(b.spawnServer(), File(env.cacheDir, "e2e-spawner.log"))
+        val asked = java.util.concurrent.LinkedBlockingQueue<RootRequest>()
+        val answers = java.util.concurrent.LinkedBlockingQueue<RootChoice>()
+        var host: RootAskHost? = null
+        host = RootAskHost.start(b.spawnServer(), File(env.cacheDir, "e2e-spawner.log"), env.container, b.rootfs,
+            onEvent = { e ->
+                if (e is SpawnerEvent.Asked) {
+                    asked.put(e.request)
+                    host?.answer(e.request.id, answers.poll(30, TimeUnit.SECONDS) ?: RootChoice.Deny)
+                }
+            })
+        val spawner = host.process
         try {
             // The spawner binds its socket a moment after it starts, so give it a few seconds before
             // the first sudo rather than racing it.
             val sudo = b.command(listOf("/usr/bin/sudo", "/usr/bin/id", "-u"))
+            answers.put(RootChoice.Once)
             var (c7, sudoId) = inGuest(sudo)
             repeat(20) {
                 if (c7 == 0 || !sudoId.contains("Connection refused") || !spawner.isAlive) return@repeat
@@ -166,6 +182,19 @@ class EngineE2ETest {
             }
             log("sudo id -u exit=$c7 output=$sudoId")
             assertEquals("sudo output: $sudoId", 0, c7); assertEquals("0", sudoId.trim().lines().last())
+            val first = asked.poll(5, TimeUnit.SECONDS)
+            assertNotNull("the spawner didn't ask before running sudo", first)
+            assertEquals(listOf("/usr/bin/id", "-u"), first!!.argv)
+            assertEquals("sudo", first.via)
+            assertEquals("/usr/bin/id", first.program)
+
+            // Refused: nothing runs, and sudo says why.
+            answers.put(RootChoice.Deny)
+            val (c8, refused) = inGuest(b.command(listOf("/usr/bin/sudo", "/usr/bin/touch", "/e2e-refused")))
+            log("refused sudo exit=$c8 output=$refused")
+            assertEquals("refused sudo output: $refused", 1, c8)
+            assertTrue("refused sudo output: $refused", refused.contains("did not allow"))
+            assertFalse(File(b.rootfs, "e2e-refused").exists())
         } finally { stopHost(spawner) }
 
         // One session bus per container (droidc user-services): Selkie's keeper, which two sessions join.
