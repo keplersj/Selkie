@@ -4,8 +4,24 @@ package io.github.keplersj.selkie.ui
 enum class DeviceClass { Phone, Foldable, Tablet, Desktop, Xr, Tv, Car, Watch }
 
 /**
- * An image the droidc project builds for Selkie. [ref] is null until the image is published; until then the
- * picker shows it as "Coming later" and it can't be chosen.
+ * Pinniped OS, the distro droidc-tuned images come from. Its factory (github.com/Pinniped-OS/factory) tags
+ * images `<image>:<release>[-<platform>]`: no suffix is the generic multi-arch UEFI image, and `-droidc` is the
+ * overlay tuned for droidc and Selkie, with aarch64 and x86_64 (the emulator) in one index.
+ */
+object PinnipedOs {
+    const val REGISTRY = "ghcr.io/pinniped-os"
+    /** Follows Fedora. */
+    const val RELEASE = "45"
+    const val PLATFORM = "droidc"
+
+    /** The droidc overlay of [image], such as `ghcr.io/pinniped-os/monk:45-droidc`. */
+    fun droidcRef(image: String): String = "$REGISTRY/$image:$RELEASE-$PLATFORM"
+}
+
+/**
+ * A droidc-tuned Pinniped OS image. [ref] is null until Selkie can pull it; until then the picker shows it as
+ * "Coming later" and it can't be chosen. [signed] is false until droidc's default policy trusts the image's
+ * signer, so the picker marks it Unsigned and asks before installing it unchecked.
  */
 data class TunedVariant(
     val name: String,
@@ -15,6 +31,7 @@ data class TunedVariant(
     val fits: Set<DeviceClass>,
     val ref: String?,
     val anyDevice: Boolean = false,
+    val signed: Boolean = false,
 ) {
     val ready: Boolean get() = ref != null
 }
@@ -30,12 +47,14 @@ sealed interface ImageSelection {
 }
 
 object ImageCatalog {
-    // Harbor and Monk are the first two to be built (droidc-dev images factory). None is published yet, so
-    // every ref is null; set one when its image ships and the picker offers it.
+    // Harbor and Monk are Pinniped OS's first two images. None can be offered yet, so every ref is null:
+    // - Monk: PinnipedOs.droidcRef("monk") is built, but ghcr.io doesn't serve it without a sign-in yet.
+    // - Harbor: only the generic harbor:45 is built; its droidc overlay comes after Monk's.
+    // Set a ref once its image can be pulled anonymously, and signed = true once droidc trusts Pinniped OS.
     val tuned: List<TunedVariant> = listOf(
-        TunedVariant("Harbor", "Bluefin LTS with GNOME", "Tablet, desktop window, XR panels, parked car",
+        TunedVariant("Harbor", "Pinniped OS with GNOME", "Tablet, desktop window, XR panels, parked car",
             setOf(DeviceClass.Foldable, DeviceClass.Tablet, DeviceClass.Desktop, DeviceClass.Xr, DeviceClass.Car), ref = null),
-        TunedVariant("Monk", "CentOS, terminal only", "Any device", emptySet(), ref = null, anyDevice = true),
+        TunedVariant("Monk", "Pinniped OS, terminal only", "Any device", emptySet(), ref = null, anyDevice = true),
         TunedVariant("Ringed", "Phosh or Plasma Mobile", "Phone", setOf(DeviceClass.Phone, DeviceClass.Foldable), ref = null),
         TunedVariant("Elephant", "Plasma Bigscreen", "TV", setOf(DeviceClass.Tv), ref = null),
         TunedVariant("Baikal", "A watch-sized system", "Watch", setOf(DeviceClass.Watch), ref = null),
@@ -92,7 +111,7 @@ object ImageCatalog {
 
     fun resolve(selection: ImageSelection, customRef: String, variants: List<TunedVariant> = tuned): Resolved? = when (selection) {
         is ImageSelection.Tuned -> variants.firstOrNull { it.name == selection.name && it.ready }
-            ?.let { Resolved(it.name, it.ref!!, signed = true) }
+            ?.let { Resolved(it.name, it.ref!!, it.signed) }
         is ImageSelection.Known -> known.firstOrNull { it.id == selection.id }?.let { Resolved(it.title, it.ref, it.signed) }
         ImageSelection.Custom -> customRef.trim().takeIf { isPlausibleRef(it) }
             ?.let { Resolved(it.substringAfterLast('/').ifEmpty { it }, it, signed = true) }

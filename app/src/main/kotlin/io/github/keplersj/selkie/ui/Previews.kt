@@ -278,8 +278,8 @@ fun HomeErrorPreview() = Home(Fixtures.homeError)
 /** Harbor and Monk as if published, to show the design's preselection. */
 private val publishedVariants = ImageCatalog.tuned.map {
     when (it.name) {
-        "Harbor" -> it.copy(ref = "ghcr.io/droidc-dev/harbor:stable")
-        "Monk" -> it.copy(ref = "ghcr.io/droidc-dev/monk:stable")
+        "Harbor" -> it.copy(ref = PinnipedOs.droidcRef("harbor"))
+        "Monk" -> it.copy(ref = PinnipedOs.droidcRef("monk"))
         else -> it
     }
 }

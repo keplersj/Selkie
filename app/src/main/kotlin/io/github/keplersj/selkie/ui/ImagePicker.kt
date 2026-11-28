@@ -52,7 +52,7 @@ fun deviceClassForWidth(widthDp: Int): DeviceClass = when {
 }
 
 /**
- * The image picker: droidc-tuned variants, other bootc images Selkie knows, and any other address. The
+ * The image picker: droidc-tuned Pinniped OS variants, other bootc images Selkie knows, and any other address. The
  * cards are one radio group, so TalkBack reads each as "radio button, selected/not selected, n of m".
  */
 @Composable
@@ -70,7 +70,7 @@ fun ImagePicker(
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("droidc-tuned", Modifier.padding(end = 8.dp))
             Spacer(Modifier.weight(1f))
-            Text("Built by the droidc project for Selkie", style = MaterialTheme.typography.labelMedium,
+            Text("Pinniped OS, built for Selkie", style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         val ordered = ImageCatalog.orderedFor(device, variants)
@@ -83,6 +83,7 @@ fun ImagePicker(
                     if (device in v.fits) StatusChip("Fits this device", tone = ChipTone.Ok)
                     StatusChip(v.forText)
                     if (!v.ready) PlannedChip("Coming later")
+                    else if (!v.signed) StatusChip("Unsigned", tone = ChipTone.Bad)
                 },
             )
         }
