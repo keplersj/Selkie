@@ -87,6 +87,8 @@ pub struct Stats {
     /// Input events delivered to the shown client (events with no client to receive them are dropped).
     pub inputs: u64,
     pub output: (u32, u32),
+    /// App mode's scale (output pixels per logical pixel); `None` in session mode.
+    pub app_scale: Option<f64>,
     pub frame: Option<FrameSummary>,
 }
 
@@ -99,9 +101,13 @@ impl Stats {
             ),
             None => "null".into(),
         };
+        let app_scale = match self.app_scale {
+            Some(v) if v.is_finite() => format!("{v}"),
+            _ => "null".into(),
+        };
         format!(
-            "{{\"clients\":{},\"toplevels\":{},\"commits\":{},\"presented\":{},\"inputs\":{},\"output\":[{},{}],\"frame\":{}}}",
-            self.clients, self.toplevels, self.commits, self.presented, self.inputs, self.output.0, self.output.1, f
+            "{{\"clients\":{},\"toplevels\":{},\"commits\":{},\"presented\":{},\"inputs\":{},\"output\":[{},{}],\"app_scale\":{},\"frame\":{}}}",
+            self.clients, self.toplevels, self.commits, self.presented, self.inputs, self.output.0, self.output.1, app_scale, f
         )
     }
 }
@@ -113,5 +119,24 @@ pub struct MemorySink(pub std::sync::Arc<std::sync::Mutex<Option<Frame>>>);
 impl FrameSink for MemorySink {
     fn present(&mut self, frame: &Frame) {
         *self.0.lock().unwrap() = Some(frame.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Stats;
+
+    #[test]
+    fn stats_json_says_app_mode_scale() {
+        assert!(Stats::default().to_json().contains("\"app_scale\":null,"));
+        let s = Stats {
+            app_scale: Some(2.625),
+            ..Stats::default()
+        };
+        assert!(
+            s.to_json().contains("\"app_scale\":2.625,"),
+            "{}",
+            s.to_json()
+        );
     }
 }
