@@ -46,6 +46,8 @@ import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.BatteryWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.GuestNotification
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.platform.PhantomProcessCheck
@@ -154,6 +156,10 @@ class SessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == GuestNotifier.ACTION_BUTTON || intent?.action == GuestNotifier.ACTION_DISMISSED) {
+            onGuestNotificationIntent(intent)
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_DENY_ROOT) {
             val container = intent.getStringExtra(EXTRA_CONTAINER)
             val id = intent.getLongExtra(EXTRA_REQUEST, -1)
@@ -628,6 +634,8 @@ class SessionService : Service() {
     @Volatile private var audio: GuestAudio? = null
     /** Follows Android's look while any container's host-link runs. */
     private var appearanceWatcher: AppearanceWatcher? = null
+    /** The guest's notifications in Android's shade (and so on a paired watch). */
+    private val guestNotifier by lazy { GuestNotifier(this) }
     private var batteryWatcher: BatteryWatcher? = null
     private var desktopJob: Job? = null
 
@@ -822,17 +830,48 @@ class SessionService : Service() {
 
     private fun onLinkMessage(container: String, m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> linkOf(container)?.let { l ->
-                l.send(Appearance.read(this).toLine())
-                // Android locks and blanks the device; GNOME's own lock would be a second one.
-                l.send("""{"kind":"screen-lock","by_android":true}""")
-                batteryWatcher?.current?.let { l.send(it) }
+            "ready" -> {
+                // A restarted link knows none of this container's notifications already up, so they can't be acted on.
+                guestNotifier.cancelContainer(container)
+                linkOf(container)?.let { l ->
+                    l.send(Appearance.read(this).toLine())
+                    // Android locks and blanks the device; GNOME's own lock would be a second one.
+                    l.send("""{"kind":"screen-lock","by_android":true}""")
+                    batteryWatcher?.current?.let { l.send(it) }
+                }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
                 scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
             }
+            "notify" -> GuestNotification.parse(m.body)?.let {
+                guestNotifier.show(it.copy(key = GuestNotification.scopedKey(container, it.key)))
+            }
+            "close-notification" -> (m.body["key"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?.let { guestNotifier.cancel(GuestNotification.scopedKey(container, it)) }
             else -> AdbRequests.handle(this, container, m) { line -> linkOf(container)?.send(line) }
+        }
+    }
+
+    /** The user tapped a guest notification: the activity opens the desktop, the app hears of it. */
+    fun openedGuestNotification(scoped: String) {
+        val (container, key) = GuestNotification.splitScopedKey(scoped) ?: return
+        linkOf(container)?.send(GuestNotification.actionLine(key, null, null))
+    }
+
+    /** A button or a dismissal on a guest notification, from its pending intent. */
+    private fun onGuestNotificationIntent(intent: Intent) {
+        val scoped = intent.getStringExtra(GuestNotifier.EXTRA_KEY) ?: return
+        val (container, key) = GuestNotification.splitScopedKey(scoped) ?: return
+        val l = linkOf(container)
+        when (intent.action) {
+            GuestNotifier.ACTION_BUTTON -> {
+                val text = GuestNotifier.replyText(intent)
+                l?.send(GuestNotification.actionLine(key, intent.getStringExtra(GuestNotifier.EXTRA_BUTTON), text))
+                // Done with it here; the app updates or withdraws it in the guest as it sees fit.
+                guestNotifier.cancel(scoped)
+            }
+            GuestNotifier.ACTION_DISMISSED -> l?.send(GuestNotification.closedLine(key))
         }
     }
 
@@ -870,7 +909,9 @@ class SessionService : Service() {
      * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither. [link]
      * restarts itself, so it doesn't count toward [alive].
      */
-    private class ContainerServices(val keeper: Process?, val spawner: RootAskHost?, val link: GuestLink?) {
+    private class ContainerServices(
+        val container: String,
+        val keeper: Process?, val spawner: RootAskHost?, val link: GuestLink?) {
         val alive: Boolean get() = keeper?.isAlive != false && spawner?.process?.isAlive != false
     }
     /** By container; guarded by itself, since sessions start on IO threads. */
@@ -886,6 +927,7 @@ class SessionService : Service() {
             // One of them died (an image without a bus, say): start both again, so the next session has them.
             cur?.let { stopServices(it, wait = true) }
             services[env.container] = ContainerServices(
+                container = env.container,
                 keeper = startService(b.userServices(), env.userServicesLog),
                 spawner = if (b.hasShims) startSpawner(env, b) else null,
                 link = startLink(b, env),
@@ -977,6 +1019,7 @@ class SessionService : Service() {
 
     private fun stopServices(s: ContainerServices, wait: Boolean) {
         s.link?.stop()
+        guestNotifier.cancelContainer(s.container)
         val procs = listOfNotNull(s.keeper, s.spawner?.process)
         procs.forEach { it.destroy() }
         val reap = { procs.forEach { if (!it.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) it.destroyForcibly() } }
