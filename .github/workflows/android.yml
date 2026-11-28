@@ -135,6 +135,16 @@ jobs:
       - name: Build without Google Play services
         # F-Droid-style builds pass -Pselkie.wear=false: the phone app must still compile, minus the watch remote.
         run: ./gradlew --no-daemon -Pselkie.wear=false :app:compileReleaseKotlin
+      - name: Coverage (report-only)
+        # Kover line coverage of the release unit tests in :app and :wear. Report-only: it never fails the job.
+        continue-on-error: true
+        shell: bash
+        run: |
+          ./gradlew --no-daemon koverXmlReportRelease koverHtmlReportRelease koverLogRelease | tee coverage.log
+          {
+            echo "### Unit test line coverage (Kover, release)"
+            awk '/^> Task :[a-z]+:koverLogRelease/ { split($2, t, ":"); mod = t[2] } /line coverage:/ { print "- :" mod ": " $0 }' coverage.log
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
@@ -173,6 +183,14 @@ jobs:
           path: |
             app/build/reports/tests
             wear/build/reports/tests
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: coverage-reports
+          path: |
+            app/build/reports/kover
+            wear/build/reports/kover
+          if-no-files-found: ignore
 
   emulator-e2e:
     name: Emulator E2E (${{ matrix.label }})

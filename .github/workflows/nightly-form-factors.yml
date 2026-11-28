@@ -3,11 +3,12 @@
 # Runs the same instrumented e2e as android.yml on more device profiles, in the
 # order of priority: tablet, foldable, phone, TV. PR CI keeps one phone and one
 # tablet leg so it stays fast; this catches layout and lifecycle breaks on the
-# rest without holding up merges. Watch and Automotive need their own test
-# scripts (the phone e2e drives the phone app) and are tracked in #119.
+# rest without holding up merges. The watch and car legs have their own scripts:
+# e2e-wear.sh opens the watch remote and its tile, e2e-car.sh drives and parks
+# (Selkie is parked-only). Tracked in #119 and #98.
 #
-# Uses the debug + androidTest APKs from the newest green Android run on main,
-# so nothing is rebuilt here.
+# Uses the APKs from the newest green Android run on main, so nothing is
+# rebuilt here.
 name: Nightly form factors
 
 on:
@@ -39,6 +40,13 @@ jobs:
           id=$(gh run list -R "$REPO" --workflow Android --branch main --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -z "$id" ]; then echo "::error::No green Android run on main yet"; exit 1; fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
+      # The TV, watch and car legs depend on which system images Google publishes; list them
+      # so a missing image is plain from this job's log.
+      - name: List TV, Wear and Automotive system images
+        continue-on-error: true
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list 2>/dev/null \
+            | grep -E 'system-images;android-3[3-6];(android-tv|google-tv|android-wear|android-automotive)' | sort -u
 
   e2e:
     name: E2E (${{ matrix.label }})
@@ -66,7 +74,9 @@ jobs:
             target: google_apis
             profile: pixel_7
           - form: tv
-            label: TV, API 34
+            label: TV, API 36
+            # The first Android TV image with an x86_64 build; Selkie ships arm64-v8a and x86_64 only.
+            api: 36
             target: android-tv
             profile: tv_1080p
     steps:
@@ -87,7 +97,7 @@ jobs:
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
-          api-level: 34
+          api-level: ${{ matrix.api || 34 }}
           target: ${{ matrix.target }}
           arch: x86_64
           profile: ${{ matrix.profile }}
@@ -111,4 +121,115 @@ jobs:
         if: always()
         with:
           name: e2e-results-${{ matrix.form }}
+          path: out
+
+  wear:
+    name: E2E (watch, Wear OS API ${{ matrix.api }})
+    needs: pick-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    permissions:
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: selkie-watch-apk
+          path: apks
+          run-id: ${{ needs.pick-run.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Open the watch remote and its tile
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: android-wear
+          arch: x86_64
+          profile: wearos_large_round
+          ram-size: 2048M
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash .github/scripts/e2e-wear.sh apks out
+      - name: Summary
+        if: always()
+        env:
+          API: ${{ matrix.api }}
+          RUN_ID: ${{ needs.pick-run.outputs.run-id }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          echo "- **watch, Wear OS API $API**: $OUTCOME (APKs from Android run $RUN_ID)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: e2e-results-watch-${{ matrix.api }}
+          path: out
+
+  car:
+    name: E2E (car, ${{ matrix.label }})
+    needs: pick-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # API 33 is the newest Android Automotive image Google publishes for x86_64.
+          - label: Automotive API 33
+            api: 33
+            target: android-automotive
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: test-apks
+          path: apks
+          run-id: ${{ needs.pick-run.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Park, drive and park again
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: automotive_1024p_landscape
+          disk-size: 8G
+          ram-size: 4096M
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash .github/scripts/e2e-car.sh apks out
+      - name: Summary
+        if: always()
+        env:
+          LABEL: ${{ matrix.label }}
+          RUN_ID: ${{ needs.pick-run.outputs.run-id }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          echo "- **car, $LABEL**: $OUTCOME (APKs from Android run $RUN_ID)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: e2e-results-car-${{ matrix.api }}
           path: out
