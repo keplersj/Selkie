@@ -13,13 +13,25 @@ class ImageCatalogTest {
     private fun names(d: DeviceClass, v: List<TunedVariant> = published) = ImageCatalog.orderedFor(d, v).map { it.name }
 
     @Test fun phoneOrderPutsTheFittingVariantFirstThenAnyDevice() {
-        assertEquals(listOf("Hooded", "Ringed", "Monk", "Harbor", "Elephant", "Baikal", "Weddell"), names(DeviceClass.Phone))
+        assertEquals(
+            listOf("Hooded", "Ringed", "Monk", "Harbor", "Elephant", "Baikal", "Weddell"),
+            names(DeviceClass.Phone),
+        )
     }
 
     @Test fun tabletAndXrOrder() {
-        assertEquals(listOf("Harbor", "Monk", "Hooded", "Ringed", "Elephant", "Baikal", "Weddell"), names(DeviceClass.Tablet))
-        assertEquals(listOf("Harbor", "Weddell", "Monk", "Hooded", "Ringed", "Elephant", "Baikal"), names(DeviceClass.Xr))
-        assertEquals(listOf("Harbor", "Hooded", "Ringed", "Monk", "Elephant", "Baikal", "Weddell"), names(DeviceClass.Foldable))
+        assertEquals(
+            listOf("Harbor", "Monk", "Hooded", "Ringed", "Elephant", "Baikal", "Weddell"),
+            names(DeviceClass.Tablet),
+        )
+        assertEquals(
+            listOf("Harbor", "Weddell", "Monk", "Hooded", "Ringed", "Elephant", "Baikal"),
+            names(DeviceClass.Xr),
+        )
+        assertEquals(
+            listOf("Harbor", "Hooded", "Ringed", "Monk", "Elephant", "Baikal", "Weddell"),
+            names(DeviceClass.Foldable),
+        )
     }
 
     @Test fun onceTrustedTheFittingImageIsPreselected() {
@@ -48,7 +60,8 @@ class ImageCatalogTest {
 
     @Test fun anUnpublishedVariantResolvesToNothing() {
         assertNull(ImageCatalog.resolve(ImageSelection.Tuned("Ringed"), ""))
-        assertEquals("ghcr.io/pinniped-os/hooded:45-droidc", ImageCatalog.resolve(ImageSelection.Tuned("Hooded"), "")?.ref)
+        assertEquals("ghcr.io/pinniped-os/hooded:45-droidc",
+            ImageCatalog.resolve(ImageSelection.Tuned("Hooded"), "")?.ref)
     }
 
     @Test fun selectionForCurrentImage() {
