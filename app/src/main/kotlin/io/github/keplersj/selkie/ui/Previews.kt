@@ -90,7 +90,10 @@ object Fixtures {
         exec = listOf("gnome-shell", "--headless", "--virtual-monitor", "{width}x{height}"),
         configured = true, source = "label")
     val noSession = GraphicalSession(configured = false)
-    /** What a Ringed-style image offers: Phosh and Plasma Mobile for phones, desktops for others. */
+    /**
+     * What an image with several pocket sessions offers (Hooded has Phosh, Ringed will have Plasma Mobile):
+     * phone shells, and desktops for other devices.
+     */
     val pocketSessions = listOf(
         SessionEntry("sm.puri.Phosh", "xdg", "Phosh", "Phone shell", listOf("phone"), runnable = true, renderer = "wayland"),
         SessionEntry("plasma-mobile", "xdg", "Plasma Mobile", null, listOf("phone"), runnable = true, renderer = "wayland"),
@@ -287,14 +290,8 @@ fun HomeErrorPreview() = Home(Fixtures.homeError)
 
 // --- New container and change image ---
 
-/** Harbor and Monk as if published and trusted, to show the design's preselection. */
-private val publishedVariants = ImageCatalog.tuned.map {
-    when (it.name) {
-        "Harbor" -> it.copy(ref = PinnipedOs.droidcRef("harbor"), signed = true)
-        "Monk" -> it.copy(ref = PinnipedOs.droidcRef("monk"), signed = true)
-        else -> it
-    }
-}
+/** The published Pinniped OS images as if droidc couldn't verify them, so Bluefin LTS is preselected. */
+private val unsignedVariants = ImageCatalog.tuned.map { it.copy(signed = false) }
 
 @PhonePreviews @TabletPreview
 @Composable
@@ -305,10 +302,10 @@ fun NewContainerPreview() = PreviewFrame {
 
 @PhonePreviews @TabletPreview
 @Composable
-fun NewContainerPublishedPreview() = PreviewFrame {
+fun NewContainerUnsignedPreview() = PreviewFrame {
     NewContainerScreen(existing = listOf("default"), onCreate = { _, _, _ -> }, onClose = noop, free = 96_636_764_160,
         device = deviceClassForWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp),
-        variants = publishedVariants)
+        variants = unsignedVariants)
 }
 
 @PhonePreviews
