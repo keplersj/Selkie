@@ -1,0 +1,68 @@
+name: codeql
+
+# CodeQL code scanning for the app and watch app (Kotlin), the in-app compositor (Rust) and the
+# workflows themselves. Findings go to the repository's Security tab and as annotations on the PR;
+# nothing here fails a job, so it is report-only until the ruleset is told to require code scanning.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: "41 6 * * 1" # weekly, so new queries run against main even when nothing changes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # upload the SARIF results
+    # CodeQL's Kotlin extractor can trail the newest Kotlin release; until it supports the version in
+    # gradle/libs.versions.toml, that leg reports its error without turning the check red.
+    continue-on-error: ${{ matrix.language == 'java-kotlin' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: rust
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        if: matrix.language == 'java-kotlin'
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        if: matrix.language == 'java-kotlin'
+      - uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+      - name: Compile the Kotlin sources
+        if: matrix.build-mode == 'manual'
+        # Kotlin is analysed from a real compile; the native binaries are only packaged, not compiled
+        # against, so this needs no droidc or compositor build.
+        run: |
+          ./gradlew --no-daemon --no-build-cache -Pselkie.allowMissingNative=true \
+            :app:compileDebugKotlin :wear:compileDebugKotlin
+      - uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          category: /language:${{ matrix.language }}
