@@ -1,0 +1,67 @@
+name: Record UI screenshots
+
+# Manual: re-renders every @Preview with Roborazzi and commits the PNGs to the branch, so goldens can be
+# updated without a local Android SDK (docs/ui-previews.md). Runs on a push whose commit message contains
+# "[record screenshots]", or from "Run workflow" with the branch picked. Never on main itself.
+# Its own workflow so the Android workflow can run pushes on main only; a push without the marker
+# skips the job and uses no runner.
+
+on:
+  push:
+    branches-ignore: [main, 'gh-readonly-queue/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: record-screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  record-screenshots:
+    name: Record UI screenshots
+    if: >-
+      github.ref != 'refs/heads/main' && startsWith(github.ref, 'refs/heads/') &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[record screenshots]'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Record screenshots
+        # Previews render on the JVM, so the native binaries aren't needed. Clearing first drops PNGs of
+        # previews that no longer exist.
+        run: |
+          rm -f app/screenshots/*.png wear/screenshots/*.png
+          ./gradlew --no-daemon -Pselkie.allowMissingNative=true recordRoborazziDebug
+          ls app/screenshots wear/screenshots
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: recorded-screenshots
+          path: |
+            app/screenshots
+            wear/screenshots
+      - name: Commit changed screenshots
+        # A push made with GITHUB_TOKEN starts no new workflow run; the branch's next push runs CI on them.
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git add -A app/screenshots wear/screenshots
+          if git diff --cached --quiet; then
+            echo "Screenshots unchanged."
+            exit 0
+          fi
+          git diff --cached --stat
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Re-record UI screenshots" -m "Recorded by the record-screenshots job in run ${GITHUB_RUN_ID}."
+          git push origin "HEAD:refs/heads/${BRANCH}"

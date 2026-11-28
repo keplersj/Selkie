@@ -140,6 +140,9 @@ class MainActivity : ComponentActivity() {
         // Activity opens a terminal on the session that was tapped.
         var openSession by remember { mutableStateOf<String?>(null) }
         var homeDetail by remember { mutableStateOf(false) }
+        // Root requests put off with Back: they wait under Activity until opened again.
+        var laterRoot by remember { mutableStateOf(setOf<Pair<String, Long>>()) }
+        val rootRequest = state.rootRequests.firstOrNull { (it.container to it.id) !in laterRoot }
         // Bumped to open the selected container's own screen, for a link that named it.
         var detailRequest by remember { mutableIntStateOf(0) }
         val linked = linkedContainer.value
@@ -237,6 +240,15 @@ class MainActivity : ComponentActivity() {
 
         val main: @Composable () -> Unit = { Box(Modifier.fillMaxSize().safeDrawingPadding()) {
             when {
+                // A security screen leaves whatever was showing, a session included, and comes back to it after.
+                rootRequest != null -> {
+                    BackHandler { laterRoot = laterRoot + (rootRequest.container to rootRequest.id) }
+                    RootRequestScreen(rootRequest,
+                        image = state.containers.firstOrNull { it.name == rootRequest.container }
+                            ?.current?.imageRef?.let { imageTitle(it) },
+                        waiting = state.rootRequests.size - 1,
+                        onAnswer = { service.answerRootRequest(rootRequest, it) })
+                }
                 needPhantom -> PhantomScreen(true, phantom == PhantomProcessCheck.State.UNVERIFIED,
                     onRecheck = { phantom = check.check() },
                     onContinueAnyway = { prefs.edit().putBoolean("phantom_ack", true).apply(); acknowledged = true },
@@ -365,6 +377,7 @@ class MainActivity : ComponentActivity() {
                                 onNewContainer = { ref -> newRef = ref; screen = "new" },
                                 onCleanUp = { done -> service.cleanUpImages(done) })
                             Section.Activity -> ActivityScreen(state, rail,
+                                onOpenRootRequest = { r -> laterRoot = laterRoot - (r.container to r.id) },
                                 onReturnToDesktop = { c -> if (c != state.container) service.selectContainer(c); openDesktop() },
                                 onStopDesktop = { service.stopDesktop() },
                                 onOpenTerminal = { t ->

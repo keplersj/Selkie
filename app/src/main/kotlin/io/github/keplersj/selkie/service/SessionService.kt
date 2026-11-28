@@ -141,7 +141,14 @@ class SessionService : Service() {
         noticeRestart()
         refreshStatus()
         watchLink = WatchLink.start(this, state, scope,
-            onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) })
+            onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) },
+            onRefuseRoot = { container, id ->
+                // Message callbacks may arrive off the main thread.
+                scope.launch {
+                    _state.value.rootRequests.firstOrNull { it.container == container && it.id == id }
+                        ?.let { answerRootRequest(it, RootChoice.Deny) }
+                }
+            })
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -149,6 +156,13 @@ class SessionService : Service() {
         if (intent?.action == GuestNotifier.ACTION_BUTTON || intent?.action == GuestNotifier.ACTION_DISMISSED) {
             onGuestNotificationIntent(intent)
             return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_DENY_ROOT) {
+            val container = intent.getStringExtra(EXTRA_CONTAINER)
+            val id = intent.getLongExtra(EXTRA_REQUEST, -1)
+            _state.value.rootRequests.firstOrNull { it.container == container && it.id == id }
+                ?.let { answerRootRequest(it, RootChoice.Deny) }
+            if (!foreground) return START_NOT_STICKY
         }
         // Entering the foreground promptly satisfies startForegroundService().
         updateForeground(force = true)
@@ -162,6 +176,7 @@ class SessionService : Service() {
         // Selkie ended these itself, so the next start has nothing to explain.
         prefs.edit().remove(KEY_RUNNING).apply()
         stopAllServices()
+        getSystemService(NotificationManager::class.java).cancel(ROOT_NOTIF_ID)
         watchLink?.close()
         scope.cancel()
         super.onDestroy()
@@ -852,13 +867,13 @@ class SessionService : Service() {
      * Host processes a container's sessions share, started with its first terminal or desktop and stopped
      * once it has neither: the `droidc user-services` keeper (one session bus or `systemd --user` for all
      * of them, which no single session's proot can hold, since `--kill-on-exit` takes it along) and the
-     * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither.
+     * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither. [link]
+     * restarts itself, so it doesn't count toward [alive].
      */
-    /** A container's background processes; [link] restarts itself, so it doesn't count toward [alive]. */
     private class ContainerServices(
         val container: String,
-        val keeper: Process?, val spawner: Process?, val link: GuestLink?) {
-        val alive: Boolean get() = keeper?.isAlive != false && spawner?.isAlive != false
+        val keeper: Process?, val spawner: RootAskHost?, val link: GuestLink?) {
+        val alive: Boolean get() = keeper?.isAlive != false && spawner?.process?.isAlive != false
     }
     /** By container; guarded by itself, since sessions start on IO threads. */
     private val services = HashMap<String, ContainerServices>()
@@ -875,10 +890,55 @@ class SessionService : Service() {
             services[env.container] = ContainerServices(
                 container = env.container,
                 keeper = startService(b.userServices(), env.userServicesLog),
-                spawner = if (b.hasShims) startService(b.spawnServer(), env.spawnerLog) else null,
+                spawner = if (b.hasShims) startSpawner(env, b) else null,
                 link = startLink(b, env),
             )
         }
+    }
+
+    /**
+     * The container's spawn-server in ask mode: each root request shows on [RootRequestScreen] and in a
+     * notification until it is answered, the guest gives up or the spawner stops.
+     */
+    private fun startSpawner(env: EngineEnv, b: ProotCommandBuilder): RootAskHost? {
+        val container = env.container
+        var host: RootAskHost? = null
+        return try {
+            RootAskHost.start(b.spawnServer(), env.spawnerLog, container, b.rootfs,
+                onEvent = { e ->
+                    when (e) {
+                        is SpawnerEvent.Asked -> _state.update { st ->
+                            st.copy(rootRequests = st.rootRequests.filterNot { it.container == container && it.id == e.request.id } + e.request)
+                        }
+                        is SpawnerEvent.Settled -> _state.update { st ->
+                            st.copy(rootRequests = st.rootRequests.filterNot { it.container == container && it.id == e.id })
+                        }
+                    }
+                    scope.launch { updateRootNotification() }
+                },
+                onEnd = {
+                    // Only the spawner that asked them can answer them; a newer one for the container asks its own.
+                    val current = synchronized(services) { services[container]?.spawner }
+                    if (current == null || current === host) {
+                        _state.update { st -> st.copy(rootRequests = st.rootRequests.filterNot { it.container == container }) }
+                        scope.launch { updateRootNotification() }
+                    }
+                },
+            ).also { host = it }
+        } catch (e: Exception) {
+            // Terminals still work; sudo says it can't reach the spawner.
+            android.util.Log.w(TAG, "cannot start the spawner", e)
+            null
+        }
+    }
+
+    /** Answers a root request on the spawner that asked it. Refusing also ends a remembered allow. */
+    fun answerRootRequest(request: RootRequest, choice: RootChoice) {
+        val host = synchronized(services) { services[request.container]?.spawner }
+        _state.update { st -> st.copy(rootRequests = st.rootRequests.filterNot { it.container == request.container && it.id == request.id }) }
+        updateRootNotification()
+        if (host == null) return
+        Thread { host.answer(request.id, choice) }.start()
     }
 
     private fun startService(inv: Invocation, log: File): Process? = try {
@@ -921,7 +981,7 @@ class SessionService : Service() {
     private fun stopServices(s: ContainerServices, wait: Boolean) {
         s.link?.stop()
         guestNotifier.cancelContainer(s.container)
-        val procs = listOfNotNull(s.keeper, s.spawner)
+        val procs = listOfNotNull(s.keeper, s.spawner?.process)
         procs.forEach { it.destroy() }
         val reap = { procs.forEach { if (!it.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) it.destroyForcibly() } }
         if (wait) reap() else Thread(reap).start()
@@ -964,6 +1024,38 @@ class SessionService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Selkie sessions",
             NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(ROOT_CHANNEL, "Root requests",
+            NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "A container asks to run a command as root"
+        })
+    }
+
+    /**
+     * One notification for the oldest waiting root request. It can only refuse: allowing happens on
+     * Selkie's own screen, which shows the whole command.
+     */
+    private fun updateRootNotification() {
+        val nm = getSystemService(NotificationManager::class.java)
+        val r = _state.value.rootRequests.firstOrNull()
+        if (r == null) { nm.cancel(ROOT_NOTIF_ID); return }
+        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val deny = PendingIntent.getService(this, 3, Intent(this, SessionService::class.java)
+            .setAction(ACTION_DENY_ROOT).putExtra(EXTRA_CONTAINER, r.container).putExtra(EXTRA_REQUEST, r.id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val more = _state.value.rootRequests.size - 1
+        val n = NotificationCompat.Builder(this, ROOT_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle(rootRequestTitle(r))
+            .setContentText(r.commandLine + if (more > 0) " (and $more more)" else "")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                "${r.commandLine}\nOpen Selkie to check it and allow it, or refuse it here."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOngoing(true).setOnlyAlertOnce(false).setContentIntent(open)
+            .addAction(0, "Don't run", deny)
+            .build()
+        nm.notify(ROOT_NOTIF_ID, n)
     }
 
     /**
@@ -1038,6 +1130,11 @@ class SessionService : Service() {
 
     companion object {
         const val ACTION_STOP = "io.github.keplersj.selkie.STOP"
+        const val ACTION_DENY_ROOT = "io.github.keplersj.selkie.DENY_ROOT"
+        const val EXTRA_CONTAINER = "container"
+        const val EXTRA_REQUEST = "request"
+        private const val ROOT_CHANNEL = "root"
+        private const val ROOT_NOTIF_ID = 2
         private const val UPTIME_REFRESH_MS = 1000L
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"
