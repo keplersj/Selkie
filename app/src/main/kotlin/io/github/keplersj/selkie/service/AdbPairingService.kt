@@ -158,7 +158,7 @@ class AdbPairingService : Service() {
     companion object {
         private const val TAG = "SelkieAdbPairing"
         const val CHANNEL = "adb_pairing"
-        private const val NOTIF_ID = 2
+        private const val NOTIF_ID = NotificationIds.ADB_PAIRING
         private const val ACTION_START = "io.github.keplersj.selkie.adb.START"
         private const val ACTION_REPLY = "io.github.keplersj.selkie.adb.REPLY"
         private const val ACTION_STOP = "io.github.keplersj.selkie.adb.STOP"
