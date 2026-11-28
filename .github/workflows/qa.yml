@@ -1,0 +1,150 @@
+name: qa
+
+# Extra quality gates beside android.yml: PR title (Conventional Commits), workflow and script lint,
+# and Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny). Gradle checks (detekt,
+# Android lint, Kover) come in a later step of the CI/CD plan.
+#
+# Report-only for now: every check writes its findings to the job summary and as warnings, and the
+# job stays green. Set ENFORCE to "true" to make a check fail its job once main is clean and the
+# check is ready to become required (see the CI/CD plan).
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  ENFORCE: "false"
+
+jobs:
+  pr-title:
+    name: PR title follows Conventional Commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Squash merges use the PR title as the commit, and semantic-release reads those commits.
+          # type(optional scope)!: description  -- https://www.conventionalcommits.org/en/v1.0.0/
+          re='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ "$TITLE" =~ $re ]]; then
+            echo "PR title is a Conventional Commit: $TITLE" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          msg="PR title is not a Conventional Commit (e.g. 'feat(bridge): follow GNOME scale'): $TITLE"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ENFORCE" = true ]; then echo "::error::$msg"; exit 1; fi
+          echo "::warning::$msg"
+
+  workflows:
+    name: Workflow and script lint (actionlint, zizmor, shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: zizmor,shellcheck
+      - name: actionlint
+        run: |
+          status=0
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color || status=$?
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::actionlint found problems (report-only)"
+          fi
+      - name: zizmor
+        run: |
+          status=0
+          zizmor --offline --format=github .github/workflows || status=$?
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::zizmor found problems (report-only)"
+          fi
+
+      - name: shellcheck
+        run: |
+          status=0
+          shellcheck --format=gcc .github/scripts/*.sh || status=$?
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::shellcheck found problems (report-only)"
+          fi
+
+  deny:
+    name: Compositor dependency policy (cargo-deny)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native/selkie-compositor
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [advisories, "bans licenses sources"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-deny
+      - name: cargo deny check ${{ matrix.check }}
+        env:
+          CHECKS: ${{ matrix.check }}
+        run: |
+          status=0
+          # shellcheck disable=SC2086 # CHECKS is a word list on purpose
+          cargo deny --color always check $CHECKS 2> deny.log || status=$?
+          cat deny.log
+          {
+            echo "### cargo deny check $CHECKS"
+            echo
+            grep -E '^(error|warning)\[' deny.log | sort | uniq -c | sort -rn || echo "no findings"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::cargo deny check $CHECKS failed (report-only)"
+          fi
+
+  compositor-lint:
+    name: Compositor lint (rustfmt, clippy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native/selkie-compositor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          components: rustfmt, clippy
+      - name: rustfmt
+        run: |
+          status=0
+          cargo fmt --check || status=$?
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::rustfmt found unformatted code (report-only)"
+          fi
+      - name: clippy
+        run: |
+          status=0
+          cargo clippy --all-targets --locked -- -D warnings || status=$?
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::clippy found problems (report-only)"
+          fi
