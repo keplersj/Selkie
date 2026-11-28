@@ -191,9 +191,6 @@ jobs:
           - label: Automotive API 34
             api: 34
             target: android-automotive
-          - label: Automotive with Play Store API 33
-            api: 33
-            target: android-automotive-playstore
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
