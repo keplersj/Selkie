@@ -202,8 +202,8 @@ class DesktopE2ETest {
      * Runs [script] in a second proot against the live session (same /run, so the user bus and the
      * display are there) and logs its output as SELKIE_GUEST lines.
      */
-    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90, supervised: Boolean = false) {
-        try {
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90, supervised: Boolean = false): String {
+        return try {
             val env = engineEnvFrom(ctx)
             val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
             val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
@@ -219,7 +219,35 @@ class DesktopE2ETest {
             if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
             t.join(5000)
             text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
-        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
+            text.toString()
+        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e"); "" }
+    }
+
+    /**
+     * Turns Android's night mode on and checks that GNOME's color scheme follows it through
+     * `droidc host-link`, then puts night mode back. Logged as a metric, like the sound check.
+     */
+    private fun checkAppearance() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+        // Under the supervisor, as host-link runs, so gsettings reaches the same session bus and dconf.
+        val read = listOf("color-scheme", "accent-color", "text-scaling-factor").joinToString("\n") { key ->
+            "echo \"$key=$(DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- " +
+                "gsettings get org.gnome.desktop.interface $key 2>&1 | tail -1)\""
+        }
+        guestProbe("appearance-before", read)
+        shell("cmd uimode night yes")
+        var dark = false
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline && !dark) {
+            Thread.sleep(2000)
+            dark = "color-scheme='prefer-dark'" in guestProbe("appearance-dark", read)
+        }
+        log("SELKIE_METRIC appearance_follows_night_mode=$dark")
+        shell("cmd uimode night no")
+        val linkLog = engineEnvFrom(ctx).hostLinkLog
+        val text = if (linkLog.exists()) linkLog.readText() else "(no ${linkLog.name})"
+        text.lines().takeLast(20).forEach { log("SELKIE_GUEST host-link-log ${it.take(300)}") }
     }
 
     /**
@@ -354,6 +382,7 @@ class DesktopE2ETest {
         settle(s)
         screenshot("gnome-1.png")
         checkSound(s)
+        checkAppearance()
         checkMedia(s)
 
         // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
@@ -450,7 +479,45 @@ class DesktopE2ETest {
             } catch (e: Exception) { log("could not keep desktop.log: $e") }
         }
         log("SELKIE_METRIC terminal_command_ran=true")
+        checkLinks()
         stop(s)
+    }
+
+    /**
+     * Opens a web link from the guest the way GNOME apps do (`gio open`, GIO's default handler) and
+     * checks that Android started an activity for it through `droidc host-link`. Last, since the browser
+     * takes the screen. Logged as a metric: the emulator image may have no browser.
+     */
+    private fun checkLinks() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString()
+        }
+        val url = "https://example.org/selkie-e2e-link"
+        guestProbe("links", """
+            run() { DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- "${'$'}@" 2>&1 | tail -3; }
+            echo "https handler: ${'$'}(run gio mime x-scheme-handler/https | head -1)"
+            echo "user default: ${'$'}(grep -s scheme-handler/https= ${'$'}HOME/.config/mimeapps.list)"
+            ls ${'$'}HOME/.local/share/applications/dev.droidc.AndroidOpen.desktop 2>&1
+            # GIO's default handler is the path GNOME apps and xdg-open take inside a GNOME session;
+            # a bare xdg-open here has no display, so it skips the scheme handlers for a text browser.
+            run gio open $url
+            echo "open exit=${'$'}?"
+        """.trimIndent())
+        // Selkie logs each link it hands to Android; dumpsys shows only the host of a web link.
+        var opened = false
+        var seen = false
+        val deadline = SystemClock.uptimeMillis() + 20_000
+        while (SystemClock.uptimeMillis() < deadline && !(opened && seen)) {
+            Thread.sleep(1000)
+            opened = opened || "opened a https link" in shell("logcat -d -s SelkieLink:I")
+            seen = seen || "example.org" in shell("dumpsys activity activities")
+        }
+        log("SELKIE_METRIC link_opened_on_android=$opened activity_seen=$seen")
+        shell("logcat -d -s SelkieLink:*").lines().filter { it.isNotBlank() }.takeLast(5)
+            .forEach { log("SELKIE_GUEST links-host ${it.trim().take(300)}") }
+        shell("dumpsys activity activities").lines().filter { "example.org" in it || "act=android.intent.action.VIEW" in it }.take(5)
+            .forEach { log("SELKIE_GUEST links-activity ${it.trim().take(300)}") }
     }
 
     @Test fun gtkAppNested() {

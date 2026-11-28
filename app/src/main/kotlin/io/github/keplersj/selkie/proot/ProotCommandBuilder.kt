@@ -105,12 +105,20 @@ class ProotCommandBuilder(
             .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
 
     /**
+     * The desktop's channel to Android: `droidc host-link` under the supervisor (for the session bus and
+     * the session's settings), JSON lines both ways. See [io.github.keplersj.selkie.link.GuestLink].
+     */
+    fun hostLink(): Invocation =
+        command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "host-link"))
+            .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
+
+    /**
      * The guest's media players for Android: `droidc media` under the supervisor (for the session bus),
      * which prints them as JSON lines and takes commands such as `play-pause <player>` on stdin.
      */
     fun media(timeout: Int = AUDIO_OUT_WAIT_SECONDS): Invocation =
         command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "media", "--timeout", timeout.toString()))
-            .let { it.copy(env = it.env + joinUserServices) }
+            .let { it.copy(env = it.env + sessionDefaults + joinUserServices) }
 
     /**
      * The host file behind [guestPath] in this container: through the binds (the longest match wins),

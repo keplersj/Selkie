@@ -76,6 +76,12 @@ refused, so use the Developer options toggle.
   Tab S11 and the Razr, but `flatpak` itself was not tried there.
 - No GPU or Steam. Desktop sound (the guest's PipeWire through `droidc audio-out` to an Android
   AudioTrack) is built but has not been heard on a device yet; the emulator runs with `-noaudio`.
+- The desktop follows Android's look (dark mode, accent, font size, "Remove animations", high
+  contrast) through `droidc host-link`. The emulator test checks night mode only; not yet seen on a device.
+- Web, mail, phone, SMS and map links opened in the desktop (`xdg-open`, GNOME apps) open in Android's
+  own apps, also through `droidc host-link`. The emulator test opens one web link; not yet seen on a device.
+- The screen stays on while a desktop app asks it to (a playing video), and GNOME's own lock screen
+  and idle blank are off, since Android locks the device. Not yet seen on a device.
 - Desktop media controls: the guest's MPRIS players (through `droidc media`) show as an Android
   media session, on the lock screen and in the shade, with play, pause, next and previous going back
   to the player. Covers come from `file://` art in the container; web art isn't fetched.

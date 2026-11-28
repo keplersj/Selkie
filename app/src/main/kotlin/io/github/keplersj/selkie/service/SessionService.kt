@@ -10,6 +10,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -35,6 +36,11 @@ import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
+import io.github.keplersj.selkie.link.Appearance
+import io.github.keplersj.selkie.link.AppearanceWatcher
+import io.github.keplersj.selkie.link.GuestLink
+import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
 import io.github.keplersj.selkie.media.GuestMedia
 import io.github.keplersj.selkie.media.GuestMediaSnapshot
@@ -56,6 +62,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -72,6 +80,10 @@ class SessionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(ServiceState())
     val state: StateFlow<ServiceState> = _state.asStateFlow()
+
+    private val _keepAwake = MutableStateFlow(false)
+    /** A desktop app asks the screen to stay on (an idle inhibitor, through `droidc host-link`). */
+    val keepAwake: StateFlow<Boolean> = _keepAwake.asStateFlow()
 
     private var opJob: Job? = null
     /** The watch remote: a no-op in builds without Play services. */
@@ -594,6 +606,9 @@ class SessionService : Service() {
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
+    /** The desktop's channel to Android (`droidc host-link`), while the desktop runs. */
+    @Volatile private var link: GuestLink? = null
+    private var appearanceWatcher: AppearanceWatcher? = null
     /** The desktop's media players, shown as an Android media session, while the desktop runs. */
     @Volatile private var media: GuestMedia? = null
     @Volatile private var mediaBridge: MediaBridge? = null
@@ -660,6 +675,7 @@ class SessionService : Service() {
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
+                    startLink(b, env)
                     val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
                     compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
@@ -674,6 +690,7 @@ class SessionService : Service() {
                 // Throwable: a missing native library is an Error, and it must end up on screen too.
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w(TAG, "desktop failed to start", e)
+                stopLink()
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
                     desktopContainer = null) }
@@ -691,6 +708,7 @@ class SessionService : Service() {
             if (desktop === p) {
                 desktop = null
                 stopAudio()
+                stopLink()
                 stopCompositor()
                 // SIGKILL that Selkie didn't send: Android closed it, which the containers list explains.
                 val killed = code != 0 && isSigkill(code)
@@ -716,6 +734,7 @@ class SessionService : Service() {
         desktopJob?.cancel()
         desktopJob = null
         stopAudio()
+        stopLink()
         if (p != null) {
             p.destroy()
             Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
@@ -729,6 +748,48 @@ class SessionService : Service() {
 
     /** Bytes of the desktop's sound received from the guest and played on Android so far, or null without a desktop. */
     fun audioBytes(): Pair<Long, Long>? = audio?.let { it.received to it.played }
+
+    /** Starts `droidc host-link` for the desktop; Android's state goes in each time it says `ready`. */
+    private fun startLink(b: ProotCommandBuilder, env: EngineEnv) {
+        stopLink()
+        link = GuestLink(b.hostLink(), env.hostLinkLog, ::onLinkMessage).apply { start() }
+        scope.launch(Dispatchers.Main) {
+            if (link != null && appearanceWatcher == null)
+                appearanceWatcher = AppearanceWatcher(this@SessionService) { sendAppearance() }.apply { start() }
+        }
+    }
+
+    private fun stopLink() {
+        link?.stop()
+        link = null
+        _keepAwake.value = false
+        scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
+    }
+
+    private fun onLinkMessage(m: GuestLinkMessage) {
+        when (m.kind) {
+            "ready" -> {
+                sendAppearance()
+                // Android locks and blanks the device; GNOME's own lock would be a second one.
+                link?.send("""{"kind":"screen-lock","by_android":true}""")
+            }
+            "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
+            "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
+                scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
+            }
+        }
+    }
+
+    private fun sendAppearance() {
+        val l = link ?: return
+        l.send(Appearance.read(this).toLine())
+    }
+
+    /** Night mode, font size and the wallpaper's accent arrive here; the desktop follows them. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        sendAppearance()
+    }
 
     private fun stopAudio() {
         audio?.stop()
