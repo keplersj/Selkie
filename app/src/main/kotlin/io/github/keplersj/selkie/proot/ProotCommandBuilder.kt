@@ -133,7 +133,8 @@ class ProotCommandBuilder(
 
     /**
      * The deployment's graphical session (`droidc supervise --session`), shown by Selkie's compositor on
-     * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels.
+     * `$XDG_RUNTIME_DIR/wayland-0`. [width]/[height] are the session size in pixels, [scale] the
+     * session scale (`{scale}`; a `screencast` session sets its monitor to it, see `DisplayScale`).
      */
     fun graphicalSession(width: Int, height: Int, scale: Float = 1f): Invocation {
         val inv = command(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto",

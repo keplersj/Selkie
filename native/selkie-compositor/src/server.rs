@@ -635,6 +635,10 @@ impl State {
     /// Maps view coordinates to coordinates on the shown surface (the frame is stretched to the view).
     fn to_surface(&self, x: f64, y: f64) -> (f64, f64) {
         match &self.frame {
+            Some(f) if crate::unscaled((f.width, f.height), (self.width, self.height)) => (
+                x.min(f.width as f64 - 1.0).max(0.0),
+                y.min(f.height as f64 - 1.0).max(0.0),
+            ),
             Some(f) => (
                 x * f.width as f64 / self.width as f64,
                 y * f.height as f64 / self.height as f64,
