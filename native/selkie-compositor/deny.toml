@@ -1,0 +1,47 @@
+# cargo-deny: https://embarkstudios.github.io/cargo-deny/
+# Run locally with `cargo deny check`. CI runs it in .github/workflows/qa.yml from this directory.
+
+[graph]
+# The compositor ships for Android (bionic); its tests run on Linux hosts.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-linux-android",
+    "aarch64-linux-android",
+]
+all-features = true
+
+[advisories]
+# RustSec advisory DB. Unmaintained crates are reported for workspace deps only.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+# Selkie is MIT. Every license here is permissive and compatible with shipping an MIT library.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0", # webpki-roots (Mozilla's CA list)
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+# One shared allow list across droidc and Selkie; not every license appears in this crate.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

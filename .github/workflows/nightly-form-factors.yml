@@ -1,0 +1,114 @@
+# Nightly e2e across form factors, report-only.
+#
+# Runs the same instrumented e2e as android.yml on more device profiles, in the
+# order of priority: tablet, foldable, phone, TV. PR CI keeps one phone and one
+# tablet leg so it stays fast; this catches layout and lifecycle breaks on the
+# rest without holding up merges. Watch and Automotive need their own test
+# scripts (the phone e2e drives the phone app) and are tracked in #119.
+#
+# Uses the debug + androidTest APKs from the newest green Android run on main,
+# so nothing is rebuilt here.
+name: Nightly form factors
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-form-factors
+  cancel-in-progress: false
+
+jobs:
+  pick-run:
+    name: Find the newest green Android run on main
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      run-id: ${{ steps.run.outputs.id }}
+    steps:
+      - id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          id=$(gh run list -R "$REPO" --workflow Android --branch main --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$id" ]; then echo "::error::No green Android run on main yet"; exit 1; fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    name: E2E (${{ matrix.label }})
+    needs: pick-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Report-only: a failing profile shows up red here and in the summary, nothing blocks.
+    continue-on-error: true
+    permissions:
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - form: tablet
+            label: tablet, API 34
+            target: google_apis
+            profile: pixel_tablet
+          - form: foldable
+            label: foldable, API 34
+            target: google_apis
+            profile: pixel_fold
+          - form: phone
+            label: phone, API 34
+            target: google_apis
+            profile: pixel_7
+          - form: tv
+            label: TV, API 34
+            target: android-tv
+            profile: tv_1080p
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: test-apks
+          path: apks
+          run-id: ${{ needs.pick-run.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          disk-size: 12G
+          ram-size: 4096M
+          heap-size: 512M
+          force-avd-creation: false
+          # CentOS Stream 10 glibc requires x86-64-v3; the default emulator CPU model lacks it.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -qemu -cpu host
+          disable-animations: true
+          script: bash .github/scripts/e2e.sh apks out
+      - name: Summary
+        if: always()
+        env:
+          LABEL: ${{ matrix.label }}
+          RUN_ID: ${{ needs.pick-run.outputs.run-id }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          echo "- **$LABEL**: $OUTCOME (APKs from Android run $RUN_ID)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: e2e-results-${{ matrix.form }}
+          path: out

@@ -1,0 +1,571 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:SessionService.kt$SessionService$terminals.values.any { it.container == container &amp;&amp; it.session.isRunning } || (desktopActive() &amp;&amp; st.desktopContainer == container)</ID>
+    <ID>CyclomaticComplexMethod:ActivityScreen.kt$@Composable fun ActivityScreen( state: ServiceState, rail: Boolean, /** Opens the running desktop of this container. */ onReturnToDesktop: (container: String) -&gt; Unit, onStopDesktop: () -&gt; Unit, /** Opens the terminal screen on this session's container. */ onOpenTerminal: (SessionInfo) -&gt; Unit, onStopAll: () -&gt; Unit, onDismissDesktopError: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:AppActivity.kt$AppActivity$@Composable private fun AppRoot(service: SessionService, target: AppShortcuts.Target)</ID>
+    <ID>CyclomaticComplexMethod:AppsTab.kt$@Composable internal fun AppsTab( container: String, apps: AppList?, error: String?, installed: Boolean, /** Opens an app (or its action); returns why it can't, or null. */ onOpen: (AppEntry) -&gt; String?, onOpenDesktop: () -&gt; Unit, initialSheet: String? = null, )</ID>
+    <ID>CyclomaticComplexMethod:DesktopScreen.kt$@Composable fun DesktopScreen(service: SessionService, onTerminal: () -&gt; Unit = {}, onBack: () -&gt; Unit, immersive: Boolean = true)</ID>
+    <ID>CyclomaticComplexMethod:DroidcClient.kt$DroidcClient$fun events(args: List&lt;String&gt;, asRoot: Boolean = false): Flow&lt;DroidcEvent&gt;</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable private fun ContainerDetail( state: ServiceState, tab: ContainerTab, onTab: (ContainerTab) -&gt; Unit, actions: DetailActions, wide: Boolean, /** Null where the list is beside it. */ onBack: (() -&gt; Unit)?, /** Status and "What works here" side by side; off when the pane is too narrow, as on half a fold. */ columns: Boolean = wide, )</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable private fun Overview(state: ServiceState, a: DetailActions, wide: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun ContainerCard( c: ContainerSummary, state: ServiceState, highlighted: Boolean, onOpen: () -&gt; Unit, onTerminal: () -&gt; Unit, onDesktop: () -&gt; Unit, onRemove: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:ImageScreens.kt$@Composable fun NewContainerScreen( existing: List&lt;String&gt;, onCreate: (name: String, ref: String, insecure: Boolean) -&gt; Unit, onClose: (() -&gt; Unit)?, fixedName: String? = null, /** Prefilled, still editable: "default" for the first container. */ initialName: String = "", /** An image to start from, as Images' Container button passes; null preselects for this device. */ initialRef: String? = null, free: Long = freeBytes(), device: DeviceClass = currentDeviceClass(), variants: List&lt;TunedVariant&gt; = ImageCatalog.tuned, )</ID>
+    <ID>CyclomaticComplexMethod:KeyMap.kt$KeyMap$private fun charCode(c: Char): Int</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$@Composable private fun Root()</ID>
+    <ID>CyclomaticComplexMethod:Models.kt$NdjsonParser$fun parseLine(line: String): DroidcEvent?</ID>
+    <ID>CyclomaticComplexMethod:ProgressScreen.kt$@Composable fun ProgressScreen( op: Operation, onCancel: () -&gt; Unit, onRetry: (Operation.Failed) -&gt; Unit, onRetryInsecure: (Operation.Failed) -&gt; Unit, onDismiss: () -&gt; Unit, free: Long = if ((op as? Operation.Failed)?.error?.kind == ErrorKind.STORAGE) freeBytes() else 0L, /** The container had no image before this operation, so this install creates it. */ creating: Boolean = when (op) { is Operation.Running -&gt; op.creating is Operation.Failed -&gt; op.creating is Operation.Done -&gt; op.creating else -&gt; false }, /** Opens the image picker again after a signature failure. Without it, Back is offered instead. */ onChooseImage: ((Operation.Failed) -&gt; Unit)? = null, /** `droidc gc`; reports an error message, or null. */ onCleanUp: ((done: (String?) -&gt; Unit) -&gt; Unit)? = null, )</ID>
+    <ID>CyclomaticComplexMethod:ProgressScreen.kt$@Composable private fun Failed( op: Operation.Failed, free: Long, creating: Boolean, onRetry: (Operation.Failed) -&gt; Unit, onRetryInsecure: (Operation.Failed) -&gt; Unit, onDismiss: () -&gt; Unit, onChooseImage: ((Operation.Failed) -&gt; Unit)?, onCleanUp: ((done: (String?) -&gt; Unit) -&gt; Unit)?, )</ID>
+    <ID>CyclomaticComplexMethod:ProgressScreen.kt$@Composable private fun StepItem(s: InstallStep, state: StepState, op: Operation.Running)</ID>
+    <ID>CyclomaticComplexMethod:SessionService.kt$SessionService$fun refreshStatus()</ID>
+    <ID>CyclomaticComplexMethod:SessionService.kt$SessionService$fun setRootMode(on: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:SessionService.kt$SessionService$fun startDesktop(width: Int, height: Int)</ID>
+    <ID>CyclomaticComplexMethod:SessionService.kt$SessionService$private fun start( kind: OpKind, ref: String?, insecure: Boolean, onSuccess: () -&gt; Unit = {}, flow: (DroidcClient) -&gt; kotlinx.coroutines.flow.Flow&lt;DroidcEvent&gt;, )</ID>
+    <ID>CyclomaticComplexMethod:TerminalScreen.kt$@Composable fun TerminalScreen(service: SessionService, onBack: () -&gt; Unit, initialSession: String? = null)</ID>
+    <ID>EmptyElseBlock:DesktopE2ETest.kt$DesktopE2ETest$if (op.phase != lastPhase) { lastPhase = op.phase; log("phase=${op.phase}") }</ID>
+    <ID>EmptyElseBlock:HomeScreen.kt$if (name != state.container) onSelectContainer(name)</ID>
+    <ID>EmptyElseBlock:MainActivity.kt$MainActivity$if (c != state.container) service.selectContainer(c)</ID>
+    <ID>EmptyFunctionBlock:CompositorView.kt$CompositorView${}</ID>
+    <ID>EmptyFunctionBlock:SessionService.kt$SessionService.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:TerminalScreen.kt$SelkieTerminalClient${}</ID>
+    <ID>InstanceOfCheckForException:SessionService.kt$SessionService$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>LargeClass:SessionService.kt$SessionService : Service</ID>
+    <ID>LongMethod:ActivityScreen.kt$@Composable fun ActivityScreen( state: ServiceState, rail: Boolean, /** Opens the running desktop of this container. */ onReturnToDesktop: (container: String) -&gt; Unit, onStopDesktop: () -&gt; Unit, /** Opens the terminal screen on this session's container. */ onOpenTerminal: (SessionInfo) -&gt; Unit, onStopAll: () -&gt; Unit, onDismissDesktopError: () -&gt; Unit, )</ID>
+    <ID>LongMethod:AppActivity.kt$AppActivity$@Composable private fun AppRoot(service: SessionService, target: AppShortcuts.Target)</ID>
+    <ID>LongMethod:DesktopE2ETest.kt$DesktopE2ETest$@Test fun gnomeHeadless()</ID>
+    <ID>LongMethod:DesktopScreen.kt$@Composable fun DesktopControls( container: String, size: Pair&lt;Int, Int&gt;?, /** The app shown on its own, or null for the desktop. */ app: String? = null, onSuper: () -&gt; Unit, onKeyboard: () -&gt; Unit, onEsc: () -&gt; Unit, onTerminal: () -&gt; Unit, onBack: () -&gt; Unit, onStop: () -&gt; Unit, onHide: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:DesktopScreen.kt$@Composable fun DesktopScreen(service: SessionService, onTerminal: () -&gt; Unit = {}, onBack: () -&gt; Unit, immersive: Boolean = true)</ID>
+    <ID>LongMethod:EngineE2ETest.kt$EngineE2ETest$@Test fun fullLifecycle()</ID>
+    <ID>LongMethod:HomeScreen.kt$@Composable fun HomeScreen( state: ServiceState, onOpenTerminal: () -&gt; Unit, onOpenDesktop: () -&gt; Unit, onConfigureDesktop: () -&gt; Unit, onUpgrade: () -&gt; Unit, onRollback: () -&gt; Unit, onSwitch: () -&gt; Unit, onRefresh: () -&gt; Unit, onSelectContainer: (String) -&gt; Unit = {}, /** Opens the new container screen. */ onNewContainer: () -&gt; Unit = {}, onRemoveContainer: (name: String, onDone: (String?) -&gt; Unit) -&gt; Unit = { _, _ -&gt; }, onRootMode: (Boolean) -&gt; Unit = {}, /** Opens one of the selected container's apps on its own; returns why it can't, or null. */ onOpenApp: (AppEntry) -&gt; String? = { null }, /** False where the navigation rail carries the New container button instead. */ newInList: Boolean = true, /** Told when a phone shows one container on its own screen, so the navigation bar steps aside. */ onDetailShown: (Boolean) -&gt; Unit = {}, /** Previews open a container or a tab with these; the app starts on the list. */ initialDetail: Boolean = false, initialTab: ContainerTab = ContainerTab.Overview, /** Each new value opens the selected container's own screen, for a link that named it. */ openDetail: Int = 0, free: Long = freeBytes(), /** Under the list's heading, such as what driving does in a parked car. */ listNote: (@Composable () -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:HomeScreen.kt$@Composable private fun Overview(state: ServiceState, a: DetailActions, wide: Boolean)</ID>
+    <ID>LongMethod:HomeScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun ContainerCard( c: ContainerSummary, state: ServiceState, highlighted: Boolean, onOpen: () -&gt; Unit, onTerminal: () -&gt; Unit, onDesktop: () -&gt; Unit, onRemove: () -&gt; Unit, )</ID>
+    <ID>LongMethod:MainActivity.kt$MainActivity$@Composable private fun Root()</ID>
+    <ID>LongMethod:ProgressScreen.kt$@Composable private fun Failed( op: Operation.Failed, free: Long, creating: Boolean, onRetry: (Operation.Failed) -&gt; Unit, onRetryInsecure: (Operation.Failed) -&gt; Unit, onDismiss: () -&gt; Unit, onChooseImage: ((Operation.Failed) -&gt; Unit)?, onCleanUp: ((done: (String?) -&gt; Unit) -&gt; Unit)?, )</ID>
+    <ID>LongMethod:SessionService.kt$SessionService$fun startDesktop(width: Int, height: Int)</ID>
+    <ID>LongMethod:TerminalScreen.kt$@Composable fun TerminalScreen(service: SessionService, onBack: () -&gt; Unit, initialSession: String? = null)</ID>
+    <ID>LongMethod:TvScreens.kt$@Composable fun TvHome( state: ServiceState, onSelectContainer: (String) -&gt; Unit, onOpenDesktop: () -&gt; Unit, onOpenTerminal: () -&gt; Unit, onStopDesktop: () -&gt; Unit, onChangeImage: () -&gt; Unit, onNewContainer: () -&gt; Unit, modifier: Modifier = Modifier, inputs: TvInputs = TvInputs(), /** Opens one app on its own; returns why it can't open, or null. */ onOpenApp: (AppEntry) -&gt; String? = { null }, )</ID>
+    <ID>LongParameterList:ActivityScreen.kt$( state: ServiceState, rail: Boolean, /** Opens the running desktop of this container. */ onReturnToDesktop: (container: String) -&gt; Unit, onStopDesktop: () -&gt; Unit, /** Opens the terminal screen on this session's container. */ onOpenTerminal: (SessionInfo) -&gt; Unit, onStopAll: () -&gt; Unit, onDismissDesktopError: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:AppsTab.kt$( container: String, apps: AppList?, error: String?, installed: Boolean, /** Opens an app (or its action); returns why it can't, or null. */ onOpen: (AppEntry) -&gt; String?, onOpenDesktop: () -&gt; Unit, initialSheet: String? = null, )</ID>
+    <ID>LongParameterList:ClosedNotices.kt$( closed: List&lt;Closed&gt;, /** Android's child process limit is on now. */ phantomRestricted: Boolean, /** Battery optimisation applies to Selkie. */ batteryLimited: Boolean, onDismiss: (Closed) -&gt; Unit, onStartAgain: (Closed) -&gt; Unit, onFixPhantom: () -&gt; Unit, onBattery: () -&gt; Unit, /** Formats [Closed.at] as a time of day for the person. */ time: (Long) -&gt; String, )</ID>
+    <ID>LongParameterList:Components.kt$( headline: String, modifier: Modifier = Modifier, supporting: String? = null, leading: (@Composable () -&gt; Unit)? = null, trailing: (@Composable RowScope.() -&gt; Unit)? = null, highlighted: Boolean = false, muted: Boolean = false, onClick: (() -&gt; Unit)? = null, onClickLabel: String? = null, )</ID>
+    <ID>LongParameterList:DesktopScreen.kt$( container: String, size: Pair&lt;Int, Int&gt;?, /** The app shown on its own, or null for the desktop. */ app: String? = null, onSuper: () -&gt; Unit, onKeyboard: () -&gt; Unit, onEsc: () -&gt; Unit, onTerminal: () -&gt; Unit, onBack: () -&gt; Unit, onStop: () -&gt; Unit, onHide: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:GuestFiles.kt$GuestFiles$( env: EngineEnv, spec: ShellSpec, readable: (String) -&gt; Boolean = { canRead(it) }, uptimeSeconds: Double = SystemClock.elapsedRealtime() / 1000.0, cpus: Int = Runtime.getRuntime().availableProcessors(), chmod: (File, Int) -&gt; Unit = { f, mode -&gt; Os.chmod(f.path, mode) }, kernel: () -&gt; Kernel = { hostKernel() }, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( c: ContainerSummary, state: ServiceState, highlighted: Boolean, onOpen: () -&gt; Unit, onTerminal: () -&gt; Unit, onDesktop: () -&gt; Unit, onRemove: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( list: List&lt;ContainerSummary&gt;, state: ServiceState, wide: Boolean, free: Long, error: String?, onOpen: (String) -&gt; Unit, onTerminal: (String) -&gt; Unit, onDesktop: () -&gt; Unit, onNew: () -&gt; Unit, onRemove: (String) -&gt; Unit, newButton: Boolean, note: (@Composable () -&gt; Unit)?, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( name: String, summary: ContainerSummary?, sharedWith: List&lt;String&gt;, busy: Boolean, onDismiss: () -&gt; Unit, onConfirm: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( state: ServiceState, onOpenTerminal: () -&gt; Unit, onOpenDesktop: () -&gt; Unit, onConfigureDesktop: () -&gt; Unit, onUpgrade: () -&gt; Unit, onRollback: () -&gt; Unit, onSwitch: () -&gt; Unit, onRefresh: () -&gt; Unit, onSelectContainer: (String) -&gt; Unit = {}, /** Opens the new container screen. */ onNewContainer: () -&gt; Unit = {}, onRemoveContainer: (name: String, onDone: (String?) -&gt; Unit) -&gt; Unit = { _, _ -&gt; }, onRootMode: (Boolean) -&gt; Unit = {}, /** Opens one of the selected container's apps on its own; returns why it can't, or null. */ onOpenApp: (AppEntry) -&gt; String? = { null }, /** False where the navigation rail carries the New container button instead. */ newInList: Boolean = true, /** Told when a phone shows one container on its own screen, so the navigation bar steps aside. */ onDetailShown: (Boolean) -&gt; Unit = {}, /** Previews open a container or a tab with these; the app starts on the list. */ initialDetail: Boolean = false, initialTab: ContainerTab = ContainerTab.Overview, /** Each new value opens the selected container's own screen, for a link that named it. */ openDetail: Int = 0, free: Long = freeBytes(), /** Under the list's heading, such as what driving does in a parked car. */ listNote: (@Composable () -&gt; Unit)? = null, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( state: ServiceState, tab: ContainerTab, onTab: (ContainerTab) -&gt; Unit, actions: DetailActions, wide: Boolean, /** Null where the list is beside it. */ onBack: (() -&gt; Unit)?, /** Status and "What works here" side by side; off when the pane is too narrow, as on half a fold. */ columns: Boolean = wide, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( title: String, supporting: String, icon: ImageVector, primary: Boolean, shape: RoundedCornerShape, onClick: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$DetailActions$( val onOpenTerminal: () -&gt; Unit, val onOpenDesktop: () -&gt; Unit, val onConfigureDesktop: () -&gt; Unit, val onUpgrade: () -&gt; Unit, val onRollback: () -&gt; Unit, val onChangeImage: () -&gt; Unit, val onRemove: () -&gt; Unit, val onRootMode: (Boolean) -&gt; Unit, val onRefresh: () -&gt; Unit, val onOpenApp: (AppEntry) -&gt; String?, )</ID>
+    <ID>LongParameterList:ImagePicker.kt$( selection: ImageSelection, onSelect: (ImageSelection) -&gt; Unit, customRef: String, onCustomRef: (String) -&gt; Unit, modifier: Modifier = Modifier, device: DeviceClass = currentDeviceClass(), variants: List&lt;TunedVariant&gt; = ImageCatalog.tuned, )</ID>
+    <ID>LongParameterList:ImagePicker.kt$( title: String, subtitle: String, mono: Boolean, selected: Boolean, enabled: Boolean, onClick: () -&gt; Unit, chips: @Composable () -&gt; Unit, )</ID>
+    <ID>LongParameterList:ImageScreens.kt$( container: String, currentRef: String?, onChange: (ref: String, insecure: Boolean) -&gt; Unit, onBack: () -&gt; Unit, device: DeviceClass = currentDeviceClass(), variants: List&lt;TunedVariant&gt; = ImageCatalog.tuned, )</ID>
+    <ID>LongParameterList:ImageScreens.kt$( existing: List&lt;String&gt;, onCreate: (name: String, ref: String, insecure: Boolean) -&gt; Unit, onClose: (() -&gt; Unit)?, fixedName: String? = null, /** Prefilled, still editable: "default" for the first container. */ initialName: String = "", /** An image to start from, as Images' Container button passes; null preselects for this device. */ initialRef: String? = null, free: Long = freeBytes(), device: DeviceClass = currentDeviceClass(), variants: List&lt;TunedVariant&gt; = ImageCatalog.tuned, )</ID>
+    <ID>LongParameterList:NativeCompositor.kt$NativeCompositor.Companion$(handle: Long, kind: Int, code: Int, pressed: Boolean, x: Float, y: Float)</ID>
+    <ID>LongParameterList:ProgressScreen.kt$( op: Operation, onCancel: () -&gt; Unit, onRetry: (Operation.Failed) -&gt; Unit, onRetryInsecure: (Operation.Failed) -&gt; Unit, onDismiss: () -&gt; Unit, free: Long = if ((op as? Operation.Failed)?.error?.kind == ErrorKind.STORAGE) freeBytes() else 0L, /** The container had no image before this operation, so this install creates it. */ creating: Boolean = when (op) { is Operation.Running -&gt; op.creating is Operation.Failed -&gt; op.creating is Operation.Done -&gt; op.creating else -&gt; false }, /** Opens the image picker again after a signature failure. Without it, Back is offered instead. */ onChooseImage: ((Operation.Failed) -&gt; Unit)? = null, /** `droidc gc`; reports an error message, or null. */ onCleanUp: ((done: (String?) -&gt; Unit) -&gt; Unit)? = null, )</ID>
+    <ID>LongParameterList:ProgressScreen.kt$( op: Operation.Failed, free: Long, creating: Boolean, onRetry: (Operation.Failed) -&gt; Unit, onRetryInsecure: (Operation.Failed) -&gt; Unit, onDismiss: () -&gt; Unit, onChooseImage: ((Operation.Failed) -&gt; Unit)?, onCleanUp: ((done: (String?) -&gt; Unit) -&gt; Unit)?, )</ID>
+    <ID>LongParameterList:ProgressScreen.kt$( title: String, body: String?, icon: ImageVector, button: String, onDismiss: () -&gt; Unit, mark: MarkStyle = MarkStyle.Primary, )</ID>
+    <ID>LongParameterList:Sections.kt$( section: Section, onSection: (Section) -&gt; Unit, onNewContainer: () -&gt; Unit, modifier: Modifier = Modifier, showNavigation: Boolean = true, /** At the rail's foot: the headset's Home Space and Full Space switch. */ railFooter: (@Composable () -&gt; Unit)? = null, content: @Composable (rail: Boolean) -&gt; Unit, )</ID>
+    <ID>LongParameterList:SettingsScreen.kt$( rail: Boolean, phantom: PhantomProcessCheck.State, notificationsOn: Boolean, /** Bytes Selkie's app and data take, or null while it is read. */ usedBytes: Long?, freeBytes: Long, suFound: Boolean, debugLogs: Boolean, version: String, onPhantomHelp: () -&gt; Unit, onNotificationSettings: () -&gt; Unit, onAbout: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:TerminalScreen.kt$( full: Boolean, ctrlOn: Boolean, altOn: Boolean, onCtrl: () -&gt; Unit, onAlt: () -&gt; Unit, send: (String) -&gt; Unit, appCursor: () -&gt; Boolean, )</ID>
+    <ID>LongParameterList:TerminalScreen.kt$( tabs: List&lt;TerminalTab&gt;, selected: Int, onSelect: (Int) -&gt; Unit, onBack: () -&gt; Unit, onNew: () -&gt; Unit, onClose: () -&gt; Unit, onPaste: () -&gt; Unit, onShowKeyboard: () -&gt; Unit, error: String?, ctrlOn: Boolean, altOn: Boolean, onCtrl: () -&gt; Unit, onAlt: () -&gt; Unit, send: (String) -&gt; Unit, appCursor: () -&gt; Boolean, terminal: @Composable (Modifier) -&gt; Unit, )</ID>
+    <ID>LongParameterList:TerminalScreen.kt$( tabs: List&lt;TerminalTab&gt;, selected: Int, onSelect: (Int) -&gt; Unit, onBack: () -&gt; Unit, onNew: () -&gt; Unit, onPaste: () -&gt; Unit, onClose: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:TvScreens.kt$( c: ContainerSummary, state: ServiceState, first: FocusRequester, onResume: () -&gt; Unit, onTerminal: () -&gt; Unit, onStop: () -&gt; Unit, onChangeImage: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:TvScreens.kt$( onClick: () -&gt; Unit, modifier: Modifier = Modifier, selected: Boolean = false, shape: Shape = MaterialTheme.shapes.large, color: Color = MaterialTheme.colorScheme.surfaceContainer, outlined: Boolean = false, enabled: Boolean = true, content: @Composable () -&gt; Unit, )</ID>
+    <ID>LongParameterList:TvScreens.kt$( sessionName: String?, inputs: TvInputs, onPair: () -&gt; Unit, onOpenAnyway: () -&gt; Unit, modifier: Modifier = Modifier, /** The app being opened on its own, or null for the desktop. */ app: String? = null, )</ID>
+    <ID>LongParameterList:TvScreens.kt$( state: ServiceState, inputs: TvInputs, message: String?, onOpenApp: (AppEntry) -&gt; Unit, onOpenDesktop: () -&gt; Unit, onOpenTerminal: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:TvScreens.kt$( state: ServiceState, onSelectContainer: (String) -&gt; Unit, onOpenDesktop: () -&gt; Unit, onOpenTerminal: () -&gt; Unit, onStopDesktop: () -&gt; Unit, onChangeImage: () -&gt; Unit, onNewContainer: () -&gt; Unit, modifier: Modifier = Modifier, inputs: TvInputs = TvInputs(), /** Opens one app on its own; returns why it can't open, or null. */ onOpenApp: (AppEntry) -&gt; String? = { null }, )</ID>
+    <ID>LongParameterList:TvScreens.kt$(text: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, primary: Boolean = false, enabled: Boolean = true)</ID>
+    <ID>LongParameterList:WatchScreens.kt$( device: String, c: WatchContainer, onStopDesktop: () -&gt; Unit, onCloseTerminals: () -&gt; Unit, /** Shows this container in Selkie on [device]. Null where the phone can't be reached. */ onOpenOnPhone: (() -&gt; Unit)? = null, initialConfirm: WatchAction? = null, initialOpened: Boolean = false, state: ScalingLazyListState = rememberScalingLazyListState(), )</ID>
+    <ID>LoopWithTooManyJumpStatements:DroidcClient.kt$DroidcClient$for</ID>
+    <ID>LoopWithTooManyJumpStatements:GuestAudio.kt$GuestAudio$while</ID>
+    <ID>LoopWithTooManyJumpStatements:GuestLink.kt$GuestLink$while</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$0x3A</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$0x44</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$0x52</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$0xF2</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$0xF4</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$0xF7</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$108</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$40</ID>
+    <ID>MagicNumber:AppShortcuts.kt$AppShortcuts$56</ID>
+    <ID>MagicNumber:Appearance.kt$Appearance.Companion$0.5f</ID>
+    <ID>MagicNumber:Appearance.kt$Appearance.Companion$0xffffff</ID>
+    <ID>MagicNumber:AppsTab.kt$64</ID>
+    <ID>MagicNumber:Closed.kt$137</ID>
+    <ID>MagicNumber:Closed.kt$3</ID>
+    <ID>MagicNumber:Closed.kt$4</ID>
+    <ID>MagicNumber:Closed.kt$5</ID>
+    <ID>MagicNumber:Closed.kt$9</ID>
+    <ID>MagicNumber:CompositorView.kt$CompositorView.&lt;no name provided&gt;$111</ID>
+    <ID>MagicNumber:CompositorView.kt$CompositorView.&lt;no name provided&gt;$14</ID>
+    <ID>MagicNumber:DisplayScale.kt$DisplayScale$4f</ID>
+    <ID>MagicNumber:DroidcClient.kt$DroidcClient$15</ID>
+    <ID>MagicNumber:Format.kt$1024</ID>
+    <ID>MagicNumber:GuestAudio.kt$GuestAudio$3</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$0.9</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$0x1ff</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$10</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$100</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$1000</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$1000.0</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$20</ID>
+    <ID>MagicNumber:GuestFiles.kt$GuestFiles$5</ID>
+    <ID>MagicNumber:GuestLink.kt$GuestLink$3</ID>
+    <ID>MagicNumber:HomeScreen.kt$40</ID>
+    <ID>MagicNumber:ImageCatalog.kt$ImageCatalog$3</ID>
+    <ID>MagicNumber:ImagePicker.kt$1440</ID>
+    <ID>MagicNumber:ImagePicker.kt$600</ID>
+    <ID>MagicNumber:ImagePicker.kt$840</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$10</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$100</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$102</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$103</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$104</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$105</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$106</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$107</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$108</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$109</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$11</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$110</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$111</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$12</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$125</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$126</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$13</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$14</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$15</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$16</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$26</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$27</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$28</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$29</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$30</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$39</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$40</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$41</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$42</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$43</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$44</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$51</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$52</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$53</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$54</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$56</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$57</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$58</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$59</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$87</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$88</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$9</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$96</ID>
+    <ID>MagicNumber:KeyMap.kt$KeyMap$97</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$33</ID>
+    <ID>MagicNumber:Models.kt$Deployment$12</ID>
+    <ID>MagicNumber:OpenUri.kt$OpenUri$8192</ID>
+    <ID>MagicNumber:Previews.kt$Fixtures$1600</ID>
+    <ID>MagicNumber:Previews.kt$Fixtures$2560</ID>
+    <ID>MagicNumber:Previews.kt$Fixtures$3</ID>
+    <ID>MagicNumber:Previews.kt$Fixtures$9</ID>
+    <ID>MagicNumber:RootAccess.kt$RootAccess$30</ID>
+    <ID>MagicNumber:RootAccess.kt$RootAccess$300</ID>
+    <ID>MagicNumber:SelkieTile.kt$10f</ID>
+    <ID>MagicNumber:SelkieTile.kt$12f</ID>
+    <ID>MagicNumber:SelkieTile.kt$13f</ID>
+    <ID>MagicNumber:SelkieTile.kt$14f</ID>
+    <ID>MagicNumber:SelkieTile.kt$20f</ID>
+    <ID>MagicNumber:SelkieTile.kt$22f</ID>
+    <ID>MagicNumber:SelkieTile.kt$24f</ID>
+    <ID>MagicNumber:SelkieTile.kt$48f</ID>
+    <ID>MagicNumber:SelkieTileTest.kt$SelkieTileTest$10</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$100</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$1000</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$1000.0</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$3</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$30</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$34</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$40</ID>
+    <ID>MagicNumber:SessionService.kt$SessionService$4000</ID>
+    <ID>MagicNumber:TerminalScreen.kt$SelkieTerminalClient$0.9f</ID>
+    <ID>MagicNumber:TerminalScreen.kt$SelkieTerminalClient$1.1f</ID>
+    <ID>MagicNumber:TerminalScreen.kt$SelkieTerminalClient$14</ID>
+    <ID>MagicNumber:TerminalScreen.kt$SelkieTerminalClient$40</ID>
+    <ID>MagicNumber:TerminalScreen.kt$SelkieTerminalClient$8</ID>
+    <ID>MagicNumber:Theme.kt$0xFF000000</ID>
+    <ID>MagicNumber:Theme.kt$0xFF001E30</ID>
+    <ID>MagicNumber:Theme.kt$0xFF00201C</ID>
+    <ID>MagicNumber:Theme.kt$0xFF003731</ID>
+    <ID>MagicNumber:Theme.kt$0xFF005048</ID>
+    <ID>MagicNumber:Theme.kt$0xFF006A60</ID>
+    <ID>MagicNumber:Theme.kt$0xFF05201C</ID>
+    <ID>MagicNumber:Theme.kt$0xFF090F0E</ID>
+    <ID>MagicNumber:Theme.kt$0xFF0B1110</ID>
+    <ID>MagicNumber:Theme.kt$0xFF0E1513</ID>
+    <ID>MagicNumber:Theme.kt$0xFF0E3349</ID>
+    <ID>MagicNumber:Theme.kt$0xFF161D1B</ID>
+    <ID>MagicNumber:Theme.kt$0xFF1A2120</ID>
+    <ID>MagicNumber:Theme.kt$0xFF1C3531</ID>
+    <ID>MagicNumber:Theme.kt$0xFF252B2A</ID>
+    <ID>MagicNumber:Theme.kt$0xFF27485F</ID>
+    <ID>MagicNumber:Theme.kt$0xFF2B3230</ID>
+    <ID>MagicNumber:Theme.kt$0xFF2F3635</ID>
+    <ID>MagicNumber:Theme.kt$0xFF334B47</ID>
+    <ID>MagicNumber:Theme.kt$0xFF343B39</ID>
+    <ID>MagicNumber:Theme.kt$0xFF3F4947</ID>
+    <ID>MagicNumber:Theme.kt$0xFF3F5F7A</ID>
+    <ID>MagicNumber:Theme.kt$0xFF410002</ID>
+    <ID>MagicNumber:Theme.kt$0xFF4A635F</ID>
+    <ID>MagicNumber:Theme.kt$0xFF690005</ID>
+    <ID>MagicNumber:Theme.kt$0xFF6F7977</ID>
+    <ID>MagicNumber:Theme.kt$0xFF82D5C8</ID>
+    <ID>MagicNumber:Theme.kt$0xFF899391</ID>
+    <ID>MagicNumber:Theme.kt$0xFF8FA19C</ID>
+    <ID>MagicNumber:Theme.kt$0xFF93000A</ID>
+    <ID>MagicNumber:Theme.kt$0xFF9EF2E4</ID>
+    <ID>MagicNumber:Theme.kt$0xFFA9CAE8</ID>
+    <ID>MagicNumber:Theme.kt$0xFFB1CCC6</ID>
+    <ID>MagicNumber:Theme.kt$0xFFBA1A1A</ID>
+    <ID>MagicNumber:Theme.kt$0xFFBEC9C6</ID>
+    <ID>MagicNumber:Theme.kt$0xFFCBE6FF</ID>
+    <ID>MagicNumber:Theme.kt$0xFFCCE8E2</ID>
+    <ID>MagicNumber:Theme.kt$0xFFD5DBD9</ID>
+    <ID>MagicNumber:Theme.kt$0xFFD7E0DD</ID>
+    <ID>MagicNumber:Theme.kt$0xFFDCE4E1</ID>
+    <ID>MagicNumber:Theme.kt$0xFFDDE4E1</ID>
+    <ID>MagicNumber:Theme.kt$0xFFE2EAE6</ID>
+    <ID>MagicNumber:Theme.kt$0xFFE8EFEC</ID>
+    <ID>MagicNumber:Theme.kt$0xFFECF2EF</ID>
+    <ID>MagicNumber:Theme.kt$0xFFEEF5F2</ID>
+    <ID>MagicNumber:Theme.kt$0xFFF4FBF8</ID>
+    <ID>MagicNumber:Theme.kt$0xFFFFB4AB</ID>
+    <ID>MagicNumber:Theme.kt$0xFFFFDAD6</ID>
+    <ID>MagicNumber:Theme.kt$0xFFFFFFFF</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF003731</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF005048</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF0E3349</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF1A2120</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF252B2A</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF2F3635</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF3F4947</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF690005</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF82D5C8</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF899391</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFF9EF2E4</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFFA9CAE8</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFFBEC9C6</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFFDDE4E1</ID>
+    <ID>MagicNumber:WatchScreens.kt$0xFFFFB4AB</ID>
+    <ID>MagicNumber:XrScreens.kt$1280f</ID>
+    <ID>MagicNumber:XrScreens.kt$800f</ID>
+    <ID>MatchingDeclarationName:ActivityScreen.kt$ActivityItems</ID>
+    <ID>MatchingDeclarationName:Icons.kt$SelkieIcons</ID>
+    <ID>MatchingDeclarationName:ImagesScreen.kt$ImageEntry</ID>
+    <ID>MatchingDeclarationName:ProgressScreen.kt$InstallStep</ID>
+    <ID>MatchingDeclarationName:Sections.kt$Section</ID>
+    <ID>MatchingDeclarationName:WatchModel.kt$PhoneState</ID>
+    <ID>MatchingDeclarationName:WatchPreviews.kt$WatchPreview</ID>
+    <ID>MaxLineLength:AboutScreen.kt$Text("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), ABIs ${Build.SUPPORTED_ABIS.joinToString()}")</ID>
+    <ID>MaxLineLength:AboutScreen.kt$Text("Terminal font: JetBrains Mono Nerd Font Mono (no ligatures), SIL Open Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors; patched by Nerd Fonts.")</ID>
+    <ID>MaxLineLength:ActivityScreen.kt$Row</ID>
+    <ID>MaxLineLength:ActivityScreen.kt$StopDesktopDialog(container, app = items.app, onDismiss = { stopping = null }, onConfirm = { stopping = null; onStopDesktop() })</ID>
+    <ID>MaxLineLength:ActivityScreen.kt$colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)</ID>
+    <ID>MaxLineLength:ActivityScreen.kt$colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)</ID>
+    <ID>MaxLineLength:AndroidEngineEnv.kt$locale = java.util.Locale.getDefault().let { if (it.country.isEmpty()) it.language else "${it.language}_${it.country}" }</ID>
+    <ID>MaxLineLength:AppActivity.kt$AppActivity$LaunchedEffect</ID>
+    <ID>MaxLineLength:AppActivity.kt$AppActivity$val list = st.apps?.takeIf { it.container.isEmpty() || it.container == target.container } ?: return@LaunchedEffect</ID>
+    <ID>MaxLineLength:AppActivity.kt$Column</ID>
+    <ID>MaxLineLength:AppShortcutsTest.kt$AppShortcutsTest$assertEquals("app:fedora/org.gnome.TextEditor.desktop", AppShortcuts.id("fedora", "org.gnome.TextEditor.desktop"))</ID>
+    <ID>MaxLineLength:AppShortcutsTest.kt$AppShortcutsTest$assertEquals(AppShortcuts.Target("fedora", "org.gnome.TextEditor.desktop", "Text Editor"), AppShortcuts.target(intent))</ID>
+    <ID>MaxLineLength:AppsModelTest.kt$AppsModelTest$hiddenNote(List(9) { HiddenApp("a$it", reason = "hidden") } + List(3) { HiddenApp("b$it", reason = "not-installed") })</ID>
+    <ID>MaxLineLength:AppsModelTest.kt$AppsModelTest$val zed = app("Zed", origin = AppOrigin.USER).copy(path = "/var/home/kepler/.local/share/applications/dev.zed.Zed.desktop")</ID>
+    <ID>MaxLineLength:AppsTab.kt$AppOpen.None -&gt; GroupItem("A terminal program", supporting = "Run it from a terminal in $container.")</ID>
+    <ID>MaxLineLength:AppsTab.kt$ModalBottomSheet</ID>
+    <ID>MaxLineLength:AppsTab.kt$app.origin == AppOrigin.USER -&gt; "From " + app.path.replace(Regex("^/(var/)?home/[^/]+/"), "~/").substringBeforeLast('/')</ID>
+    <ID>MaxLineLength:AppsTab.kt$apps == null -&gt; Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }</ID>
+    <ID>MaxLineLength:AppsTab.kt$for</ID>
+    <ID>MaxLineLength:AppsTab.kt$onOpen(app.copy(id = app.id + "#" + a.id, name = "${app.name}: ${a.name}", argv = a.argv, actions = emptyList()))</ID>
+    <ID>MaxLineLength:CarDriving.kt$CarDriving$onChange(runCatching { m.currentCarUxRestrictions.isRequiresDistractionOptimization }.getOrDefault(true))</ID>
+    <ID>MaxLineLength:CarDriving.kt$CarDriving$val m = runCatching { c.getCarManager(Car.CAR_UX_RESTRICTION_SERVICE) as CarUxRestrictionsManager }.getOrNull()</ID>
+    <ID>MaxLineLength:Closed.kt$ClosedCause.Crash -&gt; if (time != null) "Selkie stopped unexpectedly at $time." else "Selkie stopped unexpectedly."</ID>
+    <ID>MaxLineLength:Closed.kt$if (c.terminals &gt; 0) plural(c.terminals, "terminal").let { if (c.desktop) it else it.replaceFirstChar(Char::uppercase) } else null</ID>
+    <ID>MaxLineLength:Closed.kt$val i = list.indexOfFirst { it.container == k.container &amp;&amp; it.at != null &amp;&amp; k.at != null &amp;&amp; k.at - it.at &lt;= windowMs }</ID>
+    <ID>MaxLineLength:ClosedNotices.kt$Text(c.logTail, Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), style = MonoStyle)</ID>
+    <ID>MaxLineLength:ClosedNotices.kt$leading = { Icon(SelkieIcons.Warn, contentDescription = null, tint = MaterialTheme.colorScheme.error) }</ID>
+    <ID>MaxLineLength:ClosedTest.kt$ClosedTest$"Your files are safe; unsaved work in open apps is lost."</ID>
+    <ID>MaxLineLength:ClosedTest.kt$ClosedTest$val r = listOf(RunRecord("default", true, terminals = 1, boot = 3), RunRecord("dev", false, terminals = 2, boot = 3))</ID>
+    <ID>MaxLineLength:ClosedTest.kt$ClosedTest$val records = runRecords("default", "org.gnome.TextEditor.desktop", "Text\tEditor", listOf("default", "dev", "dev"), 7)</ID>
+    <ID>MaxLineLength:Components.kt$fun</ID>
+    <ID>MaxLineLength:Components.kt$if (leading != null) CompositionLocalProvider(LocalContentColor provides if (highlighted) fg else cs.onSurfaceVariant) { leading() }</ID>
+    <ID>MaxLineLength:Components.kt$outlined.clip(shape).background(bg).defaultMinSize(minHeight = 28.dp).padding(horizontal = 10.dp, vertical = 5.dp)</ID>
+    <ID>MaxLineLength:Components.kt$style = Stroke(width = w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())))</ID>
+    <ID>MaxLineLength:Components.kt$topStart = (24 * scale).dp</ID>
+    <ID>MaxLineLength:Components.kt$val clickable = if (onClick != null) Modifier.clickable(onClickLabel = onClickLabel, onClick = onClick) else Modifier</ID>
+    <ID>MaxLineLength:ContainersTest.kt$ContainersTest$for</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$(serviceRule.bindService(SessionService.intent(ctx)) as SessionService.LocalBinder).service.also { current = it }</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$/** Logs the command lines of the session's processes matching [pattern] (the instrumentation shares the app's uid). */</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$fail("timed out after ${timeoutMs / 1000}s waiting for $what; desktop=${current?.state?.value?.desktop} stats=${current?.let { stats(it) }}")</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$fun shell(cmd: String)</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$if (now &gt; deadline) { log("settle: picture still changing after ${timeoutMs / 1000}s stats=${stats(s)}"); return }</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$if (v is android.view.ViewGroup) for (i in 0 until v.childCount) findCompositorView(v.getChildAt(i))?.let { return it }</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, view.width * 0.5f, view.height * 0.5f, 0))</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, view.width * 0.5f, view.height * 0.5f, 0))</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$is Operation.Running -&gt; { if (op.phase != lastPhase) { lastPhase = op.phase; log("phase=${op.phase}") }; false }</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$java.io.File(inst.targetContext.cacheDir, "desktop.log").copyTo(java.io.File(rule.activity.getExternalFilesDir(null), "$metric-session-failed.log"), overwrite = true)</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$log("SELKIE_METRIC ${metric}_first_frame_seconds=${(SystemClock.uptimeMillis() - t0) / 1000.0} stats=${stats(s)}")</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$log("SELKIE_METRIC app_shortcut_first_frame_seconds=${(SystemClock.uptimeMillis() - t0) / 1000.0} stats=${stats(s)}")</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$shell("dumpsys activity activities").lines().filter { "example.org" in it || "act=android.intent.action.VIEW" in it }.take(5)</ID>
+    <ID>MaxLineLength:DesktopE2ETest.kt$DesktopE2ETest$try { re.containsMatchIn(java.io.File(d, "cmdline").readText().replace('\u0000', ' ')) } catch (e: Exception) { false }</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Box</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Button</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Icon(SelkieIcons.Containers, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(18.dp))</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Text(listOfNotNull("Selkie", container, app).joinToString(" · "), style = MaterialTheme.typography.labelLarge)</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Text(state.desktopApp?.let { "${it.name} stopped" } ?: "The session stopped", style = MaterialTheme.typography.titleMedium)</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$Text(state.desktopApp?.let { "Opening ${it.name}…" } ?: "Starting the session…", color = Color.White, modifier = Modifier.padding(top = 12.dp))</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$TextButton</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$colors = ButtonDefaults.buttonColors(containerColor = cs.errorContainer, contentColor = cs.onErrorContainer)</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$else</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$if</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$is DesktopState.Starting</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$modifier = Modifier.size(width = 64.dp, height = 28.dp).semantics { contentDescription = SHOW_DESKTOP_CONTROLS }</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$text</ID>
+    <ID>MaxLineLength:DesktopScreen.kt$}</ID>
+    <ID>MaxLineLength:DroidcClient.kt$DroidcArgs$fun</ID>
+    <ID>MaxLineLength:DroidcClient.kt$DroidcClient$suspend</ID>
+    <ID>MaxLineLength:EngineE2ETest.kt$EngineE2ETest$"if command -v python3 &gt;/dev/null; then python3 -c 'import socket; print(\"names=\" + \",\".join(n for _, n in socket.if_nameindex()))'; fi"</ID>
+    <ID>MaxLineLength:EngineE2ETest.kt$EngineE2ETest$assertEquals("phantom check should report OK after settings put global", PhantomProcessCheck.State.OK, phantom.state)</ID>
+    <ID>MaxLineLength:EngineE2ETest.kt$EngineE2ETest$if (ifs.contains("names=")) assertTrue("no loopback listed: $ifs", Regex("names=.*\\blo\\b").containsMatchIn(ifs))</ID>
+    <ID>MaxLineLength:EngineE2ETest.kt$EngineE2ETest$val</ID>
+    <ID>MaxLineLength:EngineEnv.kt$EngineEnv.Companion$/** droidc's rule (1-63 of a-z, 0-9, `-`, `_`, `.`, starting with a letter or digit), within [MAX_CONTAINER_NAME]. */</ID>
+    <ID>MaxLineLength:EngineEnv.kt$PipeWireServices$"sed 's/^\\([[:space:]]*\\)#access\\.socket = .*/\\1access.socket = { pipewire-0 = \"unrestricted\", pipewire-0-manager = \"unrestricted\" }/' "</ID>
+    <ID>MaxLineLength:Fold.kt$fun</ID>
+    <ID>MaxLineLength:GraphicalSessionTest.kt$GraphicalSessionTest$"""{"name":null,"renderer":null,"exec":null,"services":[],"configured":false,"source":null}}}"""</ID>
+    <ID>MaxLineLength:GraphicalSessionTest.kt$GraphicalSessionTest$assertEquals</ID>
+    <ID>MaxLineLength:GraphicalSessionTest.kt$GraphicalSessionTest$val old = NdjsonParser.parseLine("""{"event":"result","ok":true,"data":{"rootfs":"/r"}}""") as DroidcEvent.Result</ID>
+    <ID>MaxLineLength:GuestFiles.kt$GuestFiles$for (i in 0 until cpus) append("cpu$i ${jiffies / 10 / cpus} 0 ${jiffies / 20 / cpus} ${jiffies} 0 0 0 0 0 0\n")</ID>
+    <ID>MaxLineLength:GuestLinkTest.kt$GuestLinkTest$Appearance(dark = true, accent = "#6750a4", textScale = 1.15f, animations = false, highContrast = true).toLine()</ID>
+    <ID>MaxLineLength:GuestLinkTest.kt$GuestLinkTest$fun line(uri: String)</ID>
+    <ID>MaxLineLength:HomeDetailTest.kt$HomeDetailTest$SectionScaffold</ID>
+    <ID>MaxLineLength:HomeScreen.kt$!state.statusLoaded -&gt; Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() }</ID>
+    <ID>MaxLineLength:HomeScreen.kt$"faster, real file owners and systemd user services. Linux programs then run as root on this device."</ID>
+    <ID>MaxLineLength:HomeScreen.kt$.</ID>
+    <ID>MaxLineLength:HomeScreen.kt$Button</ID>
+    <ID>MaxLineLength:HomeScreen.kt$Column</ID>
+    <ID>MaxLineLength:HomeScreen.kt$ContainerTab$enum</ID>
+    <ID>MaxLineLength:HomeScreen.kt$Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
+    <ID>MaxLineLength:HomeScreen.kt$else</ID>
+    <ID>MaxLineLength:HomeScreen.kt$error?.let { SelkieCard(Modifier.fillMaxWidth(), tone = CardTone.Error) { Text("Could not remove the container: $it") } }</ID>
+    <ID>MaxLineLength:HomeScreen.kt$if</ID>
+    <ID>MaxLineLength:HomeScreen.kt$if (onBack != null) SelkieTopBar(title = null, navIcon = SelkieIcons.Back, navLabel = "Back to containers", onNav = onBack)</ID>
+    <ID>MaxLineLength:HomeScreen.kt$second = { detailPanel(Modifier.fillMaxSize().padding(top = 16.dp, start = 12.dp, end = 16.dp, bottom = 16.dp)) }</ID>
+    <ID>MaxLineLength:HomeScreen.kt$shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp, topEnd = 8.dp, bottomEnd = 8.dp)</ID>
+    <ID>MaxLineLength:HomeScreen.kt$state.statusError?.let { SelkieCard(Modifier.fillMaxWidth(), tone = CardTone.Error) { Text("Could not read status: $it") } }</ID>
+    <ID>MaxLineLength:HomeScreen.kt$style = if (wide) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall</ID>
+    <ID>MaxLineLength:Icons.kt$SelkieIcons$ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)</ID>
+    <ID>MaxLineLength:Icons.kt$SelkieIcons$line</ID>
+    <ID>MaxLineLength:ImageCatalog.kt$ImageCatalog$KnownImage("bluefin", "Bluefin LTS", Images.BLUEFIN, listOf("GNOME desktop", "Signed", "Not tuned"), signed = true)</ID>
+    <ID>MaxLineLength:ImageCatalog.kt$ImageCatalog$KnownImage("centos", "CentOS Stream 10", Images.CENTOS, listOf("Terminal only", "Unsigned", "Not tuned"), signed = false)</ID>
+    <ID>MaxLineLength:ImageCatalog.kt$ImageCatalog$TunedVariant("Ringed", "Phosh or Plasma Mobile", "Phone", setOf(DeviceClass.Phone, DeviceClass.Foldable), ref = null)</ID>
+    <ID>MaxLineLength:ImageCatalog.kt$ImageCatalog$fun</ID>
+    <ID>MaxLineLength:ImageCatalog.kt$ImageCatalog$is ImageSelection.Known -&gt; known.firstOrNull { it.id == selection.id }?.let { Resolved(it.title, it.ref, it.signed) }</ID>
+    <ID>MaxLineLength:ImageCatalog.kt$ImageCatalog$setOf(DeviceClass.Foldable, DeviceClass.Tablet, DeviceClass.Desktop, DeviceClass.Xr, DeviceClass.Car)</ID>
+    <ID>MaxLineLength:ImageCatalogTest.kt$ImageCatalogTest$ImageCatalog.emptyStateLead(ImageCatalog.tuned.map { if (it.name == "Monk") it.copy(ref = "ghcr.io/x/monk:1") else it })</ID>
+    <ID>MaxLineLength:ImageCatalogTest.kt$ImageCatalogTest$assertEquals("ghcr.io/droidc-dev/monk:stable", ImageCatalog.resolve(ImageSelection.Tuned("Monk"), "", published)?.ref)</ID>
+    <ID>MaxLineLength:ImageCatalogTest.kt$ImageCatalogTest$assertEquals("image:latest", ImageCatalog.resolve(ImageSelection.Custom, " registry.example/team/image:latest ")?.title)</ID>
+    <ID>MaxLineLength:ImagePicker.kt$FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { chips() }</ID>
+    <ID>MaxLineLength:ImagePicker.kt$Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)</ID>
+    <ID>MaxLineLength:ImagePicker.kt$chips = { for (c in k.chips) StatusChip(c, tone = if (c == "Unsigned") ChipTone.Bad else ChipTone.Neutral) }</ID>
+    <ID>MaxLineLength:ImagePicker.kt$keyboardOptions</ID>
+    <ID>MaxLineLength:ImageScreens.kt$Column</ID>
+    <ID>MaxLineLength:ImageScreens.kt$MutedText</ID>
+    <ID>MaxLineLength:ImageScreens.kt$Row</ID>
+    <ID>MaxLineLength:ImageScreens.kt$Text(problem ?: "Up to ${EngineEnv.MAX_CONTAINER_NAME} of a-z, 0-9, - _ and . It becomes the hostname.")</ID>
+    <ID>MaxLineLength:ImageScreens.kt$TextButton</ID>
+    <ID>MaxLineLength:ImageScreens.kt$confirmButton = { TextButton(onClick = { confirm = false; onChange(resolved.ref, false) }) { Text("Change image") } }</ID>
+    <ID>MaxLineLength:ImageScreens.kt$keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false)</ID>
+    <ID>MaxLineLength:ImageScreens.kt$onClick = { if (resolved?.signed == false) confirmUnsigned = true else resolved?.let { onCreate(trimmed, it.ref, false) } }</ID>
+    <ID>MaxLineLength:ImageScreens.kt$var custom by rememberSaveable { mutableStateOf(if (initial == ImageSelection.Custom) currentRef.orEmpty() else "") }</ID>
+    <ID>MaxLineLength:ImageScreens.kt$var custom by rememberSaveable { mutableStateOf(if (initial == ImageSelection.Custom) initialRef.orEmpty() else "") }</ID>
+    <ID>MaxLineLength:ImagesScreen.kt$Text(e.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$.</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$SelkieTheme { CompositionLocalProvider(LocalFold provides fold) { Surface(Modifier.fillMaxSize()) { Root() } } }</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$TerminalScreen(service, onBack = { screen = "auto"; openSession = null }, initialSession = openSession)</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$if (full) xrDesktop = true else screen = if (tv &amp;&amp; needsPointer &amp;&amp; !inputs.pointer) "tv-pointer" else "desktop"</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$onReturnToDesktop = { c -&gt; if (c != state.container) service.selectContainer(c); openDesktop() }</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)) }</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }</ID>
+    <ID>MaxLineLength:MainActivity.kt$MainActivity$val needPhantom = (phantom == PhantomProcessCheck.State.RESTRICTED || phantom == PhantomProcessCheck.State.UNVERIFIED) &amp;&amp; !acknowledged</ID>
+    <ID>MaxLineLength:MainActivity.kt$internal fun sectionFor(keyCode: Int): Section?</ID>
+    <ID>MaxLineLength:NativeCompositor.kt$NativeCompositor.Companion$@JvmStatic private external fun nativeInput(handle: Long, kind: Int, code: Int, pressed: Boolean, x: Float, y: Float)</ID>
+    <ID>MaxLineLength:NativeCompositor.kt$NativeCompositor.Companion$@JvmStatic private external fun nativeSetSurface(handle: Long, surface: android.view.Surface?, width: Int, height: Int)</ID>
+    <ID>MaxLineLength:NdjsonParserTest.kt$NdjsonParserTest$assertEquals(DroidcEvent.Log("warn", "x"), NdjsonParser.parseLine("""{"event":"log","level":"warn","message":"x"}"""))</ID>
+    <ID>MaxLineLength:NdjsonParserTest.kt$NdjsonParserTest$val e = NdjsonParser.parseLine("""{"event":"progress","phase":"download","current":123,"total":456,"unit":"bytes","message":"layer 3/68"}""")</ID>
+    <ID>MaxLineLength:NdjsonParserTest.kt$NdjsonParserTest$val e = NdjsonParser.parseLine("""{"event":"progress","phase":"resolve","current":0,"total":null}""") as DroidcEvent.Progress</ID>
+    <ID>MaxLineLength:NdjsonParserTest.kt$NdjsonParserTest$val e = NdjsonParser.parseLine("""{"event":"result","ok":false,"error":{"kind":"signature","message":"bad"}}""") as DroidcEvent.Result</ID>
+    <ID>MaxLineLength:NdjsonParserTest.kt$NdjsonParserTest$val line = """{"event":"result","ok":true,"data":{"root":"/r","platform":{"os":"linux"},"current":{"id":"d2a12ef344f80bb0","image_ref":"ghcr.io/projectbluefin/bluefin-lts:stable","manifest_digest":"sha256:abcdef0123456789aa","platform":"linux/arm64","session_label":null,"signature":{"verified":true,"mode":"keyless","subject":"s","issuer":"i"},"insecure":false,"future_field":1,"stats":{"download_bytes":1,"files":2,"bytes_on_disk":3,"hardlinks":4,"link_strategy":"link2symlink","unpack_seconds":1.5}},"previous":null}}"""</ID>
+    <ID>MaxLineLength:NdjsonParserTest.kt$NdjsonParserTest$val r = NdjsonParser.parseLine("""{"event":"result","ok":true,"data":{"rootfs":"/r/current/rootfs","binds":[{"host":"/r/var","guest":"/var"}],"env":{"A":"b"},"cwd":"/root","session_label":"gnome"}}""") as DroidcEvent.Result</ID>
+    <ID>MaxLineLength:PhantomScreen.kt$Text</ID>
+    <ID>MaxLineLength:Previews.kt$CompositionLocalProvider</ID>
+    <ID>MaxLineLength:Previews.kt$Fixtures$AppEntry</ID>
+    <ID>MaxLineLength:Previews.kt$Fixtures$categories = listOf("GNOME", "GTK", "Utility", "Core", "FileManager")</ID>
+    <ID>MaxLineLength:Previews.kt$Fixtures$categories = listOf("System", "Monitor")</ID>
+    <ID>MaxLineLength:Previews.kt$Fixtures$stderrTail = "INFO pulling registry.example/team/image:latest\nINFO manifest sha256:0a1b2c…\nERROR verify: no matching signatures"</ID>
+    <ID>MaxLineLength:Previews.kt$SessionInfo("1", "bash", true)</ID>
+    <ID>MaxLineLength:Previews.kt$fun</ID>
+    <ID>MaxLineLength:Previews.kt$onRollback = noop</ID>
+    <ID>MaxLineLength:Previews.kt$private</ID>
+    <ID>MaxLineLength:Previews.kt$withStyle(SpanStyle(color = t.dim)) { append("/home/linuxbrew/.linuxbrew/Cellar/ripgrep/14.1.1: 14 files, 6.2MB\n") }</ID>
+    <ID>MaxLineLength:ProgressModelTest.kt$ProgressModelTest$val phases = listOf("starting", "resolve", "verify", "download", "unpack", "etc-merge", "deploy", "gc", "ownership")</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$"Nothing was downloaded or unpacked. Either the image isn't signed by anyone Selkie trusts, or it was changed on the way."</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$OpKind.SWITCH -&gt; if (creating) "${op.container} is ready" else "${op.container} has its new image"</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$body = "Nothing changed in the container. What was already downloaded is kept, so trying again picks up from there."</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$confirmButton = { TextButton(onClick = { confirmInsecure = false; onRetryInsecure(op) }) { Text("Use it anyway") } }</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$if</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$is Operation.Failed -&gt; Failed(op, free, creating, onRetry, onRetryInsecure, onDismiss, onChooseImage, onCleanUp)</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$onCleanUp { err -&gt; cleaning = false; cleanResult = err?.let { "Couldn't clean up: $it" } ?: "Cleaned up" }</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$onClick = { runCatching { ctx.startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) } }</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$s == InstallStep.Signature &amp;&amp; op.insecure -&gt; Icon(SelkieIcons.Warn, contentDescription = null, tint = cs.error)</ID>
+    <ID>MaxLineLength:ProgressScreen.kt$trailing = { if (cleaning) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp) }</ID>
+    <ID>MaxLineLength:ProotCommandBuilder.kt$ProotCommandBuilder$command(listOf("/usr/bin/droidc", "supervise", "--", "/usr/bin/droidc", "audio-out", "--timeout", timeout.toString()))</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$assertEquals</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$assertEquals(State.UNVERIFIED, PhantomProcessCheck.evaluate(null, PhantomProcessCheck.PropRead.Unreadable).state)</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$for (s in shims) assertTrue("$s not bound", inv.argv.windowed(2).contains(listOf("-b", "/lib/libdroidc-guest.so:$s")))</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$val b = ProotCommandBuilder(TestEnv.env(), spec, mapOf("/proc/stat" to File("/files/guest/generated/proc_stat")))</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$val env = TestEnv.env().copy(filesDir = File(dir, "files"), cacheDir = File(dir, "cache"), dns = listOf("8.8.4.4"))</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$val fake = GuestFiles.prepare(env, spec, readable = { it != "/proc/stat" &amp;&amp; it != "/proc/loadavg" }, uptimeSeconds = 100.0, cpus = 2)</ID>
+    <ID>MaxLineLength:ProotCommandBuilderTest.kt$ProotCommandBuilderTest$val id = mapOf("/etc/passwd" to File("/files/guest/generated/passwd"), "/etc/group" to File("/files/guest/generated/group"))</ID>
+    <ID>MaxLineLength:RootModeTest.kt$RootModeTest$DroidcArgs.global(rootEnv, json = true) + DroidcArgs.switch("quay.io/x/y:it's;reboot", insecure = false, root = true)</ID>
+    <ID>MaxLineLength:RootModeTest.kt$RootModeTest$assertEquals</ID>
+    <ID>MaxLineLength:RootModeTest.kt$RootModeTest$assertEquals("quay.io/centos-bootc/centos-bootc:stream10", RootShell.quote("quay.io/centos-bootc/centos-bootc:stream10"))</ID>
+    <ID>MaxLineLength:RootModeTest.kt$RootModeTest$assertTrue(inv.argv[2], inv.argv[2].startsWith("echo $$ &gt; /cache/root-sessions/s1.pid; exec /system/bin/env -i "))</ID>
+    <ID>MaxLineLength:RootModeTest.kt$RootModeTest$assertTrue(script, script.startsWith(RootShell.PID_ON_STDOUT + "; exec /system/bin/env -i HOME=/files PATH=/system/bin /lib/libdroidc.so --root /files/droidc --json switch "))</ID>
+    <ID>MaxLineLength:RootModeTest.kt$RootModeTest$val script = "for a in " + hostile.joinToString(" ") { RootShell.quote(it) } + "; do printf '%s\\0' \"\$a\"; done"</ID>
+    <ID>MaxLineLength:SelkieTile.kt$PhoneStateListener$val changed = events.any { it.type == DataEvent.TYPE_CHANGED &amp;&amp; it.dataItem.uri.path == WatchProtocol.STATE_PATH }</ID>
+    <ID>MaxLineLength:SelkieTileTest.kt$SelkieTileTest$val inflated = renderer.inflateAsync(layout, ResourceBuilders.Resources.Builder().setVersion("1").build(), frame)</ID>
+    <ID>MaxLineLength:SessionConfigScreen.kt$Example$private data</ID>
+    <ID>MaxLineLength:SessionConfigScreen.kt$OutlinedTextField</ID>
+    <ID>MaxLineLength:SessionConfigScreen.kt$if (current?.source == "override") OutlinedButton(onClick = { onClear(); onBack() }) { Text("Use the image's labels") }</ID>
+    <ID>MaxLineLength:SessionConfigScreen.kt$var</ID>
+    <ID>MaxLineLength:SessionConfigScreen.kt$var exec by remember { mutableStateOf(current?.exec?.let { list -&gt; list.joinToString(",", "[", "]") { "\"" + it.replace("\"", "\\\"") + "\"" } }.orEmpty()) }</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$*</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$EnterCommandBuilder(env, spec, overlays = GuestFiles.prepareSelinuxHiding(env)).interactiveShell(pidFile)</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$NativeCompositor.startApp(env.waylandSocket, width, height, DisplayScale.of(this@SessionService))</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$_state</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$_state.update { if (it.container == container) it.copy(rootMode = false, rootMessage = "Root mode is off.") else it }</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$_state.update { it.copy(rootMessage = "Close this container's terminals and desktop before switching root mode.") }</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$android.util.Log.w(TAG, "Android closed ${k.container}: desktop=${k.desktop} terminals=${k.terminals} cause=${k.cause}")</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$else</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$if</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$if (app == null &amp;&amp; spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$it</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$private fun takeServices(container: String): ContainerServices?</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$st.copy(containers = mergeContainers(containers ?: st.containers.filter { it.name == container }, container))</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService$val session = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec().session }.getOrNull() }</ID>
+    <ID>MaxLineLength:SessionService.kt$SessionService.&lt;no name provided&gt;$override fun onCopyTextToClipboard(s: TerminalSession, text: String?)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$trailing = { TextButton(onClick = onNotificationSettings) { Text(if (notificationsOn) "Change" else "Turn on") } }</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$value = withContext(Dispatchers.IO) { runCatching { StatFs(ctx.filesDir.path).availableBytes }.getOrDefault(0L) }</ID>
+    <ID>MaxLineLength:TerminalScreen.kt$Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(8.dp)) { keys(full) }</ID>
+    <ID>MaxLineLength:TerminalScreen.kt$KeySurface</ID>
+    <ID>MaxLineLength:TerminalScreen.kt$Text(k.label, style = if (k.id in ARROWS) LocalTextStyle.current.copy(fontSize = 20.sp) else LocalTextStyle.current)</ID>
+    <ID>MaxLineLength:TerminalScreen.kt$client.view?.let { v -&gt; v.requestFocus(); ctx.getSystemService(InputMethodManager::class.java).showSoftInput(v, 0) }</ID>
+    <ID>MaxLineLength:TerminalScreen.kt$style = MaterialTheme.typography.bodyMedium</ID>
+    <ID>MaxLineLength:TerminalScreen.kt$var current by remember { mutableStateOf&lt;TerminalSession?&gt;(initialSession?.let { service.terminalSession(it) } ?: sessions.firstOrNull()) }</ID>
+    <ID>MaxLineLength:Theme.kt$dynamicColor &amp;&amp; Build.VERSION.SDK_INT &gt;= 31 -&gt; if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)</ID>
+    <ID>MaxLineLength:TvModelTest.kt$TvModelTest$private val gamepad = InputInfo(InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_DPAD)</ID>
+    <ID>MaxLineLength:TvScreens.kt$Column</ID>
+    <ID>MaxLineLength:TvScreens.kt$ContainerMark(c.name, style = if (c.running) MarkStyle.Primary else MarkStyle.Neutral, size = 40.dp)</ID>
+    <ID>MaxLineLength:TvScreens.kt$LazyRow</ID>
+    <ID>MaxLineLength:TvScreens.kt$Row</ID>
+    <ID>MaxLineLength:TvScreens.kt$Text</ID>
+    <ID>MaxLineLength:TvScreens.kt$Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
+    <ID>MaxLineLength:TvScreens.kt$Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)</ID>
+    <ID>MaxLineLength:TvScreens.kt$TvButton("New container", onNewContainer, Modifier.focusRequester(first), icon = SelkieIcons.Plus, primary = true)</ID>
+    <ID>MaxLineLength:TvScreens.kt$TvButton("Open desktop", onResume, Modifier.focusRequester(first), icon = SelkieIcons.Desktop, primary = true)</ID>
+    <ID>MaxLineLength:TvScreens.kt$TvButton("Open terminal", onTerminal, Modifier.focusRequester(first), icon = SelkieIcons.Terminal, primary = true)</ID>
+    <ID>MaxLineLength:TvScreens.kt$TvButton("Resume", onResume, Modifier.focusRequester(first), icon = SelkieIcons.Play, primary = true)</ID>
+    <ID>MaxLineLength:TvScreens.kt$containers.firstOrNull { it.desktop } ?: containers.firstOrNull { it.name == state.container } ?: containers.firstOrNull()</ID>
+    <ID>MaxLineLength:TvScreens.kt$gamepad = real.any { it.sources.has(InputDevice.SOURCE_GAMEPAD) || it.sources.has(InputDevice.SOURCE_JOYSTICK) }</ID>
+    <ID>MaxLineLength:TvScreens.kt$if (inputs.keyboard) StatusChip("Keyboard connected", tone = ChipTone.Secondary, icon = SelkieIcons.Keyboard)</ID>
+    <ID>MaxLineLength:XrScreens.kt$SpatialPanel</ID>
+    <ID>ReturnCount:AppShortcuts.kt$AppShortcuts$fun target(intent: Intent?): Target?</ID>
+    <ID>ReturnCount:CompositorView.kt$CompositorView$override fun onGenericMotionEvent(e: MotionEvent): Boolean</ID>
+    <ID>ReturnCount:CompositorView.kt$CompositorView$private fun key(e: KeyEvent, pressed: Boolean): Boolean</ID>
+    <ID>ReturnCount:DesktopE2ETest.kt$DesktopE2ETest$private fun findCompositorView(v: android.view.View): io.github.keplersj.selkie.display.CompositorView?</ID>
+    <ID>ReturnCount:GuestFiles.kt$GuestFiles$fun localtime(env: EngineEnv, spec: ShellSpec): File?</ID>
+    <ID>ReturnCount:ImageCatalog.kt$ImageCatalog$fun selectionFor(ref: String?, device: DeviceClass, variants: List&lt;TunedVariant&gt; = tuned): ImageSelection</ID>
+    <ID>ReturnCount:MainActivity.kt$MainActivity$override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean</ID>
+    <ID>ReturnCount:Models.kt$NdjsonParser$fun parseLine(line: String): DroidcEvent?</ID>
+    <ID>ReturnCount:OpenUri.kt$OpenUri$fun allowed(uri: String): Boolean</ID>
+    <ID>ReturnCount:OpenUri.kt$OpenUri$fun uriFrom(m: GuestLinkMessage): String?</ID>
+    <ID>ReturnCount:RootAccess.kt$RootAccess$fun probe(timeoutSec: Long = 60): Pair&lt;Probe, String&gt;</ID>
+    <ID>ReturnCount:SessionService.kt$SessionService$@android.annotation.SuppressLint("InlinedApi") private fun lastExit(): Pair&lt;ExitKind, Long?&gt;</ID>
+    <ID>ReturnCount:SessionService.kt$SessionService$fun prepareApp(app: AppEntry): String?</ID>
+    <ID>ReturnCount:SessionService.kt$SessionService$private fun noticeKilledTerminal(s: TerminalSession)</ID>
+    <ID>ReturnCount:WatchProtocol.kt$WatchProtocol$fun containerFromLink(link: String?): String?</ID>
+    <ID>SwallowedException:DesktopE2ETest.kt$DesktopE2ETest$e: Exception</ID>
+    <ID>SwallowedException:Models.kt$NdjsonParser$e: Exception</ID>
+    <ID>SwallowedException:OpenUri.kt$OpenUri$e: ActivityNotFoundException</ID>
+    <ID>TooGenericExceptionCaught:DroidcClient.kt$DroidcClient$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:GuestAudio.kt$GuestAudio$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:GuestLink.kt$GuestLink$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:Models.kt$NdjsonParser$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:RootAccess.kt$RootAccess$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SessionService.kt$SessionService$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SessionService.kt$SessionService$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:TerminalScreen.kt$e: Exception</ID>
+    <ID>TooManyFunctions:AppsTab.kt$io.github.keplersj.selkie.ui.AppsTab.kt</ID>
+    <ID>TooManyFunctions:Components.kt$io.github.keplersj.selkie.ui.Components.kt</ID>
+    <ID>TooManyFunctions:CompositorView.kt$CompositorView : SurfaceViewCallback</ID>
+    <ID>TooManyFunctions:DroidcClient.kt$DroidcClient</ID>
+    <ID>TooManyFunctions:GuestFiles.kt$GuestFiles</ID>
+    <ID>TooManyFunctions:HomeScreen.kt$io.github.keplersj.selkie.ui.HomeScreen.kt</ID>
+    <ID>TooManyFunctions:Previews.kt$io.github.keplersj.selkie.ui.Previews.kt</ID>
+    <ID>TooManyFunctions:SessionService.kt$SessionService : Service</ID>
+    <ID>TooManyFunctions:SessionService.kt$SessionService$&lt;no name provided&gt; : TerminalSessionClient</ID>
+    <ID>TooManyFunctions:TerminalScreen.kt$SelkieTerminalClient : TerminalViewClientTerminalSessionClient</ID>
+    <ID>TooManyFunctions:TerminalScreen.kt$io.github.keplersj.selkie.ui.TerminalScreen.kt</ID>
+    <ID>TooManyFunctions:TvScreens.kt$io.github.keplersj.selkie.ui.TvScreens.kt</ID>
+    <ID>VariableNaming:CompositorView.kt$CompositorView$val is_ = now and android != 0</ID>
+    <ID>WildcardImport:AboutScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:AboutScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:AboutScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:AppActivity.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:AppActivity.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:AppActivity.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:AppActivity.kt$import io.github.keplersj.selkie.ui.*</ID>
+    <ID>WildcardImport:ContainersTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:DesktopE2ETest.kt$import io.github.keplersj.selkie.engine.*</ID>
+    <ID>WildcardImport:DesktopE2ETest.kt$import kotlinx.serialization.json.*</ID>
+    <ID>WildcardImport:DesktopE2ETest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:DesktopScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:DesktopScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:DesktopScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:EngineE2ETest.kt$import io.github.keplersj.selkie.engine.*</ID>
+    <ID>WildcardImport:EngineE2ETest.kt$import kotlinx.serialization.json.*</ID>
+    <ID>WildcardImport:EngineE2ETest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:GraphicalSessionTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:MainActivity.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:MainActivity.kt$import io.github.keplersj.selkie.ui.*</ID>
+    <ID>WildcardImport:NdjsonParserTest.kt$import io.github.keplersj.selkie.engine.*</ID>
+    <ID>WildcardImport:NdjsonParserTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:PhantomScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:PhantomScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:Previews.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ProgressScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ProgressScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:ProgressScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ProotCommandBuilderTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:RootModeTest.kt$import org.junit.Assert.*</ID>
+    <ID>WildcardImport:SessionConfigScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:SessionConfigScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:SessionConfigScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:TerminalScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:TerminalScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:TerminalScreen.kt$import androidx.compose.runtime.*</ID>
+  </CurrentIssues>
+</SmellBaseline>
