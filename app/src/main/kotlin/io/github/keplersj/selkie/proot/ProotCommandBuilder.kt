@@ -63,6 +63,9 @@ class ProotCommandBuilder(
         // names, and logcat lands in bug reports), so only debuggable builds turn it on.
         if (BuildConfig.DEBUG) put("DROIDC_LOGCAT", "auto")
         if (spec.shims.isNotEmpty()) put("DROIDC_SPAWNER", env.spawnerSocket)
+        // The guest's adb talks to its server on a socket in /run, never TCP 5037 on the localhost every app
+        // shares (as `droidc adb` does). Unless the image sets its own.
+        putIfAbsent("ADB_SERVER_SOCKET", ADB_SERVER_SOCKET)
         put("PROOT_LOADER", env.prootLoader.path)
         put("PROOT_TMP_DIR", env.prootTmp.path)
         put("PROOT_L2S_DIR", env.prootL2s.path)
@@ -185,6 +188,9 @@ class ProotCommandBuilder(
     )
 
     companion object {
+        /** Where the guest's adb server listens (`droidc adb`'s default too). */
+        const val ADB_SERVER_SOCKET = "localfilesystem:/run/droidc-adb.sock"
+
         /**
          * Seconds a session's `droidc supervise` waits for Selkie's [userServices] keeper before starting
          * one itself (inside its own proot, so it would end with that session).
