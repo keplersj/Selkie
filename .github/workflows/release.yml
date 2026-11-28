@@ -1,0 +1,207 @@
+name: Release
+
+# Tags and releases main with semantic-release once main's Android run is green.
+# The version comes from Conventional Commit PR titles (squash merges) and lives only in the tag:
+# nothing is committed back to main. Until the repo variable RELEASE_ENABLED is "true", this only
+# reports the version it would release (a dry run) and creates nothing.
+#
+# Release APKs are signed with the private release key from the `release` environment
+# (SELKIE_KEYSTORE_BASE64, SELKIE_KEYSTORE_PASSWORD, SELKIE_KEY_ALIAS, SELKIE_KEY_PASSWORD).
+# Debug, CI and the rolling `latest` builds keep the public MVP test key in keystore/.
+
+on:
+  # Safe here: only push runs on this repo's own main are acted on (see the release job's if),
+  # so no fork or PR code is ever checked out with write access.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [Android]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag and draft the release (semantic-release)
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      run_id: ${{ steps.run.outputs.id }}
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DRY_RUN: ${{ vars.RELEASE_ENABLED != 'true' }}
+      HAS_KEY: ${{ secrets.SELKIE_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Find the green Android run for this commit
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list -R "$GITHUB_REPOSITORY" -w Android -b main -c "$SHA" -s success --json databaseId -q '.[0].databaseId')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::no successful Android run on main for $SHA, so there are no native binaries to package"
+            exit 1
+          fi
+          echo "id=$RUN_ID" >> "$GITHUB_OUTPUT"
+      - name: Put the tested commit on main
+        # semantic-release releases the checked-out branch, and skips if main has moved on since.
+        run: git checkout -B main "$SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - run: npm ci --prefix .github/release --ignore-scripts --no-audit --no-fund
+      - name: Run semantic-release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' --abbrev=0 >/dev/null 2>&1; then
+            echo "::warning::no v* release tag yet, so semantic-release would start at 1.0.0. Tag the starting point (v0.1.0) first."
+            echo "No \`v*\` release tag yet: tag the starting point (v0.1.0) before the first release." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          args=()
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          elif [ "$HAS_KEY" != "true" ]; then
+            echo "::error::RELEASE_ENABLED is true but the release environment has no SELKIE_KEYSTORE_BASE64, so the APKs can't be signed with the release key"
+            exit 1
+          fi
+          rm -f .release-version
+          .github/release/node_modules/.bin/semantic-release "${args[@]}"
+          if [ -s .release-version ]; then
+            v=$(cat .release-version)
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "Dry run: the next release would be **v$v**. Set the repo variable \`RELEASE_ENABLED\` to \`true\` to publish." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Tagged **v$v** and drafted its release." >> "$GITHUB_STEP_SUMMARY"
+              echo "version=$v" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No feat, fix or perf commits since the last tag, so no release." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  apk:
+    name: Build and sign the release APKs
+    needs: release
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      actions: read
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      # The native binaries don't depend on Selkie's version, so they come from the green Android run.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: droidc-android
+          path: third_party/bin
+          run-id: ${{ needs.release.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: proot-android
+          path: third_party/bin
+          run-id: ${{ needs.release.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Write the release keystore
+        env:
+          SELKIE_KEYSTORE_BASE64: ${{ secrets.SELKIE_KEYSTORE_BASE64 }}
+          SELKIE_KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+        run: |
+          umask 077
+          printf '%s' "$SELKIE_KEYSTORE_BASE64" | base64 -d > "$SELKIE_KEYSTORE_FILE"
+      - name: Build release APKs
+        env:
+          SELKIE_KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          SELKIE_KEYSTORE_PASSWORD: ${{ secrets.SELKIE_KEYSTORE_PASSWORD }}
+          SELKIE_KEY_ALIAS: ${{ secrets.SELKIE_KEY_ALIAS }}
+          SELKIE_KEY_PASSWORD: ${{ secrets.SELKIE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon "-Pselkie.version=$VERSION" :app:assembleRelease :wear:assembleRelease
+      - name: Check they're signed with the release key, not the MVP test key
+        run: |
+          set -euo pipefail
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          mvp=$(keytool -list -v -keystore keystore/selkie-mvp.jks -storepass selkie-mvp-insecure -alias selkie-mvp \
+            | sed -n 's/^\s*SHA256: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          for apk in app/build/outputs/apk/release/app-release.apk wear/build/outputs/apk/release/wear-release.apk; do
+            cert=$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            echo "$apk: $cert"
+            [ -n "$cert" ] && [ "$cert" != "$mvp" ]
+          done
+      - name: Stage assets
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/selkie-$VERSION.apk"
+          cp wear/build/outputs/apk/release/wear-release.apk "dist/selkie-watch-$VERSION.apk"
+          cp third_party/bin/proot-src-*.tar.gz dist/
+          cp third_party/bin/DROIDC_COMMIT dist/DROIDC_COMMIT.txt
+          ls -la dist
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: dist/*
+
+  publish:
+    name: Attach assets and publish the release
+    needs: [release, apk]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: v${{ needs.release.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: dist
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * | tee SHA256SUMS
+      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: dist/*
+      - name: Upload and publish
+        run: |
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --draft=false --latest
