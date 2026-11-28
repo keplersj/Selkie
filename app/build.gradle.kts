@@ -159,6 +159,23 @@ kover {
     }
 }
 
+// Mutation testing of the unit tests (PIT), which the nightly workflow runs:
+//   ./gradlew -Pselkie.pitest=true -Pselkie.allowMissingNative=true :app:pitestDebug
+// Applied only with that property, so ordinary builds don't configure it.
+if ((findProperty("selkie.pitest") as String?) == "true") {
+    apply(plugin = "pl.droidsonroids.pitest")
+    extensions.configure<pl.droidsonroids.gradle.pitest.PitestPluginExtension> {
+        targetClasses.set(setOf("io.github.keplersj.selkie.*"))
+        excludedClasses.set(setOf("*.BuildConfig", "*.ComposableSingletons*", "*.R", "*.R$*"))
+        // Roborazzi's screenshot tests check pixels, not logic, and are slow under PIT.
+        excludedTestClasses.set(setOf("*Roborazzi*", "*Screenshot*"))
+        threads.set(4)
+        outputFormats.set(setOf("XML", "HTML"))
+        timestampedReports.set(false)
+        timeoutConstInMillis.set(10_000)
+    }
+}
+
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {

@@ -1,0 +1,220 @@
+name: nightly
+
+# Long-running checks that don't fit in a PR: mutation testing of the app's unit tests (PIT) and
+# fuzzing the in-app compositor's handling of what guest clients send. Runs every night against main
+# and on demand. (The emulator form factors have their own nightly, nightly-form-factors.yml.)
+#
+# - PIT: report-only. Surviving mutants (code the unit tests still pass with when it changes) go to
+#   the job summary, the uploaded report and one tracking issue.
+# - Fuzz: each target runs for FUZZ_SECONDS, starting from the corpus the last nightly kept. A crash
+#   fails its job, uploads the input that caused it and opens (or comments on) an issue.
+on:
+  schedule:
+    - cron: "37 7 * * *" # 07:37 UTC
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: Seconds per fuzz target
+        default: "300"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  pitest:
+    name: Mutation testing (PIT, app unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: pitest
+        run: |
+          status=0
+          # The unit tests don't need droidc or the compositor, so no native build.
+          ./gradlew --no-daemon -Pselkie.pitest=true -Pselkie.allowMissingNative=true :app:pitestDebug || status=$?
+          xml=$(find app/build/reports/pitest -name mutations.xml | head -1)
+          {
+            echo "### Mutation testing (PIT, :app debug unit tests)"
+            echo
+            if [ -n "$xml" ]; then
+              for s in KILLED SURVIVED NO_COVERAGE TIMED_OUT MEMORY_ERROR RUN_ERROR; do
+                printf -- '- %s: %s\n' "$s" "$(grep -c "status='$s'" "$xml" || true)"
+              done
+            else
+              echo "No report (PIT exited $status)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Report-only: survivors are filed as an issue below; only a PIT failure fails the job.
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: pitest-report
+          path: app/build/reports/pitest
+          retention-days: 30
+          if-no-files-found: ignore
+
+  fuzz:
+    name: Fuzz compositor ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read # download the corpus the last nightly kept
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - popup_place
+          - scene_compose
+    env:
+      TARGET: ${{ matrix.target }}
+      FUZZ_SECONDS: ${{ inputs.fuzz_seconds || '300' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install nightly Rust
+        run: rustup toolchain install nightly --profile minimal
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: native/selkie-compositor/fuzz
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-fuzz
+      - name: Restore the corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p "native/selkie-compositor/fuzz/corpus/$TARGET"
+          run=$(gh run list -R "$REPO" --workflow nightly.yml --branch main --status success \
+            --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run" ]; then
+            gh run download "$run" -R "$REPO" -n "fuzz-corpus-$TARGET" -D "native/selkie-compositor/fuzz/corpus/$TARGET" \
+              || echo "No corpus from run $run; starting fresh"
+          fi
+          echo "Corpus starts with $(find "native/selkie-compositor/fuzz/corpus/$TARGET" -type f | wc -l) inputs" >> "$GITHUB_STEP_SUMMARY"
+      - name: cargo fuzz run ${{ matrix.target }}
+        run: |
+          cd native/selkie-compositor
+          cargo +nightly fuzz run "$TARGET" "fuzz/corpus/$TARGET" -- \
+            -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=2048 -timeout=10
+      - name: Minimize the corpus
+        if: success()
+        working-directory: native/selkie-compositor
+        run: cargo +nightly fuzz cmin "$TARGET" "fuzz/corpus/$TARGET"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success()
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: native/selkie-compositor/fuzz/corpus/${{ matrix.target }}
+          retention-days: 30
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: native/selkie-compositor/fuzz/artifacts/${{ matrix.target }}
+          retention-days: 90
+
+  issues:
+    name: File nightly findings as issues
+    needs: [fuzz, pitest]
+    # Only the scheduled run on main files issues; a manual run is someone already looking.
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # read this run's jobs and artifacts
+      issues: write # open and update the findings issues
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pitest-report
+          path: pitest
+        # A run where PIT failed before writing its report still files its fuzz crashes.
+        continue-on-error: true
+      - name: Label
+        run: gh label create nightly -R "$REPO" --color BFD4F2 --description "Found by the nightly fuzz or mutation run" --force
+      - name: Fuzz crashes
+        run: |
+          # One open issue per target: a new crash comments on it instead of opening another.
+          gh run view "$RUN_ID" -R "$REPO" --json jobs \
+            --jq '.jobs[] | select(.name | startswith("Fuzz compositor ")) | select(.conclusion == "failure") | .name | ltrimstr("Fuzz compositor ")' \
+            > crashed.txt
+          while read -r target; do
+            [ -n "$target" ] || continue
+            title="Nightly fuzz crash: compositor $target"
+            body=$(printf 'The nightly fuzz job for `%s` failed.\n\nRun: %s\n\nIf it found a crash, the input is the run artifact `fuzz-crash-%s`; reproduce it in native/selkie-compositor with `cargo +nightly fuzz run %s <input>`. If there is no such artifact, the target failed to build or run.\n' \
+              "$target" "$RUN_URL" "$target" "$target")
+            num=$(gh issue list -R "$REPO" --state open --label nightly --search "\"$title\" in:title" \
+              --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+            if [ -n "$num" ]; then
+              gh issue comment "$num" -R "$REPO" --body "$body"
+              echo "- $target: commented on #$num" >> "$GITHUB_STEP_SUMMARY"
+            else
+              url=$(gh issue create -R "$REPO" --title "$title" --label nightly --body "$body")
+              echo "- $target: opened $url" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < crashed.txt
+          [ -s crashed.txt ] || echo "No fuzz crashes" >> "$GITHUB_STEP_SUMMARY"
+      - name: Surviving mutants
+        run: |
+          # One tracking issue holds the latest list; it is rewritten each night and closed when empty.
+          title="Nightly mutation testing: surviving mutants"
+          xml=$(find pitest -name mutations.xml | head -1)
+          if [ -z "$xml" ]; then echo "No PIT report in this run" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          python3 - "$xml" > survived.txt <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          for m in ET.parse(sys.argv[1]).getroot().iter("mutation"):
+              if m.get("status") in ("SURVIVED", "NO_COVERAGE"):
+                  f = lambda tag: (m.findtext(tag) or "").strip()
+                  print(f"{f('sourceFile')}:{f('lineNumber')}: {m.get('status').lower().replace('_', ' ')}: {f('description')} ({f('mutatedClass')}.{f('mutatedMethod')})")
+          PY
+          sort -u -o survived.txt survived.txt
+          n=$(wc -l < survived.txt)
+          num=$(gh issue list -R "$REPO" --state open --label nightly --search "\"$title\" in:title" \
+            --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ "$n" -eq 0 ]; then
+            if [ -n "$num" ]; then gh issue close "$num" -R "$REPO" --reason completed --comment "No surviving mutants in $RUN_URL"; fi
+            echo "No surviving mutants" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "The nightly PIT run left $n mutants alive: each line is a change to the code that the unit"
+            echo "tests still pass with (survived), or that no test runs at all (no coverage). Add or tighten a"
+            echo "test so it fails, or exclude the class if it isn't worth unit testing."
+            echo
+            echo "Latest run: $RUN_URL (the HTML report is its pitest-report artifact)"
+            echo
+            echo '```'
+            head -300 survived.txt
+            echo '```'
+            if [ "$n" -gt 300 ]; then echo; echo "The first 300 are shown; the rest are in the run's pitest-report artifact."; fi
+          } > body.md
+          if [ -n "$num" ]; then
+            gh issue edit "$num" -R "$REPO" --body-file body.md
+            echo "Updated #$num ($n surviving)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url=$(gh issue create -R "$REPO" --title "$title" --label nightly --body-file body.md)
+            echo "Opened $url ($n surviving)" >> "$GITHUB_STEP_SUMMARY"
+          fi
