@@ -55,6 +55,8 @@ fun DesktopScreen(service: SessionService, onTerminal: () -> Unit = {}, onBack: 
     val ctx = LocalContext.current
     // In an XR panel the system bars aren't over the desktop, so there is nothing to hide.
     if (immersive) ImmersiveMode()
+    val keepAwake by service.keepAwake.collectAsState()
+    KeepScreenOn(keepAwake)
 
     val controls = remember { DesktopControlsState() }
     var stopping by remember { mutableStateOf(false) }
@@ -334,6 +336,16 @@ fun StopDesktopDialog(container: String, onDismiss: () -> Unit, onConfirm: () ->
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** Keeps the screen on while [on] and this screen is showing, as a desktop app playing video asks. */
+@Composable
+private fun KeepScreenOn(on: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(view, on) {
+        view.keepScreenOn = on
+        onDispose { view.keepScreenOn = false }
+    }
 }
 
 @Composable

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, and a GTK app
-# nested directly in Selkie's compositor), then pulls its screenshots and logs.
+# Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, a GTK app
+# nested directly in Selkie's compositor, and a pinned app at tablet and phone size), then pulls its screenshots and logs.
 # usage: e2e-gui.sh <apk-dir> <out-dir>
 set -u
 APKS=${1:?apk dir}; OUT=${2:?out dir}
@@ -31,6 +31,15 @@ echo "== DesktopE2ETest (Bluefin LTS download + unpack, then GNOME on llvmpipe: 
 timeout 7800 adb shell am instrument -w -e class $PKG.DesktopE2ETest $RUNNER | tee "$OUT/gui.txt"
 grep -q '^OK (' "$OUT/gui.txt" || { echo "desktop test failed"; rc=1; }
 
+# A pinned app at phone size and density: app mode at 2.625x, about 411 logical pixels wide.
+adb shell wm size 1080x2340
+adb shell wm density 420
+echo "== DesktopE2ETest#appShortcutAtDisplayScale at 1080x2340 @420dpi"
+timeout 1800 adb shell am instrument -w -e class $PKG.DesktopE2ETest#appShortcutAtDisplayScale $RUNNER | tee "$OUT/gui-phone-app.txt"
+grep -q '^OK (' "$OUT/gui-phone-app.txt" || { echo "phone app shortcut test failed"; rc=1; }
+adb shell wm size 1280x800
+adb shell wm density 160
+
 adb shell screencap -p /sdcard/final.png && adb pull /sdcard/final.png "$OUT/screen-final.png" || true
 adb pull "/sdcard/Android/data/$PKG/files/." "$OUT/screenshots" || true
 adb shell run-as $PKG cat cache/desktop.log > "$OUT/desktop.log" 2>&1 || true
@@ -47,6 +56,8 @@ if [ -f "$OUT/screenshots/desktop-gnome.log" ]; then
   echo "::group::desktop-gnome.log (last 120 lines without cgshim/Vulkan noise)"
   grep -a -v -E "Vulkan|cgshim:|Tracker|GVFS|St-CRITICAL" "$g" | tail -120 | cut -c1-400; echo "::endgroup::"
 fi
+echo "::group::links: the guest's xdg-open and the Android side"
+grep -a -h -E "SELKIE_GUEST links|SelkieLink" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"
 echo "::group::sound: audio-out.log, the guest's tone probe, Selkie's player"
 tail -40 "$OUT/audio-out.log" | cut -c1-400
 grep -a -h -E "SELKIE_GUEST sound|SELKIE_PROCS sound|SelkieAudio|AudioTrack" "$OUT/logcat.txt" | head -60 | cut -c1-400; echo "::endgroup::"

@@ -36,6 +36,8 @@ import java.io.File
  *   (overlay button) changes what GNOME shows.
  * - [gtkAppNested]: `renderer=wayland`, a GTK 4 app (Nautilus) as a direct client of Selkie's
  *   compositor, the path nested session compositors (KWin, cosmic-comp, gamescope) take.
+ * - [appShortcutAtDisplayScale]: a pinned app's home screen shortcut (Nautilus) opens that app on
+ *   its own, in app mode at the display's scale (e2e-gui.sh runs it again at phone size and density).
  * - [terminalInGnome]: the GNOME desktop as above, then what a user does: Super, type "terminal", Enter, and a command
  *   typed into the terminal that opens. The command creates a file in the guest's /tmp, which the test
  *   reads from the host side, so a window on screen is not the only evidence that a shell ran.
@@ -216,8 +218,8 @@ class DesktopE2ETest {
      * Runs [script] in a second proot against the live session (same /run, so the user bus and the
      * display are there) and logs its output as SELKIE_GUEST lines.
      */
-    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90) {
-        try {
+    private fun guestProbe(label: String, script: String, timeoutSec: Long = 90): String {
+        return try {
             val env = engineEnvFrom(ctx)
             val spec = runBlocking { (DroidcClient(env).shellSpec() as DroidcOutcome.Success).shellSpec() }
             val b = ProotCommandBuilder(env, spec, GuestFiles.prepare(env, spec))
@@ -230,7 +232,35 @@ class DesktopE2ETest {
             if (!p.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly()
             t.join(5000)
             text.toString().lines().take(80).forEach { log("SELKIE_GUEST $label ${it.take(300)}") }
-        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e") }
+            text.toString()
+        } catch (e: Throwable) { log("SELKIE_GUEST $label failed: $e"); "" }
+    }
+
+    /**
+     * Turns Android's night mode on and checks that GNOME's color scheme follows it through
+     * `droidc host-link`, then puts night mode back. Logged as a metric, like the sound check.
+     */
+    private fun checkAppearance() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+        // Under the supervisor, as host-link runs, so gsettings reaches the same session bus and dconf.
+        val read = listOf("color-scheme", "accent-color", "text-scaling-factor").joinToString("\n") { key ->
+            "echo \"$key=$(DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- " +
+                "gsettings get org.gnome.desktop.interface $key 2>&1 | tail -1)\""
+        }
+        guestProbe("appearance-before", read)
+        shell("cmd uimode night yes")
+        var dark = false
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        while (SystemClock.uptimeMillis() < deadline && !dark) {
+            Thread.sleep(2000)
+            dark = "color-scheme='prefer-dark'" in guestProbe("appearance-dark", read)
+        }
+        log("SELKIE_METRIC appearance_follows_night_mode=$dark")
+        shell("cmd uimode night no")
+        val linkLog = engineEnvFrom(ctx).hostLinkLog
+        val text = if (linkLog.exists()) linkLog.readText() else "(no ${linkLog.name})"
+        text.lines().takeLast(20).forEach { log("SELKIE_GUEST host-link-log ${it.take(300)}") }
     }
 
     /**
@@ -330,6 +360,7 @@ class DesktopE2ETest {
         settle(s)
         screenshot("gnome-1.png")
         checkSound(s)
+        checkAppearance()
 
         // A tap (right edge: empty in GNOME's views) focuses the compositor view; Escape from the
         // Android key path then closes GNOME's first-run dialog if it is up. The compositor's input
@@ -425,7 +456,45 @@ class DesktopE2ETest {
             } catch (e: Exception) { log("could not keep desktop.log: $e") }
         }
         log("SELKIE_METRIC terminal_command_ran=true")
+        checkLinks()
         stop(s)
+    }
+
+    /**
+     * Opens a web link from the guest the way GNOME apps do (`gio open`, GIO's default handler) and
+     * checks that Android started an activity for it through `droidc host-link`. Last, since the browser
+     * takes the screen. Logged as a metric: the emulator image may have no browser.
+     */
+    private fun checkLinks() {
+        val ui = inst.uiAutomation
+        fun shell(cmd: String) = ui.executeShellCommand(cmd).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes().decodeToString()
+        }
+        val url = "https://example.org/selkie-e2e-link"
+        guestProbe("links", """
+            run() { DROIDC_USER_SERVICES_WAIT=10 timeout 20 /usr/bin/droidc supervise -- "${'$'}@" 2>&1 | tail -3; }
+            echo "https handler: ${'$'}(run gio mime x-scheme-handler/https | head -1)"
+            echo "user default: ${'$'}(grep -s scheme-handler/https= ${'$'}HOME/.config/mimeapps.list)"
+            ls ${'$'}HOME/.local/share/applications/dev.droidc.AndroidOpen.desktop 2>&1
+            # GIO's default handler is the path GNOME apps and xdg-open take inside a GNOME session;
+            # a bare xdg-open here has no display, so it skips the scheme handlers for a text browser.
+            run gio open $url
+            echo "open exit=${'$'}?"
+        """.trimIndent())
+        // Selkie logs each link it hands to Android; dumpsys shows only the host of a web link.
+        var opened = false
+        var seen = false
+        val deadline = SystemClock.uptimeMillis() + 20_000
+        while (SystemClock.uptimeMillis() < deadline && !(opened && seen)) {
+            Thread.sleep(1000)
+            opened = opened || "opened a https link" in shell("logcat -d -s SelkieLink:I")
+            seen = seen || "example.org" in shell("dumpsys activity activities")
+        }
+        log("SELKIE_METRIC link_opened_on_android=$opened activity_seen=$seen")
+        shell("logcat -d -s SelkieLink:*").lines().filter { it.isNotBlank() }.takeLast(5)
+            .forEach { log("SELKIE_GUEST links-host ${it.trim().take(300)}") }
+        shell("dumpsys activity activities").lines().filter { "example.org" in it || "act=android.intent.action.VIEW" in it }.take(5)
+            .forEach { log("SELKIE_GUEST links-activity ${it.trim().take(300)}") }
     }
 
     @Test fun gtkAppNested() {
@@ -442,6 +511,33 @@ class DesktopE2ETest {
         inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, view.width * 0.5f, view.height * 0.5f, 0))
         inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, view.width * 0.5f, view.height * 0.5f, 0))
         waitFor("touch to reach the app", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
+        stop(s)
+    }
+
+    /** A pinned app's shortcut opens that app on its own in [AppActivity], in app mode at the display's scale. */
+    @Test fun appShortcutAtDisplayScale() {
+        val s = service()
+        ensureBluefin(s)
+        val id = "org.gnome.Nautilus.desktop"
+        waitFor("the container's apps", 5 * 60_000L, 2000) { s.state.value.apps?.apps?.any { it.id == id } == true }
+        val app = s.state.value.apps!!.apps.first { it.id == id }
+        val container = s.state.value.container
+        val dm = ctx.resources.displayMetrics
+        log("display ${dm.widthPixels}x${dm.heightPixels} density=${dm.density}")
+        ctx.startActivity(io.github.keplersj.selkie.platform.AppShortcuts.intent(ctx, container, app)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        val t0 = SystemClock.uptimeMillis()
+        waitFor("${app.name} on screen", 10 * 60_000L, 2000) {
+            (s.state.value.desktop as? DesktopState.Failed)?.let { fail("app failed: ${it.message}\n${it.logTail}") }
+            s.state.value.desktopApp?.id == id && colors(s) > 5
+        }
+        log("SELKIE_METRIC app_shortcut_first_frame_seconds=${(SystemClock.uptimeMillis() - t0) / 1000.0} stats=${stats(s)}")
+        val want = io.github.keplersj.selkie.display.DisplayScale.of(ctx).toDouble()
+        val got = stats(s)?.get("app_scale")?.jsonPrimitive?.doubleOrNull
+        assertNotNull("app mode: ${stats(s)}", got)
+        assertEquals("app mode at the display's scale", want, got!!, 0.001)
+        settle(s)
+        screenshot("app-shortcut-${dm.widthPixels}x${dm.heightPixels}.png")
         stop(s)
     }
 }
