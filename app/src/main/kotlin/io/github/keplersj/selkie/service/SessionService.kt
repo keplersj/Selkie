@@ -1091,11 +1091,11 @@ class SessionService : Service() {
         const val EXTRA_CONTAINER = "container"
         const val EXTRA_REQUEST = "request"
         private const val ROOT_CHANNEL = "root"
-        private const val ROOT_NOTIF_ID = 2
+        private const val ROOT_NOTIF_ID = NotificationIds.ROOT_PROMPT
         private const val UPTIME_REFRESH_MS = 1000L
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"
-        private const val NOTIF_ID = 1
+        private const val NOTIF_ID = NotificationIds.SESSION
         private const val PREFS = "selkie"
         private const val KEY_CONTAINER = "container"
         /** What ran, as [encodeRunRecords] writes it; left behind when Android ends the process. */
