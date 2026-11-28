@@ -51,7 +51,9 @@ grep -q true "$OUT/feature.txt" || { echo "not an Automotive image"; exit 1; }
 
 adb shell settings put global settings_enable_monitor_phantom_procs false
 adb shell device_config put activity_manager max_phantom_processes 2147483647 || true
-adb install -r -t "$APKS/app-debug.apk"
+# -g grants the runtime permissions up front: otherwise the first screen is the permission prompt,
+# which hides Selkie from both SmokeTest and the screen checks.
+adb install -r -t -g "$APKS/app-debug.apk"
 adb install -r -t "$APKS/app-debug-androidTest.apk"
 adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS || true
 
