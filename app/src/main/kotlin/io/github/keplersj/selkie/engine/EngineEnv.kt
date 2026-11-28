@@ -138,13 +138,24 @@ data class EngineEnv(
 }
 
 /**
- * `containers.droidc.session.services` JSON that starts PipeWire and WirePlumber for a graphical session.
+ * `containers.droidc.session.services` JSON that starts PipeWire, WirePlumber and the PulseAudio server
+ * for a graphical session. droidc masks the image's own units for all three (it reads the `exec` in the
+ * wrapper below), so `pipewire-pulse` is started here for apps that play sound through PulseAudio.
  *
  * PipeWire's access module runs a Flatpak check on each client through `/proc/<pid>/root`, which
  * Android hides: the check fails and every client (Mutter's screen-cast stream, WirePlumber, the portal)
  * is restricted to nothing. `PIPEWIRE_REMOTE=pipewire-0-manager` was not enough in the emulator, because
  * not every client uses it. PipeWire therefore starts from a copy of its own configuration whose
  * `access.socket` makes the default socket `unrestricted` too.
+ *
+ * The same check also fails, now and then, for a client that has only just started, and PipeWire then
+ * marks it `pipewire.sec.flatpak` with no app ID. WirePlumber limits such a client to read and execute,
+ * and when that client is WirePlumber's own connection it can no longer link anything, so no stream
+ * reaches a sink. WirePlumber therefore also reads [WIREPLUMBER_ACCESS], from a directory this session
+ * puts first on `XDG_CONFIG_DIRS`, which gives full access back to a client marked Flatpak without an
+ * app ID. A real Flatpak app has one, so it keeps going through the portal.
+ *
+ * WirePlumber and `pipewire-pulse` start once that PipeWire answers, since all three start at once.
  */
 object PipeWireServices {
     private const val SCRIPT =
@@ -154,7 +165,29 @@ object PipeWireServices {
         "\"\$f\" > \"\$c\" " +
         "&& grep -q '^[[:space:]]*access.socket' \"\$c\" && exec pipewire -c \"\$c\"; done; exec pipewire"
 
+    /** WirePlumber `access.rules` for clients whose Flatpak check failed (see the class comment). */
+    internal const val WIREPLUMBER_ACCESS =
+        "access.rules = [ { matches = [ { pipewire.sec.flatpak = \"true\", pipewire.access.portal.app_id = null } ] " +
+            "actions = { update-props = { default_permissions = \"all\", access = \"unrestricted\" } } } ]"
+
+    /** Writes [WIREPLUMBER_ACCESS] where WirePlumber looks and puts that directory first. */
+    private const val WIREPLUMBER_CONFIG =
+        "x=\"\${XDG_RUNTIME_DIR:-/tmp}/selkie-xdg\"; mkdir -p \"\$x/wireplumber/wireplumber.conf.d\" && " +
+            "printf '%s\\n' '$WIREPLUMBER_ACCESS' > \"\$x/wireplumber/wireplumber.conf.d/50-selkie-access.conf\"; " +
+            "export XDG_CONFIG_DIRS=\"\$x:\${XDG_CONFIG_DIRS:-/etc/xdg}\"; "
+
+    /**
+     * Waits up to about 20 s for PipeWire to answer, then runs the program anyway. The limit is by the
+     * clock, because a PipeWire that accepts but doesn't answer holds each `pw-cli` for its full 2 s.
+     */
+    internal fun afterPipeWire(program: String) =
+        "end=\$((\$(date +%s)+20)); until timeout 2 pw-cli info 0 >/dev/null 2>&1 || [ \$(date +%s) -ge \$end ]; " +
+            "do sleep 0.2; done; exec $program"
+
+    private fun shell(script: String) =
+        """["sh","-c","${script.replace("\\", "\\\\").replace("\"", "\\\"")}"]"""
+
     /** The services value for `containers.droidc.session.services` (JSON argv list). */
     val JSON: String =
-        """[["sh","-c","${SCRIPT.replace("\\", "\\\\").replace("\"", "\\\"")}"],["wireplumber"]]"""
+        "[${shell(SCRIPT)},${shell(WIREPLUMBER_CONFIG + afterPipeWire("wireplumber"))},${shell(afterPipeWire("pipewire-pulse"))}]"
 }
