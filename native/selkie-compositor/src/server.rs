@@ -455,6 +455,7 @@ impl State {
         s.presented = self.presented;
         s.inputs = self.inputs;
         s.output = (self.width, self.height);
+        s.app_scale = self.app;
         s.frame = self.summary;
     }
 

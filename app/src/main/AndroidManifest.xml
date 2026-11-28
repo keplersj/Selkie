@@ -45,6 +45,15 @@
             </intent-filter>
         </activity>
 
+        <!-- One Linux app from a home screen shortcut (AppShortcuts), in its own task per app. -->
+        <activity
+            android:name=".AppActivity"
+            android:exported="false"
+            android:documentLaunchMode="intoExisting"
+            android:autoRemoveFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".service.SessionService"
             android:exported="false"

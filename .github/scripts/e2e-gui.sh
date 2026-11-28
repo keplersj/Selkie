@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, and a GTK app
-# nested directly in Selkie's compositor), then GNOME's display scale at tablet and phone sizes, then
-# pulls its screenshots and logs.
+# Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, a GTK app
+# nested directly in Selkie's compositor, and a pinned app at tablet and phone size), then GNOME's
+# display scale at tablet and phone sizes, then pulls its screenshots and logs.
 # usage: e2e-gui.sh <apk-dir> <out-dir>
 set -u
 APKS=${1:?apk dir}; OUT=${2:?out dir}
@@ -31,6 +31,13 @@ LOGCAT=$!
 echo "== DesktopE2ETest (Bluefin LTS download + unpack, then GNOME on llvmpipe: 20-60 min)"
 timeout 7800 adb shell am instrument -w -e class $PKG.DesktopE2ETest $RUNNER | tee "$OUT/gui.txt"
 grep -q '^OK (' "$OUT/gui.txt" || { echo "desktop test failed"; rc=1; }
+
+# A pinned app at phone size and density: app mode at 2.625x, about 411 logical pixels wide.
+adb shell wm size 1080x2340
+adb shell wm density 420
+echo "== DesktopE2ETest#appShortcutAtDisplayScale at 1080x2340 @420dpi"
+timeout 1800 adb shell am instrument -w -e class $PKG.DesktopE2ETest#appShortcutAtDisplayScale $RUNNER | tee "$OUT/gui-phone-app.txt"
+grep -q '^OK (' "$OUT/gui-phone-app.txt" || { echo "phone app shortcut test failed"; rc=1; }
 
 # Display scale (DesktopE2ETest#gnomeScale): GNOME's scale follows Android's density and survives a
 # change made like GNOME Settings does, on a tablet and on a phone screen.
