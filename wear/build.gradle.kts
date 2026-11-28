@@ -7,6 +7,12 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
+// Same version and release key as the phone app (see app/build.gradle.kts): the Data Layer needs matching signatures.
+val appVersion = (findProperty("selkie.version") as String?) ?: "0.1.0-mvp.1"
+val appVersionCode = Regex("""(\d+)\.(\d+)\.(\d+)""").matchEntire(appVersion)?.destructured
+    ?.let { (major, minor, patch) -> major.toInt() * 1_000_000 + minor.toInt() * 1_000 + patch.toInt() } ?: 1
+val releaseKeystore: String? = System.getenv("SELKIE_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "io.github.keplersj.selkie.wear"
     compileSdk = 36
@@ -15,8 +21,8 @@ android {
         applicationId = "io.github.keplersj.selkie"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-mvp.1"
+        versionCode = appVersionCode
+        versionName = appVersion
     }
 
     signingConfigs {
@@ -26,11 +32,19 @@ android {
             keyAlias = "selkie-mvp"
             keyPassword = "selkie-mvp-insecure"
         }
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("SELKIE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SELKIE_KEY_ALIAS")
+                keyPassword = System.getenv("SELKIE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         debug { signingConfig = signingConfigs.getByName("mvp") }
-        release { signingConfig = signingConfigs.getByName("mvp") }
+        release { signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "mvp") }
     }
 
     compileOptions {
