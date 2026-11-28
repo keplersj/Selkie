@@ -28,7 +28,7 @@
       "matchStrings": ["(?<currentDigest>[0-9a-f]{40})"],
       "currentValueTemplate": "main",
       "depNameTemplate": "droidc",
-      "packageNameTemplate": "https://github.com/keplersj/droidc",
+      "packageNameTemplate": "https://github.com/droidc-dev/droidc",
       "datasourceTemplate": "git-refs"
     }
   ],
