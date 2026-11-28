@@ -78,6 +78,8 @@ grep -q '^OK (' "$OUT/e2e.txt" || { echo "e2e test failed"; rc=1; diag; }
 # the app via run-as afterwards.
 root_mode() {
   adb root >/dev/null 2>&1 && adb wait-for-device || { echo "adb root unavailable: skipped"; return 0; }
+  # Production images (Android TV, Play Store images) answer "adbd cannot run as root" and exit 0.
+  [ "$(adb shell id -u | tr -d '\r')" = 0 ] || { echo "adb root unavailable (production image): skipped"; return 0; }
   local lib droot app
   lib=$(adb shell "dirname \$(pm path $PKG | head -1 | cut -d: -f2)" | tr -d '\r')/lib/x86_64
   droot=/data/data/$PKG/files/droidc
