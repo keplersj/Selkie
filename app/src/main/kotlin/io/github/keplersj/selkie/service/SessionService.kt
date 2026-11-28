@@ -648,11 +648,13 @@ class SessionService : Service() {
     }
 
     /**
-     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
-     * view size). After [prepareApp], the app runs instead, on its own. The session keeps running without the activity; the compositor holds frames while
-     * nothing shows them.
+     * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
+     * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
+     * display's density; see [DisplayScale]). After [prepareApp], the app runs instead, on its own.
+     * The session keeps running without the activity; the compositor holds frames while nothing
+     * shows them.
      */
-    fun startDesktop(width: Int, height: Int) {
+    fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
@@ -677,10 +679,11 @@ class SessionService : Service() {
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
                     startLink(b, env)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
+                    val (sw, sh) = DisplayScale.sessionSize(width, height)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
                     // An app runs in app mode at the display's scale, so adaptive apps get about the
-                    // width an Android app has, and its menus and popovers show. The session keeps 1x
-                    // here; GNOME scales itself.
+                    // width an Android app has, and its menus and popovers show. The session's own
+                    // scale is [scale], applied by GNOME; its compositor stays 1x.
                     val appMode = app != null
                     if (compositor != null && compositorAppMode != appMode) stopCompositor()
                     compositor = compositor ?: (if (appMode)

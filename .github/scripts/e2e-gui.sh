@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs on the CI emulator: DesktopE2ETest (Bluefin LTS: GNOME through droidc bridge, a GTK app
-# nested directly in Selkie's compositor, and a pinned app at tablet and phone size), then pulls its screenshots and logs.
+# nested directly in Selkie's compositor, and a pinned app at tablet and phone size), then GNOME's
+# display scale at tablet and phone sizes, then pulls its screenshots and logs.
 # usage: e2e-gui.sh <apk-dir> <out-dir>
 set -u
 APKS=${1:?apk dir}; OUT=${2:?out dir}
@@ -37,8 +38,18 @@ adb shell wm density 420
 echo "== DesktopE2ETest#appShortcutAtDisplayScale at 1080x2340 @420dpi"
 timeout 1800 adb shell am instrument -w -e class $PKG.DesktopE2ETest#appShortcutAtDisplayScale $RUNNER | tee "$OUT/gui-phone-app.txt"
 grep -q '^OK (' "$OUT/gui-phone-app.txt" || { echo "phone app shortcut test failed"; rc=1; }
-adb shell wm size 1280x800
-adb shell wm density 160
+
+# Display scale (DesktopE2ETest#gnomeScale): GNOME's scale follows Android's density and survives a
+# change made like GNOME Settings does, on a tablet and on a phone screen.
+scale_run() { # form size density
+  echo "== display scale: $1 ($2 at ${3}dpi)"
+  adb shell wm size "$2"; adb shell wm density "$3"; sleep 5
+  timeout 2700 adb shell am instrument -w -e class "$PKG.DesktopE2ETest#gnomeScale" -e scale "$1" $RUNNER | tee "$OUT/scale-$1.txt"
+  grep -q '^OK (' "$OUT/scale-$1.txt" || { echo "display scale test ($1) failed"; rc=1; }
+}
+scale_run tablet 2560x1600 320
+scale_run phone 1080x2340 420
+adb shell wm size 1280x800; adb shell wm density 160
 
 adb shell screencap -p /sdcard/final.png && adb pull /sdcard/final.png "$OUT/screen-final.png" || true
 adb pull "/sdcard/Android/data/$PKG/files/." "$OUT/screenshots" || true
