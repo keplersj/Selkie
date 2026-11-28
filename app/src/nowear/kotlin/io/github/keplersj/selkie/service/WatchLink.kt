@@ -13,5 +13,6 @@ object WatchLink {
         scope: CoroutineScope,
         onStopDesktop: () -> Unit,
         onCloseTerminals: (String) -> Unit,
+        onRefuseRoot: (container: String, id: Long) -> Unit,
     ): AutoCloseable = AutoCloseable {}
 }

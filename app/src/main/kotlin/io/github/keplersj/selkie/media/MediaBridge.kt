@@ -140,7 +140,8 @@ class MediaBridge(
 
     companion object {
         private const val CHANNEL = "media"
-        const val NOTIF_ID = 2
+        /** Distinct from the session (1), root prompt and ADB pairing (2) notifications. */
+        const val NOTIF_ID = 4
         private const val MAX_ART_BYTES = 8L * 1024 * 1024
         private const val MAX_ART_PX = 512
     }

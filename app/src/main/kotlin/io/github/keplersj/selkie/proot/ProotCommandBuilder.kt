@@ -149,8 +149,10 @@ class ProotCommandBuilder(
     /**
      * `droidc spawn-server` on the host, behind the guest's sudo/su/pkexec: for each request it starts this
      * container's proot again as fake root (`-0`) with the requested command. Only our own uid is served.
+     * With [ask] (`DROIDC_SPAWNER_ASK`) it first asks Selkie on its stdout and waits for the answer on its
+     * stdin, a channel the guest can't reach (see [io.github.keplersj.selkie.service.RootAskHost]).
      */
-    fun spawnServer(): Invocation = Invocation(
+    fun spawnServer(ask: Boolean = true): Invocation = Invocation(
         listOf(env.droidcBin.path, "spawn-server", "--socket", env.spawnerSocket, "--uid", env.uid.toString(),
             "--") + prootArgs(rootMode = true),
         linkedMapOf(
@@ -158,8 +160,11 @@ class ProotCommandBuilder(
             // The launcher it starts is proot, which needs these as every other proot does.
             "PROOT_LOADER" to env.prootLoader.path, "PROOT_TMP_DIR" to env.prootTmp.path,
             "PROOT_L2S_DIR" to env.prootL2s.path,
-        ),
+        ).apply { if (ask) put(SPAWNER_ASK_ENV, "1") },
     )
+
+    /** The guest root the spawner's commands run in, for showing which program a root request names. */
+    val rootfs: String get() = spec.rootfs
 
     /**
      * The deployment's graphical session (`droidc supervise --session`), shown by Selkie's compositor on
@@ -229,5 +234,7 @@ class ProotCommandBuilder(
         const val CGSHIM_GUEST_PATH = "/usr/lib/droidc/cgshim.so"
         /** Where `droidc supervise` looks for the network-interface shim (DROIDC_IFSHIM's default). */
         const val IFSHIM_GUEST_PATH = "/usr/lib/droidc/ifshim.so"
+        /** Makes `droidc spawn-server` ask the host before each root command (droidc's `spawn::ASK_ENV`). */
+        const val SPAWNER_ASK_ENV = "DROIDC_SPAWNER_ASK"
     }
 }
