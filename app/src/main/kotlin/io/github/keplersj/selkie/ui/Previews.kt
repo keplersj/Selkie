@@ -87,7 +87,7 @@ object Fixtures {
     )
 
     val gnome = GraphicalSession(name = "GNOME", renderer = "screencast",
-        exec = listOf("gnome-shell", "--headless", "--virtual-monitor", "{width}x{height}"),
+        exec = listOf("gnome-shell", "--headless"),
         configured = true, source = "label")
     val noSession = GraphicalSession(configured = false)
     /** What a Ringed-style image offers: Phosh and Plasma Mobile for phones, desktops for others. */

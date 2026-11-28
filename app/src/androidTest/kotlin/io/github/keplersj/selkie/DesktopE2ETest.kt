@@ -374,7 +374,7 @@ class DesktopE2ETest {
     @Test fun gnomeHeadless() {
         val s = service()
         ensureBluefin(s)
-        configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
+        configure(s, "screencast", """["gnome-shell","--headless"]""",
             PipeWireServices.JSON, "GNOME")
         openDesktop(s, 50, "gnome")
         settle(s)
@@ -631,7 +631,7 @@ class DesktopE2ETest {
         org.junit.Assume.assumeTrue("runs only with -e scale tablet|phone", form != null)
         val s = service()
         ensureBluefin(s)
-        configure(s, "screencast", """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""",
+        configure(s, "screencast", """["gnome-shell","--headless"]""",
             PipeWireServices.JSON, "GNOME")
         val density = ctx.resources.displayMetrics.density
         val want = io.github.keplersj.selkie.display.DisplayScale.forDensity(density).toDouble()

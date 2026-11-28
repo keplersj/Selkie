@@ -17,7 +17,7 @@ private data class Example(val label: String, val name: String, val renderer: St
 
 private val EXAMPLES = listOf(
     Example("GNOME (headless)", "GNOME", "screencast",
-        """["gnome-shell","--headless","--virtual-monitor","{width}x{height}"]""", PipeWireServices.JSON),
+        """["gnome-shell","--headless"]""", PipeWireServices.JSON),
     Example("Nested compositor", "", "wayland", """["weston","--backend=wayland","--fullscreen"]""", ""),
 )
 
