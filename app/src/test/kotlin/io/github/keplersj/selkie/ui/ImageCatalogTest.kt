@@ -7,11 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImageCatalogTest {
-    /** The catalog with Harbor and Monk published, as the design assumes. */
+    /** The catalog with Harbor and Monk published and trusted, as the design assumes. */
     private val published = ImageCatalog.tuned.map {
         when (it.name) {
-            "Harbor" -> it.copy(ref = "ghcr.io/droidc-dev/harbor:stable")
-            "Monk" -> it.copy(ref = "ghcr.io/droidc-dev/monk:stable")
+            "Harbor" -> it.copy(ref = PinnipedOs.droidcRef("harbor"), signed = true)
+            "Monk" -> it.copy(ref = PinnipedOs.droidcRef("monk"), signed = true)
             else -> it
         }
     }
@@ -33,23 +33,32 @@ class ImageCatalogTest {
         assertEquals(ImageSelection.Tuned("Harbor"), ImageCatalog.defaultSelection(DeviceClass.Tablet, published))
     }
 
-    @Test fun withNothingPublishedTheSignedBluefinIsPreselected() {
+    @Test fun withNoSignedTunedImageTheSignedBluefinIsPreselected() {
+        val nothing = ImageCatalog.tuned.map { it.copy(ref = null) }
         for (d in DeviceClass.entries) {
+            assertEquals(ImageSelection.Known("bluefin"), ImageCatalog.defaultSelection(d, nothing))
+            // Monk is published but unsigned, so it can be chosen and is never preselected.
             assertEquals(ImageSelection.Known("bluefin"), ImageCatalog.defaultSelection(d))
         }
-        assertTrue(ImageCatalog.tuned.none { it.ready })
+    }
+
+    @Test fun monkIsPublishedFromPinnipedOs() {
+        val monk = ImageCatalog.tuned.first { it.name == "Monk" }
+        assertTrue(monk.ready)
+        assertEquals("ghcr.io/pinniped-os/monk:45-droidc", monk.ref)
+        assertFalse(ImageCatalog.tuned.first { it.name == "Harbor" }.ready)
     }
 
     @Test fun anUnpublishedVariantResolvesToNothing() {
-        assertNull(ImageCatalog.resolve(ImageSelection.Tuned("Monk"), ""))
-        assertEquals("ghcr.io/droidc-dev/monk:stable", ImageCatalog.resolve(ImageSelection.Tuned("Monk"), "", published)?.ref)
+        assertNull(ImageCatalog.resolve(ImageSelection.Tuned("Harbor"), ""))
+        assertEquals("ghcr.io/pinniped-os/harbor:45-droidc", ImageCatalog.resolve(ImageSelection.Tuned("Harbor"), "", published)?.ref)
     }
 
     @Test fun selectionForCurrentImage() {
         assertEquals(ImageSelection.Known("centos"), ImageCatalog.selectionFor(Images.CENTOS, DeviceClass.Phone))
         assertEquals(ImageSelection.Custom, ImageCatalog.selectionFor("ghcr.io/example/x:1", DeviceClass.Phone))
         assertEquals(ImageSelection.Tuned("Harbor"),
-            ImageCatalog.selectionFor("ghcr.io/droidc-dev/harbor:stable", DeviceClass.Phone, published))
+            ImageCatalog.selectionFor("ghcr.io/pinniped-os/harbor:45-droidc", DeviceClass.Phone, published))
     }
 
     @Test fun centosIsMarkedUnsigned() {
@@ -77,5 +86,16 @@ class ImageCatalogTest {
             ImageCatalog.emptyStateLead(ImageCatalog.tuned.map { it.copy(ref = null) }))
         assertEquals("Start with an image made for Selkie, or use any other.",
             ImageCatalog.emptyStateLead(ImageCatalog.tuned.map { if (it.name == "Monk") it.copy(ref = "ghcr.io/x/monk:1") else it }))
+    }
+
+    @Test fun pinnipedDroidcRefsFollowTheFactoryTagScheme() {
+        assertEquals("ghcr.io/pinniped-os/monk:45-droidc", PinnipedOs.droidcRef("monk"))
+        assertEquals("ghcr.io/pinniped-os/harbor:45-droidc", PinnipedOs.droidcRef("harbor"))
+    }
+
+    @Test fun tunedVariantsAreUnsignedUntilDroidcTrustsThem() {
+        assertTrue(ImageCatalog.tuned.none { it.signed })
+        assertFalse(ImageCatalog.resolve(ImageSelection.Tuned("Monk"), "")!!.signed)
+        assertTrue(ImageCatalog.resolve(ImageSelection.Tuned("Monk"), "", published)!!.signed)
     }
 }
