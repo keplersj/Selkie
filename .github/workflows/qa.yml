@@ -1,7 +1,7 @@
 name: qa
 
 # Extra quality gates beside android.yml: PR title (Conventional Commits), workflow and script lint,
-# Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny), Kotlin checks for the app,
+# Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny, coverage against main), Kotlin checks for the app,
 # the watch app and shared code (detekt against config/detekt/baseline.xml, Android lint, ktfmt
 # formatting) and a review of the dependencies a PR adds or changes.
 #
@@ -274,3 +274,71 @@ jobs:
           fail-on-severity: moderate
           warn-only: ${{ env.ENFORCE != 'true' }}
           comment-summary-in-pr: on-failure
+
+  compositor-coverage:
+    name: Compositor coverage (cargo-llvm-cov, ratchet against main)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # download main's last coverage summary
+    defaults:
+      run:
+        working-directory: native/selkie-compositor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: native/selkie-compositor
+          key: compositor-coverage
+      - uses: taiki-e/install-action@073e1fd0bc889c9aee68dbaaa927cde1b5653a83 # v2.90.11
+        with:
+          tool: cargo-llvm-cov
+      - name: Run the tests under coverage
+        run: |
+          mkdir -p coverage
+          # Failing tests are android.yml's to report; here they only make the numbers partial.
+          status=0
+          cargo llvm-cov --no-fail-fast --lcov --output-path coverage/lcov.info || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::some tests failed under coverage, so these numbers are partial (see android.yml)"
+            echo "partial" > coverage/partial
+          fi
+          cargo llvm-cov report --json --summary-only --output-path coverage/summary.json
+          jq '{lines: .data[0].totals.lines.percent, functions: .data[0].totals.functions.percent, regions: .data[0].totals.regions.percent}' \
+            coverage/summary.json > coverage/totals.json
+          cat coverage/totals.json
+      - name: Compare with main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A PR may not lower line coverage by more than this many points (noise allowance).
+          TOLERANCE: "0.5"
+        run: |
+          now=$(jq -r .lines coverage/totals.json)
+          base=""
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow qa.yml --branch main --event push \
+                    --status success --limit 1 --json databaseId --jq '.[0].databaseId' || true)
+            if [ -n "$run" ] && gh run download "$run" -R "$GITHUB_REPOSITORY" -n compositor-coverage -D base 2>/dev/null; then
+              base=$(jq -r .lines base/totals.json)
+            fi
+          fi
+          {
+            echo "### Compositor line coverage"
+            echo
+            printf '| | lines %% |\n| --- | --- |\n| this run | %.2f |\n' "$now"
+            if [ -n "$base" ]; then printf '| main | %.2f |\n' "$base"; else echo "| main | no baseline yet |"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$base" ] && awk -v n="$now" -v b="$base" -v t="$TOLERANCE" 'BEGIN{exit !(n < b - t)}'; then
+            msg=$(printf 'Line coverage fell from %.2f%% on main to %.2f%%' "$base" "$now")
+            if [ "$ENFORCE" = true ]; then echo "::error::$msg"; exit 1; fi
+            echo "::warning::$msg (report-only)"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: compositor-coverage
+          path: native/selkie-compositor/coverage/
