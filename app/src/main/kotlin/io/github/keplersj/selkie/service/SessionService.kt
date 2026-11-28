@@ -29,6 +29,7 @@ import io.github.keplersj.selkie.engine.DroidcEvent
 import io.github.keplersj.selkie.engine.DroidcOutcome
 import io.github.keplersj.selkie.engine.EngineEnv
 import io.github.keplersj.selkie.engine.ErrorKind
+import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
 import io.github.keplersj.selkie.engine.apps
@@ -597,6 +598,8 @@ class SessionService : Service() {
     // ---------------- graphical session ----------------
 
     @Volatile private var compositor: NativeCompositor? = null
+    /** Whether [compositor] runs in app mode (one app at the display's scale) or session mode. */
+    @Volatile private var compositorAppMode = false
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
@@ -639,11 +642,13 @@ class SessionService : Service() {
     }
 
     /**
-     * Starts the compositor and the deployment's graphical session at [width]x[height] pixels (the
-     * view size). After [prepareApp], the app runs instead, on its own. The session keeps running without the activity; the compositor holds frames while
-     * nothing shows them.
+     * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
+     * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
+     * display's density; see [DisplayScale]). After [prepareApp], the app runs instead, on its own.
+     * The session keeps running without the activity; the compositor holds frames while nothing
+     * shows them.
      */
-    fun startDesktop(width: Int, height: Int) {
+    fun startDesktop(width: Int, height: Int, scale: Float = DisplayScale.of(this)) {
         val st = _state.value.desktop
         if (st is DesktopState.Starting || st is DesktopState.Running) return
         val env = newEnv()
@@ -668,8 +673,16 @@ class SessionService : Service() {
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
                     startLink(b, env)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(width, height)
-                    compositor = compositor ?: NativeCompositor.start(env.waylandSocket, width, height)
+                    val (sw, sh) = DisplayScale.sessionSize(width, height)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
+                    // An app runs in app mode at the display's scale, so adaptive apps get about the
+                    // width an Android app has, and its menus and popovers show. The session's own
+                    // scale is [scale], applied by GNOME; its compositor stays 1x.
+                    val appMode = app != null
+                    if (compositor != null && compositorAppMode != appMode) stopCompositor()
+                    compositor = compositor ?: (if (appMode)
+                        NativeCompositor.startApp(env.waylandSocket, width, height, DisplayScale.of(this@SessionService))
+                    else NativeCompositor.start(env.waylandSocket, width, height)).also { compositorAppMode = appMode }
                     val pb = ProcessBuilder(inv.argv).redirectErrorStream(true)
                         .redirectOutput(env.desktopLog)
                     pb.environment().apply { clear(); putAll(inv.env) }
