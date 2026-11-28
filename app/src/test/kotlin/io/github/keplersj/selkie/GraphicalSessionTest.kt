@@ -35,6 +35,12 @@ class GraphicalSessionTest {
         assertEquals(listOf("--scale", "2.125"), inv.argv.takeLast(2))
     }
 
+    @Test fun aChosenSessionIsNamed() {
+        val inv = ProotCommandBuilder(TestEnv.env(), spec).graphicalSession(1920, 1200, sessionId = "sm.puri.Phosh")
+        assertEquals(listOf("/usr/bin/droidc", "supervise", "--session", "--systemd", "auto", "--session-id", "sm.puri.Phosh",
+            "--width", "1920", "--height", "1200", "--scale", "1.0"), inv.argv.takeLast(13))
+    }
+
     @Test fun sessionSizeLetsGnomeOffer150And200() {
         // Each side a multiple of 12: whole logical pixels at 1.5x and 2x.
         assertEquals(1920 to 1428, DisplayScale.sessionSize(1920, 1432))

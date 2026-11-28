@@ -32,6 +32,9 @@ import io.github.keplersj.selkie.engine.ErrorKind
 import io.github.keplersj.selkie.display.DisplayScale
 import io.github.keplersj.selkie.display.NativeCompositor
 import io.github.keplersj.selkie.engine.RootShell
+import io.github.keplersj.selkie.engine.SessionChoice
+import io.github.keplersj.selkie.engine.SessionEntry
+import io.github.keplersj.selkie.ui.deviceClassOf
 import io.github.keplersj.selkie.engine.apps
 import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
@@ -43,6 +46,8 @@ import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.BatteryWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
+import io.github.keplersj.selkie.link.GuestNotification
+import io.github.keplersj.selkie.link.GuestNotifier
 import io.github.keplersj.selkie.link.NetworkWatcher
 import io.github.keplersj.selkie.link.OpenUri
 import io.github.keplersj.selkie.engine.status
@@ -152,6 +157,10 @@ class SessionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == GuestNotifier.ACTION_BUTTON || intent?.action == GuestNotifier.ACTION_DISMISSED) {
+            onGuestNotificationIntent(intent)
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_DENY_ROOT) {
             val container = intent.getStringExtra(EXTRA_CONTAINER)
             val id = intent.getLongExtra(EXTRA_REQUEST, -1)
@@ -212,9 +221,10 @@ class SessionService : Service() {
             }
             if (_state.value.status?.current != null) {
                 val spec = withContext(Dispatchers.IO) { c.shellSpec() }
-                val session = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec().session }.getOrNull() }
+                val parsed = (spec as? DroidcOutcome.Success)?.let { runCatching { it.shellSpec() }.getOrNull() }
                 if (_state.value.container != container) return@launch
-                _state.update { it.copy(graphical = session) }
+                _state.update { it.copy(graphical = parsed?.session, graphicalSessions = parsed?.sessions.orEmpty(),
+                    sessionPick = SessionChoice.read(prefs, container, formFactor())) }
                 val apps = withContext(Dispatchers.IO) { c.apps() }
                 if (_state.value.container != container) return@launch
                 _state.update {
@@ -226,7 +236,7 @@ class SessionService : Service() {
                     }
                 }
             } else {
-                _state.update { it.copy(graphical = null, apps = null, appsError = null) }
+                _state.update { it.copy(graphical = null, graphicalSessions = emptyList(), apps = null, appsError = null) }
             }
         }
     }
@@ -244,7 +254,7 @@ class SessionService : Service() {
     private fun showContainer(name: String) {
         prefs.edit().putString(KEY_CONTAINER, name).apply()
         val root = newEnv(name).rootMode
-        _state.update { it.copy(container = name, status = null, statusError = null, statusLoaded = false, graphical = null,
+        _state.update { it.copy(container = name, status = null, statusError = null, statusLoaded = false, graphical = null, graphicalSessions = emptyList(),
             apps = null, appsError = null, rootMode = root, rootMessage = null) }
     }
 
@@ -276,7 +286,10 @@ class SessionService : Service() {
                 left?.let { stopServices(it, wait = true) }
                 client(EngineEnv.DEFAULT_CONTAINER).removeContainer(name, asRoot)
             }
-            if (outcome is DroidcOutcome.Success) setRootModeEnabled(this@SessionService, name, false)
+            if (outcome is DroidcOutcome.Success) {
+                setRootModeEnabled(this@SessionService, name, false)
+                SessionChoice.forget(prefs, name)
+            }
             onDone((outcome as? DroidcOutcome.Failure)?.error?.message)
             // refreshStatus moves Home to the next listed container when the shown one has gone.
             refreshStatus()
@@ -622,6 +635,8 @@ class SessionService : Service() {
     @Volatile private var audio: GuestAudio? = null
     /** Follows Android's look while any container's host-link runs. */
     private var appearanceWatcher: AppearanceWatcher? = null
+    /** The guest's notifications in Android's shade (and so on a paired watch). */
+    private val guestNotifier by lazy { GuestNotifier(this) }
     private var batteryWatcher: BatteryWatcher? = null
     private var networkWatcher: NetworkWatcher? = null
     private var desktopJob: Job? = null
@@ -658,6 +673,31 @@ class SessionService : Service() {
         _state.update { it.copy(desktop = DesktopState.Stopped, desktopApp = null) }
     }
 
+    /** This device's shape as droidc's session `form_factors` name it; it changes as a fold opens. */
+    private fun formFactor(): String = SessionChoice.formFactor(deviceClassOf(resources.configuration))
+
+    /** The session [startDesktop] would start for the selected container on this device. */
+    fun chosenSession(): SessionEntry? = _state.value.let {
+        SessionChoice.choose(it.graphicalSessions, it.graphical?.id, it.sessionPick)
+    }
+
+    /**
+     * Starts [id] from now on, on this device shape (or on every device when choosing by device is
+     * off); null goes back to the one made for the device. A running desktop keeps its session.
+     */
+    fun chooseSession(id: String?) {
+        val container = _state.value.container
+        SessionChoice.write(prefs, container, _state.value.sessionPick, id)
+        _state.update { it.copy(sessionPick = SessionChoice.read(prefs, container, formFactor())) }
+    }
+
+    /** Whether each device shape remembers its own session for the selected container. */
+    fun setChooseByDevice(on: Boolean) {
+        val container = _state.value.container
+        SessionChoice.writeByDevice(prefs, container, on)
+        _state.update { it.copy(sessionPick = SessionChoice.read(prefs, container, formFactor())) }
+    }
+
     /**
      * Starts the compositor at [width]x[height] pixels (the view size) and the deployment's graphical
      * session at about that size ([DisplayScale.sessionSize]) and [scale] (by default from the
@@ -680,7 +720,11 @@ class SessionService : Service() {
                     val outcome = DroidcClient(env).shellSpec()
                     val spec = (outcome as? DroidcOutcome.Success)?.shellSpec()
                         ?: error("shell-spec failed: ${(outcome as? DroidcOutcome.Failure)?.error?.message}")
-                    if (app == null && spec.session?.configured != true) error("This image declares no graphical session. Configure one first.")
+                    // Older droidc lists no sessions and starts its only one; then no id is passed.
+                    val pick = SessionChoice.read(prefs, env.container, formFactor())
+                    val chosen = if (app == null) SessionChoice.choose(spec.sessions, spec.session?.id, pick) else null
+                    if (app == null && spec.session?.configured != true && chosen == null) error("This image declares no graphical session. Configure one first.")
+                    _state.update { it.copy(desktopSession = chosen?.title ?: spec.session?.name) }
                     // Root mode leaves the files image-owned, which the app-uid proot below can't write to.
                     if (env.useRoot) error(if (app != null) "Apps don't open in root mode yet. Turn root mode off for this container to use them."
                         else "The desktop doesn't run in root mode yet. Turn root mode off for this container to use it.")
@@ -690,7 +734,7 @@ class SessionService : Service() {
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
                     val (sw, sh) = DisplayScale.sessionSize(width, height)
-                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
+                    val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale, sessionId = chosen?.id)
                     // An app runs in app mode at the display's scale, so adaptive apps get about the
                     // width an Android app has, and its menus and popovers show. The session's own
                     // scale is [scale], applied by GNOME; its compositor stays 1x.
@@ -711,7 +755,7 @@ class SessionService : Service() {
                 _keepAwake.value = false
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
-                    desktopContainer = null) }
+                    desktopContainer = null, desktopSession = null) }
                 updateForeground(force = true)
                 stopIdleServices()
                 return@launch
@@ -739,7 +783,7 @@ class SessionService : Service() {
                 _state.update { it.copy(desktop =
                     if (code == 0 || killed) DesktopState.Stopped
                     else DesktopState.Failed("${app?.name ?: "The session"} exited with status $code", logTail(env)),
-                    desktopContainer = null, desktopApp = if (code == 0 || killed) null else app) }
+                    desktopContainer = null, desktopSession = null, desktopApp = if (code == 0 || killed) null else app) }
                 updateForeground(force = true)
                 stopIdleServices()
             }
@@ -760,7 +804,7 @@ class SessionService : Service() {
         }
         stopCompositor()
         pendingApp = null
-        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopApp = null) }
+        _state.update { it.copy(desktop = DesktopState.Stopped, desktopContainer = null, desktopSession = null, desktopApp = null) }
         updateForeground(force = true)
         stopIdleServices()
     }
@@ -790,18 +834,49 @@ class SessionService : Service() {
 
     private fun onLinkMessage(container: String, m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> linkOf(container)?.let { l ->
-                l.send(Appearance.read(this).toLine())
-                // Android locks and blanks the device; GNOME's own lock would be a second one.
-                l.send("""{"kind":"screen-lock","by_android":true}""")
-                batteryWatcher?.current?.let { l.send(it) }
-                networkWatcher?.current?.let { l.send(it) }
+            "ready" -> {
+                // A restarted link knows none of this container's notifications already up, so they can't be acted on.
+                guestNotifier.cancelContainer(container)
+                linkOf(container)?.let { l ->
+                    l.send(Appearance.read(this).toLine())
+                    // Android locks and blanks the device; GNOME's own lock would be a second one.
+                    l.send("""{"kind":"screen-lock","by_android":true}""")
+                    batteryWatcher?.current?.let { l.send(it) }
+                    networkWatcher?.current?.let { l.send(it) }
+                }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
                 scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
             }
+            "notify" -> GuestNotification.parse(m.body)?.let {
+                guestNotifier.show(it.copy(key = GuestNotification.scopedKey(container, it.key)))
+            }
+            "close-notification" -> (m.body["key"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?.let { guestNotifier.cancel(GuestNotification.scopedKey(container, it)) }
             else -> AdbRequests.handle(this, container, m) { line -> linkOf(container)?.send(line) }
+        }
+    }
+
+    /** The user tapped a guest notification: the activity opens the desktop, the app hears of it. */
+    fun openedGuestNotification(scoped: String) {
+        val (container, key) = GuestNotification.splitScopedKey(scoped) ?: return
+        linkOf(container)?.send(GuestNotification.actionLine(key, null, null))
+    }
+
+    /** A button or a dismissal on a guest notification, from its pending intent. */
+    private fun onGuestNotificationIntent(intent: Intent) {
+        val scoped = intent.getStringExtra(GuestNotifier.EXTRA_KEY) ?: return
+        val (container, key) = GuestNotification.splitScopedKey(scoped) ?: return
+        val l = linkOf(container)
+        when (intent.action) {
+            GuestNotifier.ACTION_BUTTON -> {
+                val text = GuestNotifier.replyText(intent)
+                l?.send(GuestNotification.actionLine(key, intent.getStringExtra(GuestNotifier.EXTRA_BUTTON), text))
+                // Done with it here; the app updates or withdraws it in the guest as it sees fit.
+                guestNotifier.cancel(scoped)
+            }
+            GuestNotifier.ACTION_DISMISSED -> l?.send(GuestNotification.closedLine(key))
         }
     }
 
@@ -820,6 +895,9 @@ class SessionService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         sendAppearance()
+        // A fold opening or closing changes which session fits.
+        val container = _state.value.container
+        _state.update { it.copy(sessionPick = SessionChoice.read(prefs, container, formFactor())) }
     }
 
     private fun stopAudio() {
@@ -836,7 +914,9 @@ class SessionService : Service() {
      * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither. [link]
      * restarts itself, so it doesn't count toward [alive].
      */
-    private class ContainerServices(val keeper: Process?, val spawner: RootAskHost?, val link: GuestLink?) {
+    private class ContainerServices(
+        val container: String,
+        val keeper: Process?, val spawner: RootAskHost?, val link: GuestLink?) {
         val alive: Boolean get() = keeper?.isAlive != false && spawner?.process?.isAlive != false
     }
     /** By container; guarded by itself, since sessions start on IO threads. */
@@ -852,6 +932,7 @@ class SessionService : Service() {
             // One of them died (an image without a bus, say): start both again, so the next session has them.
             cur?.let { stopServices(it, wait = true) }
             services[env.container] = ContainerServices(
+                container = env.container,
                 keeper = startService(b.userServices(), env.userServicesLog),
                 spawner = if (b.hasShims) startSpawner(env, b) else null,
                 link = startLink(b, env),
@@ -945,6 +1026,7 @@ class SessionService : Service() {
     /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
     private fun stopServices(s: ContainerServices, wait: Boolean) {
         s.link?.stop()
+        guestNotifier.cancelContainer(s.container)
         val procs = listOfNotNull(s.keeper, s.spawner?.process)
         procs.forEach { it.destroy() }
         val reap = { procs.forEach { if (!it.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) it.destroyForcibly() } }
