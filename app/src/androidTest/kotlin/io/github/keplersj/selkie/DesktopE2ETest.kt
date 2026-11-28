@@ -35,6 +35,8 @@ import java.io.File
  *   (overlay button) changes what GNOME shows.
  * - [gtkAppNested]: `renderer=wayland`, a GTK 4 app (Nautilus) as a direct client of Selkie's
  *   compositor, the path nested session compositors (KWin, cosmic-comp, gamescope) take.
+ * - [appShortcutAtDisplayScale]: a pinned app's home screen shortcut (Nautilus) opens that app on
+ *   its own, in app mode at the display's scale (e2e-gui.sh runs it again at phone size and density).
  * - [terminalInGnome]: the GNOME desktop as above, then what a user does: Super, type "terminal", Enter, and a command
  *   typed into the terminal that opens. The command creates a file in the guest's /tmp, which the test
  *   reads from the host side, so a window on screen is not the only evidence that a shell ran.
@@ -534,6 +536,33 @@ class DesktopE2ETest {
         inst.sendPointerSync(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, view.width * 0.5f, view.height * 0.5f, 0))
         inst.sendPointerSync(MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, view.width * 0.5f, view.height * 0.5f, 0))
         waitFor("touch to reach the app", 30_000, 250) { long(s, "inputs") >= inputs0 + 2 }
+        stop(s)
+    }
+
+    /** A pinned app's shortcut opens that app on its own in [AppActivity], in app mode at the display's scale. */
+    @Test fun appShortcutAtDisplayScale() {
+        val s = service()
+        ensureBluefin(s)
+        val id = "org.gnome.Nautilus.desktop"
+        waitFor("the container's apps", 5 * 60_000L, 2000) { s.state.value.apps?.apps?.any { it.id == id } == true }
+        val app = s.state.value.apps!!.apps.first { it.id == id }
+        val container = s.state.value.container
+        val dm = ctx.resources.displayMetrics
+        log("display ${dm.widthPixels}x${dm.heightPixels} density=${dm.density}")
+        ctx.startActivity(io.github.keplersj.selkie.platform.AppShortcuts.intent(ctx, container, app)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        val t0 = SystemClock.uptimeMillis()
+        waitFor("${app.name} on screen", 10 * 60_000L, 2000) {
+            (s.state.value.desktop as? DesktopState.Failed)?.let { fail("app failed: ${it.message}\n${it.logTail}") }
+            s.state.value.desktopApp?.id == id && colors(s) > 5
+        }
+        log("SELKIE_METRIC app_shortcut_first_frame_seconds=${(SystemClock.uptimeMillis() - t0) / 1000.0} stats=${stats(s)}")
+        val want = io.github.keplersj.selkie.display.DisplayScale.of(ctx).toDouble()
+        val got = stats(s)?.get("app_scale")?.jsonPrimitive?.doubleOrNull
+        assertNotNull("app mode: ${stats(s)}", got)
+        assertEquals("app mode at the display's scale", want, got!!, 0.001)
+        settle(s)
+        screenshot("app-shortcut-${dm.widthPixels}x${dm.heightPixels}.png")
         stop(s)
     }
 }

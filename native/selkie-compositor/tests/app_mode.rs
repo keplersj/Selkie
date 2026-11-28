@@ -326,6 +326,9 @@ fn app_at_scale_with_a_popup() {
     frame_until(&sink, "toplevel frame", |f| {
         f.pixels[0] == RED && f.pixels[119 + 239 * 120] == RED
     });
+    // Selkie's emulator test reads the scale from the stats.
+    let json = h.stats.lock().unwrap().to_json();
+    assert!(json.contains("\"app_scale\":2,"), "{json}");
 
     // A popup under a button at (10, 10, 10x10), drawn through a viewport.
     let pos = c.wm.as_ref().unwrap().create_positioner(&qh, ());
