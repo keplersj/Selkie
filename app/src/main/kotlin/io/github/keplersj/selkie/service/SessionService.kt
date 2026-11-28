@@ -40,6 +40,7 @@ import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.link.AdbRequests
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
+import io.github.keplersj.selkie.link.BatteryWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
 import io.github.keplersj.selkie.link.OpenUri
@@ -605,6 +606,7 @@ class SessionService : Service() {
     @Volatile private var audio: GuestAudio? = null
     /** Follows Android's look while any container's host-link runs. */
     private var appearanceWatcher: AppearanceWatcher? = null
+    private var batteryWatcher: BatteryWatcher? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -759,6 +761,8 @@ class SessionService : Service() {
         scope.launch(Dispatchers.Main) {
             if (appearanceWatcher == null)
                 appearanceWatcher = AppearanceWatcher(this@SessionService) { sendAppearance() }.apply { start() }
+            if (batteryWatcher == null)
+                batteryWatcher = BatteryWatcher(this@SessionService) { line -> sendToLinks(line) }.apply { start() }
         }
         return link
     }
@@ -771,6 +775,7 @@ class SessionService : Service() {
                 l.send(Appearance.read(this).toLine())
                 // Android locks and blanks the device; GNOME's own lock would be a second one.
                 l.send("""{"kind":"screen-lock","by_android":true}""")
+                batteryWatcher?.current?.let { l.send(it) }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
@@ -781,9 +786,13 @@ class SessionService : Service() {
     }
 
     private fun sendAppearance() {
+        if (synchronized(services) { services.values.none { it.link != null } }) return
+        sendToLinks(Appearance.read(this).toLine())
+    }
+
+    /** Sends [line] to every container's link: Android's look and battery are the same for all of them. */
+    private fun sendToLinks(line: String) {
         val links = synchronized(services) { services.values.mapNotNull { it.link } }
-        if (links.isEmpty()) return
-        val line = Appearance.read(this).toLine()
         links.forEach { it.send(line) }
     }
 
@@ -861,7 +870,10 @@ class SessionService : Service() {
     /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
     private fun stopAppearanceWatcherIfIdle() {
         if (synchronized(services) { services.isEmpty() })
-            scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
+            scope.launch(Dispatchers.Main) {
+                appearanceWatcher?.stop(); appearanceWatcher = null
+                batteryWatcher?.stop(); batteryWatcher = null
+            }
     }
 
     private fun stopServices(s: ContainerServices, wait: Boolean) {
