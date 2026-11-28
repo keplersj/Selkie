@@ -23,8 +23,10 @@ class PipeWireServicesTest {
     @Test
     fun theClientsWaitForPipeWireToAnswer() {
         for (s in services.drop(1)) {
-            assertTrue(s[2], s[2].contains("i=0; until timeout 2 pw-cli info 0"))
-            assertTrue(s[2], s[2].contains("\$i -ge 100"))
+            assertTrue(s[2], s[2].contains("until timeout 2 pw-cli info 0"))
+            // Bounded by the clock, not a try count: each try can itself take 2 s.
+            assertTrue(s[2], s[2].contains("end=\$((\$(date +%s)+20))"))
+            assertTrue(s[2], s[2].contains("[ \$(date +%s) -ge \$end ]"))
         }
     }
 

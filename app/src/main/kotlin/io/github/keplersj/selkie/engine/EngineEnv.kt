@@ -176,10 +176,13 @@ object PipeWireServices {
             "printf '%s\\n' '$WIREPLUMBER_ACCESS' > \"\$x/wireplumber/wireplumber.conf.d/50-selkie-access.conf\"; " +
             "export XDG_CONFIG_DIRS=\"\$x:\${XDG_CONFIG_DIRS:-/etc/xdg}\"; "
 
-    /** Waits up to about 20 s for PipeWire to answer, then runs the program anyway. */
+    /**
+     * Waits up to about 20 s for PipeWire to answer, then runs the program anyway. The limit is by the
+     * clock, because a PipeWire that accepts but doesn't answer holds each `pw-cli` for its full 2 s.
+     */
     internal fun afterPipeWire(program: String) =
-        "i=0; until timeout 2 pw-cli info 0 >/dev/null 2>&1 || [ \$i -ge 100 ]; do i=\$((i+1)); sleep 0.2; done; " +
-            "exec $program"
+        "end=\$((\$(date +%s)+20)); until timeout 2 pw-cli info 0 >/dev/null 2>&1 || [ \$(date +%s) -ge \$end ]; " +
+            "do sleep 0.2; done; exec $program"
 
     private fun shell(script: String) =
         """["sh","-c","${script.replace("\\", "\\\\").replace("\"", "\\\"")}"]"""
