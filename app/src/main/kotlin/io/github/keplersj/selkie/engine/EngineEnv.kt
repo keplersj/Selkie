@@ -54,6 +54,13 @@ data class EngineEnv(
     /** droidc `--root`. */
     val droidcRoot: File get() = File(filesDir, "droidc")
     val prootTmp: File get() = File(cacheDir, "proot-tmp")
+    /**
+     * `PROOT_L2S_DIR`: where link2symlink keeps the files behind the hard links it fakes, instead of next
+     * to each link. There, `rm -rf` lists them and can't remove them, so Flatpak's child repo outlived a
+     * system install and every install after it failed. On the rootfs's filesystem, as link2symlink moves
+     * the file there; shared by every container, as each chain records absolute paths.
+     */
+    val prootL2s: File get() = File(filesDir, "proot-l2s")
     val droidcLog: File get() = File(cacheDir, logName("droidc"))
 
     /**
