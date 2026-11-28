@@ -32,8 +32,10 @@ import androidx.compose.ui.unit.dp
 /** The device class of the current window, from its size and UI mode. */
 @Composable
 @ReadOnlyComposable
-fun currentDeviceClass(): DeviceClass {
-    val c = LocalConfiguration.current
+fun currentDeviceClass(): DeviceClass = deviceClassOf(LocalConfiguration.current)
+
+/** The device class for a configuration, from its size and UI mode. */
+fun deviceClassOf(c: Configuration): DeviceClass {
     return when (c.uiMode and Configuration.UI_MODE_TYPE_MASK) {
         Configuration.UI_MODE_TYPE_TELEVISION -> DeviceClass.Tv
         Configuration.UI_MODE_TYPE_CAR -> DeviceClass.Car

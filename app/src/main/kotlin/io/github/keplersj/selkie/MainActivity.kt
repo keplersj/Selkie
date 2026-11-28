@@ -270,10 +270,20 @@ class MainActivity : ComponentActivity() {
                 }
                 screen == "session" -> {
                     BackHandler { screen = "auto" }
+                    SessionsScreen(state.container, state.graphicalSessions, state.sessionPick,
+                        current = service.chosenSession(),
+                        running = state.desktopSession.takeIf { state.desktopContainer == state.container && state.desktopApp == null },
+                        onChoose = service::chooseSession,
+                        onChooseByDevice = service::setChooseByDevice,
+                        onAddOwn = { screen = "session-own" },
+                        onBack = { screen = "auto" })
+                }
+                screen == "session-own" -> {
+                    BackHandler { screen = "session" }
                     SessionConfigScreen(state.graphical,
                         onSave = { r, e, s, n, done -> service.configureSession(r, e, s, n, done) },
                         onClear = { service.clearSessionOverride() },
-                        onBack = { screen = "auto" })
+                        onBack = { screen = "session" })
                 }
                 screen == "about" -> { BackHandler { screen = "auto" }; AboutScreen { screen = "auto" } }
                 screen == "phantom" -> {

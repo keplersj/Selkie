@@ -20,6 +20,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.AppAction
+import io.github.keplersj.selkie.engine.SessionChoice
+import io.github.keplersj.selkie.engine.SessionEntry
+import io.github.keplersj.selkie.engine.SessionPick
 import io.github.keplersj.selkie.engine.AppEntry
 import io.github.keplersj.selkie.engine.AppIcon
 import io.github.keplersj.selkie.engine.AppList
@@ -87,6 +90,15 @@ object Fixtures {
         exec = listOf("gnome-shell", "--headless", "--virtual-monitor", "{width}x{height}"),
         configured = true, source = "label")
     val noSession = GraphicalSession(configured = false)
+    /** What a Ringed-style image offers: Phosh and Plasma Mobile for phones, desktops for others. */
+    val pocketSessions = listOf(
+        SessionEntry("sm.puri.Phosh", "xdg", "Phosh", "Phone shell", listOf("phone"), runnable = true, renderer = "wayland"),
+        SessionEntry("plasma-mobile", "xdg", "Plasma Mobile", null, listOf("phone"), runnable = true, renderer = "wayland"),
+        SessionEntry("plasma", "xdg", "Plasma Desktop", null, listOf("tablet", "desktop"), runnable = true, renderer = "wayland"),
+        SessionEntry("plasma-bigscreen", "xdg", "Plasma Bigscreen", null, listOf("tv"), runnable = true, renderer = "wayland"),
+        SessionEntry("gnome-wayland", "xdg", "GNOME", null, runnable = false,
+            problem = "made for a display manager: the entry has no X-Droidc-Renderer key"),
+    )
 
     val homeInstalled = ServiceState(
         status = StatusData(current = bluefin, previous = bluefinOld), statusLoaded = true,
@@ -334,6 +346,24 @@ fun SessionConfigOverridePreview() = PreviewFrame {
     SessionConfigScreen(Fixtures.gnome.copy(source = "override",
         services = listOf(listOf("pipewire"), listOf("wireplumber"))),
         onSave = { _, _, _, _, _ -> }, onClear = noop, onBack = noop)
+}
+
+@PhonePreviews
+@Composable
+fun SessionsPhonePreview() = PreviewFrame {
+    val pick = SessionPick(formFactor = "phone")
+    SessionsScreen("pocket", Fixtures.pocketSessions, pick,
+        current = SessionChoice.choose(Fixtures.pocketSessions, null, pick), running = null,
+        onChoose = {}, onChooseByDevice = {}, onAddOwn = noop, onBack = noop)
+}
+
+@PhonePreviews
+@Composable
+fun SessionsChosenRunningPreview() = PreviewFrame {
+    val pick = SessionPick(formFactor = "phone", chosen = "plasma")
+    SessionsScreen("pocket", Fixtures.pocketSessions, pick,
+        current = SessionChoice.choose(Fixtures.pocketSessions, null, pick), running = "Phosh",
+        onChoose = {}, onChooseByDevice = {}, onAddOwn = noop, onBack = noop)
 }
 
 // --- Progress ---

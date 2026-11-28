@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.keplersj.selkie.engine.Deployment
 import io.github.keplersj.selkie.engine.AppEntry
+import io.github.keplersj.selkie.engine.SessionChoice
 import io.github.keplersj.selkie.service.DesktopState
 import io.github.keplersj.selkie.service.Operation
 import io.github.keplersj.selkie.service.ServiceState
@@ -527,7 +528,8 @@ private fun Overview(state: ServiceState, a: DetailActions, wide: Boolean) {
             graphical == null -> {}
             graphical.configured && other == null -> BigAction(
                 title = if (desktopHere) "Return to desktop" else "Open desktop",
-                supporting = (graphical.name ?: "Desktop") + if (desktopHere) " · running" else "",
+                supporting = ((if (desktopHere) state.desktopSession else null) ?: sessionName(state) ?: "Desktop") +
+                    if (desktopHere) " · running" else "",
                 icon = SelkieIcons.Desktop, primary = true, shape = top, onClick = a.onOpenDesktop,
                 modifier = Modifier.testTag(OPEN_DESKTOP_TAG))
             graphical.configured -> SelkieCard(Modifier.fillMaxWidth(), tone = CardTone.Outlined, shape = top) {
@@ -655,8 +657,11 @@ private fun Settings(state: ServiceState, a: DetailActions) {
         GroupItem("Desktop session",
             supporting = when {
                 graphical == null -> "Install an image first"
-                graphical.configured -> (graphical.name ?: "Set up") +
-                    if (graphical.source == "override") " · chosen by you" else " · from the image"
+                graphical.configured -> (sessionName(state) ?: "Set up") + when {
+                    state.graphicalSessions.count { it.runnable } > 1 -> " · ${state.graphicalSessions.count { it.runnable }} to choose from"
+                    graphical.source == "override" -> " · chosen by you"
+                    else -> " · from the image"
+                }
                 else -> "Not set up"
             },
             leading = { Icon(SelkieIcons.Desktop, contentDescription = null) },
@@ -764,3 +769,7 @@ private fun RemoveLine(icon: ImageVector, text: String) {
         Text(text, Modifier.weight(1f))
     }
 }
+
+/** The session the selected container starts on this device, by name. */
+internal fun sessionName(state: ServiceState): String? =
+    SessionChoice.choose(state.graphicalSessions, state.graphical?.id, state.sessionPick)?.title ?: state.graphical?.name
