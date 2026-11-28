@@ -775,12 +775,14 @@ class SessionService : Service() {
 
     private fun onLinkMessage(container: String, m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> linkOf(container)?.let { l ->
+            "ready" -> {
                 // A restarted link knows none of this container's notifications already up, so they can't be acted on.
                 guestNotifier.cancelContainer(container)
-                l.send(Appearance.read(this).toLine())
-                // Android locks and blanks the device; GNOME's own lock would be a second one.
-                l.send("""{"kind":"screen-lock","by_android":true}""")
+                linkOf(container)?.let { l ->
+                    l.send(Appearance.read(this).toLine())
+                    // Android locks and blanks the device; GNOME's own lock would be a second one.
+                    l.send("""{"kind":"screen-lock","by_android":true}""")
+                }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
