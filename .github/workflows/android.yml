@@ -2,7 +2,12 @@ name: Android
 
 on:
   push:
+    # Queue branches are already tested by merge_group below.
+    branches-ignore: ['gh-readonly-queue/**']
   pull_request:
+  # The merge queue tests each batch on a temporary gh-readonly-queue/main/* branch before it lands,
+  # so the checks a ruleset requires must run here too or the queue never moves.
+  merge_group:
   workflow_dispatch:
     inputs:
       record_screenshots:
@@ -259,6 +264,8 @@ jobs:
 
   emulator-gui:
     name: Emulator GUI (Bluefin LTS GNOME, x86_64, API 34)
+    # Up to 4 hours, too long to hold the merge queue, so it runs on PRs and on main, not on the queue.
+    if: github.event_name != 'merge_group'
     needs: apk
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -350,8 +357,15 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [apk, proot, droidc, emulator-e2e]
     runs-on: ubuntu-latest
+    # Its own environment (no secrets: `latest` is signed with the public MVP test key), so each
+    # publish shows as a deployment and the owner can limit it to main. The versioned, release-key
+    # builds publish from the `release` environment in release.yml.
+    environment:
+      name: latest
+      url: https://github.com/${{ github.repository }}/releases/tag/latest
     permissions:
       contents: write
+    # Never cancelled: a publish that has started always finishes, and one more waits behind it.
     concurrency:
       group: rolling-prerelease
       cancel-in-progress: false
