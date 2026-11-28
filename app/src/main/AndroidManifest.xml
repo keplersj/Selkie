@@ -62,5 +62,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Runs a user-chosen Linux environment and its terminal sessions" />
         </service>
+        <service
+            android:name=".service.AdbPairingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Waits for the user to open Wireless debugging and type its pairing code, so a container's adb can pair with this device" />
+        </service>
     </application>
 </manifest>
