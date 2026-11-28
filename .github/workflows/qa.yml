@@ -1,8 +1,8 @@
 name: qa
 
 # Extra quality gates beside android.yml: PR title (Conventional Commits), workflow and script lint,
-# and Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny). Gradle checks (detekt,
-# Android lint, Kover) come in a later step of the CI/CD plan.
+# Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny), and Kotlin checks for the app,
+# the watch app and shared code (detekt against config/detekt/baseline.xml, Android lint).
 #
 # Report-only for now: every check writes its findings to the job summary and as warnings, and the
 # job stays green. Set ENFORCE to "true" to make a check fail its job once main is clean and the
@@ -148,3 +148,76 @@ jobs:
             if [ "$ENFORCE" = true ]; then exit "$status"; fi
             echo "::warning::clippy found problems (report-only)"
           fi
+
+  detekt:
+    name: Kotlin static analysis (detekt, new findings only)
+    runs-on: ubuntu-latest
+    env:
+      DETEKT_VERSION: 1.23.8
+      DETEKT_SHA256: 3afe89a11120303c73c9bdda3d8fe558dd9070a6937d27819ddc04b275381245
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Download detekt-cli from Maven Central
+        run: |
+          curl -sSfLo detekt-cli.jar \
+            "https://repo1.maven.org/maven2/io/gitlab/arturbosch/detekt/detekt-cli/$DETEKT_VERSION/detekt-cli-$DETEKT_VERSION-all.jar"
+          echo "$DETEKT_SHA256  detekt-cli.jar" | sha256sum -c -
+      - name: detekt
+        run: |
+          status=0
+          java -jar detekt-cli.jar --config config/detekt/detekt.yml --build-upon-default-config \
+            --input app/src,wear/src,shared --baseline config/detekt/baseline.xml \
+            --report txt:detekt.txt --report md:detekt.md || status=$?
+          {
+            echo "### detekt: findings not in the baseline"
+            echo
+            if [ -s detekt.txt ]; then echo '```'; head -100 detekt.txt; echo '```'; else echo "None."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::detekt found $(wc -l < detekt.txt) new findings (report-only)"
+          fi
+
+  android-lint:
+    name: Android lint (app, watch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: lint
+        run: |
+          status=0
+          ./gradlew --no-daemon --continue :app:lintDebug :wear:lintDebug || status=$?
+          {
+            echo "### Android lint"
+            echo
+            for f in app/build/reports/lint-results-debug.xml wear/build/reports/lint-results-debug.xml; do
+              [ -f "$f" ] || { echo "- $f: no report"; continue; }
+              printf -- '- %s: %s errors, %s warnings\n' "${f%%/*}" \
+                "$(grep -c 'severity="Error"' "$f" || true)" "$(grep -c 'severity="Warning"' "$f" || true)"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            if [ "$ENFORCE" = true ]; then exit "$status"; fi
+            echo "::warning::Android lint found errors (report-only)"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: android-lint
+          path: |
+            app/build/reports/lint-results-debug.*
+            wear/build/reports/lint-results-debug.*
+          if-no-files-found: ignore
