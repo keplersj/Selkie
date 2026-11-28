@@ -1,8 +1,9 @@
 name: qa
 
 # Extra quality gates beside android.yml: PR title (Conventional Commits), workflow and script lint,
-# Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny), and Kotlin checks for the app,
-# the watch app and shared code (detekt against config/detekt/baseline.xml, Android lint).
+# Rust checks for the in-app compositor (rustfmt, clippy, cargo-deny), Kotlin checks for the app,
+# the watch app and shared code (detekt against config/detekt/baseline.xml, Android lint, ktfmt
+# formatting) and a review of the dependencies a PR adds or changes.
 #
 # Report-only for now: every check writes its findings to the job summary and as warnings, and the
 # job stays green. Set ENFORCE to "true" to make a check fail its job once main is clean and the
@@ -221,3 +222,55 @@ jobs:
             app/build/reports/lint-results-debug.*
             wear/build/reports/lint-results-debug.*
           if-no-files-found: ignore
+
+  ktfmt:
+    name: Kotlin formatting (ktfmt)
+    runs-on: ubuntu-latest
+    env:
+      KTFMT_VERSION: "0.64"
+      KTFMT_SHA256: 5b3d5286fd2defcc7dc8e28c21ddf156cc6b2d8682bdcd929ce4333e7a6201f2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Download ktfmt from Maven Central
+        run: |
+          curl -sSfLo ktfmt.jar \
+            "https://repo1.maven.org/maven2/com/facebook/ktfmt/$KTFMT_VERSION/ktfmt-$KTFMT_VERSION-with-dependencies.jar"
+          echo "$KTFMT_SHA256  ktfmt.jar" | sha256sum -c -
+      - name: ktfmt --kotlinlang-style --dry-run
+        run: |
+          # Lists the files that ktfmt would change. Kotlin's own style (4-space indents), the closest
+          # to how the code is written now; once they're reformatted in one commit, ENFORCE keeps them so.
+          find app/src wear/src shared -name '*.kt' -o -name '*.kts' | sort > files.txt
+          java -jar ktfmt.jar --kotlinlang-style --dry-run $(cat files.txt) > unformatted.txt 2> ktfmt.log || true
+          cat ktfmt.log
+          n=$(grep -c . unformatted.txt || true)
+          {
+            echo "### ktfmt: $n of $(wc -l < files.txt) Kotlin files would change"
+            echo
+            if [ "$n" -gt 0 ]; then echo '```'; head -100 unformatted.txt; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$n" -gt 0 ]; then
+            if [ "$ENFORCE" = true ]; then echo "::error::ktfmt would reformat $n files"; exit 1; fi
+            echo "::warning::ktfmt would reformat $n files (report-only)"
+          fi
+
+  dependency-review:
+    name: Dependency review (new and changed dependencies)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # the summary comment on the PR
+    steps:
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          # Flags known vulnerabilities and licenses in what the PR adds; warn-only until ENFORCE.
+          fail-on-severity: moderate
+          warn-only: ${{ env.ENFORCE != 'true' }}
+          comment-summary-in-pr: on-failure
