@@ -12,6 +12,8 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <!-- Android Automotive: parked-only, for sideloaded and OEM builds (Play doesn't list container managers for cars). -->
     <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
+    <!-- USB devices for Linux apps (fastboot, adb) where the device can host them. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -43,6 +45,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="selkie" android:host="container" />
             </intent-filter>
+            <!-- An adb or fastboot device was plugged in: offer it to Linux apps (UsbBridge). -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
         </activity>
 
         <!-- One Linux app from a home screen shortcut (AppShortcuts), in its own task per app. -->

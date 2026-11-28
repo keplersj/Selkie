@@ -153,6 +153,8 @@ class EngineE2ETest {
         log("interfaces exit=$c6\n$ifs")
         assertEquals("interfaces output: $ifs", 0, c6)
         assertTrue("ifshim not preloaded: $ifs", ifs.contains("/usr/lib/droidc/ifshim.so"))
+        // USB devices (droidc's usbshim, UsbBridge): preloaded the same way.
+        assertTrue("usbshim not preloaded: $ifs", ifs.contains("/usr/lib/droidc/usbshim.so"))
         if (ifs.contains("names=")) assertTrue("no loopback listed: $ifs", Regex("names=.*\\blo\\b").containsMatchIn(ifs))
 
         // sudo (droidc's spawner): the shim asks Selkie's host spawn-server, which asks Selkie (here, this

@@ -26,9 +26,11 @@ class ProotCommandBuilderTest {
             "-b", "/lib/libdroidc-guest.so:/usr/bin/droidc",
             "-b", "/lib/libcgshim.so:/usr/lib/droidc/cgshim.so",
             "-b", "/lib/libifshim.so:/usr/lib/droidc/ifshim.so",
+            "-b", "/lib/libusbshim.so:/usr/lib/droidc/usbshim.so",
             "-b", "/files/guest/cgroup:/sys/fs/cgroup",
             "-b", "/files/guest/tmp:/tmp", "-b", "/files/guest/run:/run", "-b", "/files/guest/shm:/dev/shm",
             "-b", "/files/guest/generated/resolv.conf:/etc/resolv.conf",
+            "-b", "/files/usb/dev:/dev/bus/usb", "-b", "/files/usb/sys:/sys/bus/usb/devices",
             "-b", "/files/guest/generated/proc_stat:/proc/stat",
             "-b", "/files/droidc/var:/var", "-b", "/files/droidc:/run/droidc/root",
             "/usr/bin/droidc", "supervise", "--", "/bin/bash", "-l"), inv.argv)
@@ -36,6 +38,13 @@ class ProotCommandBuilderTest {
         assertEquals("/cache/proot-tmp", inv.env["PROOT_TMP_DIR"])
         assertEquals("/files/proot-l2s", inv.env["PROOT_L2S_DIR"])
         assertEquals("/run/droidc/root", inv.env["DROIDC_ROOT"])
+        assertEquals("selkie-10234-usb", inv.env["DROIDC_USB_SOCKET"])
+    }
+
+    @Test fun rootModeOpensTheRealUsbNodes() {
+        val args = ProotCommandBuilder(TestEnv.env(), spec).prootArgs(rootMode = true)
+        assertFalse(args.any { it.endsWith(":/dev/bus/usb") || it.endsWith(":/sys/bus/usb/devices") })
+        assertTrue("/lib/libusbshim.so:/usr/lib/droidc/usbshim.so" in args)
     }
 
     @Test fun anAppRunsOnItsOwnInTheCompositor() {

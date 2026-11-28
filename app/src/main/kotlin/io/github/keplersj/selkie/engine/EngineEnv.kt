@@ -48,6 +48,15 @@ data class EngineEnv(
      * denies netlink to apps. `droidc supervise` preloads it for everything it starts.
      */
     val ifshimLib: File get() = File(nativeLibDir, "libifshim.so")
+    /**
+     * glibc LD_PRELOAD shim that turns an open of a placeholder `/dev/bus/usb/BBB/DDD` into the usbfs fd
+     * Android gave Selkie for that device ([io.github.keplersj.selkie.usb.UsbBridge]). Preloaded by supervise.
+     */
+    val usbshimLib: File get() = File(nativeLibDir, "libusbshim.so")
+    /** Placeholder nodes for the USB devices Android granted, bound at the guest's `/dev/bus/usb` (every container). */
+    val usbDevDir: File get() = File(filesDir, "usb/dev")
+    /** Their sysfs entries, bound at the guest's `/sys/bus/usb/devices`. */
+    val usbSysDir: File get() = File(filesDir, "usb/sys")
     val prootBin: File get() = File(nativeLibDir, "libproot.so")
     val prootLoader: File get() = File(nativeLibDir, "libproot-loader.so")
 
@@ -109,6 +118,9 @@ data class EngineEnv(
      * are shared by every app on the device, so it carries the app's uid as well as the container.
      */
     val spawnerSocket: String get() = "selkie-$uid-spawner-$container"
+
+    /** The abstract socket usbshim asks for USB devices on (the guest's `DROIDC_USB_SOCKET`); one per app. */
+    val usbSocket: String get() = "selkie-$uid-usb"
 
     /**
      * The guest's `/etc/hostname`. A named container is called by its name; the default one, which has

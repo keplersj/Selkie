@@ -13,6 +13,7 @@ MainActivity (Compose) --binds--> SessionService (foreground, specialUse)
 
 - `engine/` `EngineEnv` (paths, uid, DNS), `DroidcClient` (command line, process, ring buffer, `Flow<DroidcEvent>`), `Models.kt` (sealed events, `NdjsonParser`, status/shell-spec models).
 - `proot/` `ProotCommandBuilder` (pure argv/env, unit-tested) and `GuestFiles` (creates the host dirs/files that binds refer to: writable `/tmp`, `/run`, `/dev/shm` (`/tmp` and `/dev/shm` 1777), generated `resolv.conf`, `/etc/passwd`, `/etc/group`, `/etc/hostname` (the container's name, `selkie` for the default one) and `/etc/localtime` (the image's zoneinfo file for the device's time zone), fake `/proc/{stat,version,loadavg,uptime}` and the `/proc/sys` values tools read (overflowuid, cap_last_cap, inotify and file limits, hostname, osrelease) only when unreadable; `/proc/version` uses the real `uname` release, and `SessionService` advances `/proc/uptime` every second while a container runs). Every guest process also gets `TZ` and `LANG` from the device unless the image sets them; `LANG` falls back to `C.UTF-8` when the image lacks the device's locale.
+- `usb/` `UsbBridge` (USB devices for the guest), `UsbTree` and `UsbProtocol` (pure, unit-tested).
 - `platform/PhantomProcessCheck` the one class that decides whether "Disable child process restrictions" is on.
 - `service/` `SessionService`, `ServiceState`/`Operation` state.
 - `display/` `NativeCompositor` (JNI to the Rust compositor), `CompositorView` (SurfaceView + touch/mouse/key input),
@@ -58,7 +59,7 @@ host paths that must resolve the same way for both.
 ## proot session
 
 `libproot.so --kill-on-exit --link2symlink -i <uid>:<gid> -r <rootfs> -w <cwd>` + binds
-(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, `libcgshim.so:/usr/lib/droidc/cgshim.so`, `libifshim.so:/usr/lib/droidc/ifshim.so`, writable tmp/run/shm, resolv.conf, fake proc files, then the
+(`/dev /proc /sys`, `libdroidc-guest.so:/usr/bin/droidc`, `libcgshim.so:/usr/lib/droidc/cgshim.so`, `libifshim.so:/usr/lib/droidc/ifshim.so`, `libusbshim.so:/usr/lib/droidc/usbshim.so`, writable tmp/run/shm, resolv.conf, the USB device trees, fake proc files, then the
 binds from `droidc shell-spec`). Environment is built from scratch (shell-spec env plus `PROOT_LOADER`,
 `PROOT_TMP_DIR`), so Android's own variables never leak into the guest. Root-only commands use `-0`.
 `DROIDC_ROOT=/run/droidc/root` is bound inside the guest so `droidc status` works from the terminal.
@@ -166,6 +167,23 @@ Every other `droidc adb ARGS` asks Selkie for Wireless debugging's current port 
 `ADB_SERVER_SOCKET=localfilesystem:/run/droidc-adb.sock`, so the server never listens on TCP 5037, which every
 app shares. host-link runs with each container's services, for terminals as well as the desktop, so
 `droidc adb` works from a terminal alone. Selkie doesn't turn Wireless debugging on by itself.
+
+## USB devices (fastboot, adb)
+
+`usb/UsbBridge` hands the guest the USB devices the person allowed (droidc #100, its `docs/design/usb.md`), so
+`fastboot` and `adb` in a container can flash or debug a device plugged into this one. An app can't open
+`/dev/bus/usb` nodes, so:
+
+- for each device Android granted, `UsbTree` writes an empty `/dev/bus/usb/BBB/DDD` and a
+  `/sys/bus/usb/devices/B-D` entry (`busnum`, `devnum`, `idVendor`, `idProduct`, strings, `descriptors`,
+  `bConfigurationValue`, interface names) into `filesDir/usb/{dev,sys}`, bound at those guest paths (not in root
+  mode, where the real nodes are used). Entries go when the device leaves the bus;
+- a newly plugged-in device without permission gets a notification whose tap opens Android's prompt. The manifest's
+  device filter (adb and fastboot interfaces) also has Android offer Selkie on plug-in, with "Always open", so a
+  target rebooting into its bootloader (a new device number, and a new prompt) doesn't stop a flash each time;
+- droidc's usbshim, preloaded by `supervise`, turns an open of a placeholder into a `usb.open` request on the
+  abstract socket `selkie-<uid>-usb` (`DROIDC_USB_SOCKET`). UsbBridge checks the peer's uid, calls `openDevice()`
+  again and sends that fd with `SCM_RIGHTS`, so every guest open gets its own usbfs file.
 
 ## Testing limits
 

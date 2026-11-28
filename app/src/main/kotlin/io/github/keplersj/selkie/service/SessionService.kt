@@ -41,6 +41,7 @@ import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
 import io.github.keplersj.selkie.link.AdbRequests
+import io.github.keplersj.selkie.usb.UsbBridge
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
 import io.github.keplersj.selkie.link.BatteryWatcher
@@ -147,6 +148,7 @@ class SessionService : Service() {
         _state.update { it.copy(rootMode = env.rootMode, suFound = env.su != null) }
         noticeRestart()
         refreshStatus()
+        usbBridge = UsbBridge(this, env).apply { start() }
         watchLink = WatchLink.start(this, state, scope,
             onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) },
             onRefuseRoot = { container, id ->
@@ -189,6 +191,7 @@ class SessionService : Service() {
         stopAllServices()
         getSystemService(NotificationManager::class.java).cancel(ROOT_NOTIF_ID)
         watchLink?.close()
+        usbBridge?.stop()
         scope.cancel()
         super.onDestroy()
     }
@@ -648,6 +651,8 @@ class SessionService : Service() {
     /** The guest's notifications in Android's shade (and so on a paired watch). */
     private val guestNotifier by lazy { GuestNotifier(this) }
     private var batteryWatcher: BatteryWatcher? = null
+    /** Hands the guest the USB devices Android granted (fastboot, adb). */
+    private var usbBridge: UsbBridge? = null
     private var networkWatcher: NetworkWatcher? = null
     private var desktopJob: Job? = null
 

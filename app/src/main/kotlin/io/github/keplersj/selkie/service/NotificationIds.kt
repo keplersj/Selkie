@@ -13,6 +13,8 @@ object NotificationIds {
     const val ADB_PAIRING = 3
     /** The desktop's now-playing notification (media controls). */
     const val MEDIA = 4
+    /** [io.github.keplersj.selkie.usb.UsbBridge]'s ask to use a plugged-in USB device, tagged with its device name. */
+    const val USB_PROMPT = 5
 
-    val ALL = listOf(SESSION, ROOT_PROMPT, ADB_PAIRING, MEDIA)
+    val ALL = listOf(SESSION, ROOT_PROMPT, ADB_PAIRING, MEDIA, USB_PROMPT)
 }
