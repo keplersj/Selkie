@@ -10,6 +10,7 @@ import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import io.github.keplersj.selkie.watch.WatchContainer
 import io.github.keplersj.selkie.watch.WatchProtocol
+import io.github.keplersj.selkie.watch.WatchRootRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -27,6 +28,7 @@ object WatchLink {
         scope: CoroutineScope,
         onStopDesktop: () -> Unit,
         onCloseTerminals: (String) -> Unit,
+        onRefuseRoot: (container: String, id: Long) -> Unit,
     ): AutoCloseable {
         val app = context.applicationContext
         val available = runCatching {
@@ -36,10 +38,11 @@ object WatchLink {
         val data = Wearable.getDataClient(app)
         val messages = Wearable.getMessageClient(app)
         val device = deviceName(app)
-        fun publish(containers: List<WatchContainer>) {
+        fun publish(containers: List<WatchContainer>, root: List<WatchRootRequest>) {
             val request = PutDataMapRequest.create(WatchProtocol.STATE_PATH).apply {
                 dataMap.putString(WatchProtocol.KEY_DEVICE, device)
                 dataMap.putString(WatchProtocol.KEY_CONTAINERS, WatchProtocol.encode(containers))
+                dataMap.putString(WatchProtocol.KEY_ROOT, WatchProtocol.encodeRoot(root))
             }.asPutDataRequest().setUrgent()
             // No watch, or no Wear OS app on the phone: the call fails and that's fine.
             runCatching { data.putDataItem(request) }
@@ -48,17 +51,19 @@ object WatchLink {
             when (event.path) {
                 WatchProtocol.STOP_DESKTOP_PATH -> onStopDesktop()
                 WatchProtocol.CLOSE_TERMINALS_PATH -> onCloseTerminals(String(event.data, Charsets.UTF_8))
+                WatchProtocol.REFUSE_ROOT_PATH -> WatchProtocol.readRefusal(event.data)?.let { (c, id) -> onRefuseRoot(c, id) }
             }
         }
         runCatching { messages.addListener(listener) }
         val job = scope.launch {
-            state.map { watchContainers(it) }.distinctUntilChanged().collect { publish(it) }
+            state.map { watchContainers(it) to watchRootRequests(it) }.distinctUntilChanged()
+                .collect { (containers, root) -> publish(containers, root) }
         }
         return AutoCloseable {
             job.cancel()
             runCatching { messages.removeListener(listener) }
             // Selkie has stopped, so nothing runs: say so rather than leave the watch on the last state.
-            publish(watchContainers(state.value).map { WatchContainer(it.name) })
+            publish(watchContainers(state.value).map { WatchContainer(it.name) }, emptyList())
         }
     }
 

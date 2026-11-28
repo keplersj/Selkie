@@ -25,6 +25,7 @@ import androidx.wear.compose.material3.OutlinedButton
 import androidx.wear.compose.material3.Text
 import io.github.keplersj.selkie.watch.WatchContainer
 import io.github.keplersj.selkie.watch.WatchDesktop
+import io.github.keplersj.selkie.watch.WatchRootRequest
 
 // The canvas's Watch artboard, for what a watch can do today: a remote for Selkie on the phone. The list
 // shows the phone's containers, running ones first; a container's screen stops its desktop or closes its
@@ -62,6 +63,7 @@ fun WatchHome(
     phone: PhoneState?,
     loaded: Boolean,
     onOpen: (String) -> Unit,
+    onOpenRoot: (WatchRootRequest) -> Unit = {},
     state: ScalingLazyListState = rememberScalingLazyListState(),
 ) {
     ScalingLazyColumn(
@@ -78,6 +80,17 @@ fun WatchHome(
             item {
                 Text(runningHeadline(phone.containers), style = MaterialTheme.typography.titleLarge,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
+            for (r in phone.rootRequests) {
+                item(key = "root-${r.container}-${r.id}") {
+                    FilledTonalButton(onClick = { onOpenRoot(r) }, modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ),
+                        secondaryLabel = { Text("${r.container} · waiting for root", maxLines = 1) },
+                        label = { Text("Needs you") })
+                }
             }
             for (c in ordered(phone.containers)) {
                 item(key = c.name) { ContainerButton(c) { onOpen(c.name) } }
@@ -160,6 +173,38 @@ fun WatchContainerScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * A root request waiting on the phone. The watch shows too little of the command to judge it, so it can
+ * only refuse it or leave it for the phone, which shows all of it.
+ */
+@Composable
+fun WatchRootScreen(
+    device: String,
+    r: WatchRootRequest,
+    onRefuse: () -> Unit,
+    onLater: () -> Unit,
+    state: ScalingLazyListState = rememberScalingLazyListState(),
+) {
+    ScalingLazyColumn(
+        Modifier.fillMaxSize(), state = state, autoCentering = null, contentPadding = ListPadding,
+    ) {
+        item {
+            Text("${r.container} wants to run a command as root", style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        }
+        if (r.command.isNotBlank()) item { Muted(r.command.take(120)) }
+        item { Muted("Check it on $device") }
+        item {
+            Button(onClick = onRefuse, modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError,
+                ),
+                label = { Text("Don't run") })
+        }
+        item { FilledTonalButton(onClick = onLater, modifier = Modifier.fillMaxWidth(), label = { Text("Later") }) }
     }
 }
 

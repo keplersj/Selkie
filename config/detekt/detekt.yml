@@ -1,0 +1,16 @@
+# detekt settings on top of detekt's defaults (https://detekt.dev/docs/rules/). CI runs detekt from
+# .github/workflows/qa.yml with this file and baseline.xml, which lists the findings main already had,
+# so only new findings are reported. Regenerate the baseline after a cleanup with:
+#   java -jar detekt-cli-all.jar --config config/detekt/detekt.yml --build-upon-default-config \
+#     --input app/src,wear/src,shared --baseline config/detekt/baseline.xml --create-baseline
+
+naming:
+  FunctionNaming:
+    # Composables are PascalCase by convention (https://developer.android.com/develop/ui/compose/api-guidelines).
+    ignoreAnnotated: ["Composable"]
+
+style:
+  MagicNumber:
+    # Compose previews and tests are full of sizes and sample values.
+    ignoreAnnotated: ["Preview", "Composable"]
+    excludes: ["**/test/**", "**/androidTest/**"]

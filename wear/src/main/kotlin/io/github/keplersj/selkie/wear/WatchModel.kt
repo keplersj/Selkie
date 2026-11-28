@@ -2,9 +2,18 @@ package io.github.keplersj.selkie.wear
 
 import io.github.keplersj.selkie.watch.WatchContainer
 import io.github.keplersj.selkie.watch.WatchDesktop
+import io.github.keplersj.selkie.watch.WatchRootRequest
 
-/** What the phone last published: its name, its containers, and the node to send requests to. */
-data class PhoneState(val device: String, val containers: List<WatchContainer>, val node: String? = null)
+/**
+ * What the phone last published: its name, its containers, the root requests waiting there, and the node to
+ * send requests to.
+ */
+data class PhoneState(
+    val device: String,
+    val containers: List<WatchContainer>,
+    val node: String? = null,
+    val rootRequests: List<WatchRootRequest> = emptyList(),
+)
 
 /** The big line at the top of the list. */
 internal fun runningHeadline(containers: List<WatchContainer>): String {

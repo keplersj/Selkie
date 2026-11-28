@@ -37,8 +37,10 @@ import io.github.keplersj.selkie.engine.containers
 import io.github.keplersj.selkie.engine.engineEnvFrom
 import io.github.keplersj.selkie.engine.setRootModeEnabled
 import io.github.keplersj.selkie.engine.shellSpec
+import io.github.keplersj.selkie.link.AdbRequests
 import io.github.keplersj.selkie.link.Appearance
 import io.github.keplersj.selkie.link.AppearanceWatcher
+import io.github.keplersj.selkie.link.BatteryWatcher
 import io.github.keplersj.selkie.link.GuestLink
 import io.github.keplersj.selkie.link.GuestLinkMessage
 import io.github.keplersj.selkie.link.OpenUri
@@ -137,11 +139,25 @@ class SessionService : Service() {
         noticeRestart()
         refreshStatus()
         watchLink = WatchLink.start(this, state, scope,
-            onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) })
+            onStopDesktop = { stopDesktop() }, onCloseTerminals = { closeTerminals(it) },
+            onRefuseRoot = { container, id ->
+                // Message callbacks may arrive off the main thread.
+                scope.launch {
+                    _state.value.rootRequests.firstOrNull { it.container == container && it.id == id }
+                        ?.let { answerRootRequest(it, RootChoice.Deny) }
+                }
+            })
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopEverything(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_DENY_ROOT) {
+            val container = intent.getStringExtra(EXTRA_CONTAINER)
+            val id = intent.getLongExtra(EXTRA_REQUEST, -1)
+            _state.value.rootRequests.firstOrNull { it.container == container && it.id == id }
+                ?.let { answerRootRequest(it, RootChoice.Deny) }
+            if (!foreground) return START_NOT_STICKY
+        }
         // Entering the foreground promptly satisfies startForegroundService().
         updateForeground(force = true)
         return START_NOT_STICKY
@@ -154,6 +170,7 @@ class SessionService : Service() {
         // Selkie ended these itself, so the next start has nothing to explain.
         prefs.edit().remove(KEY_RUNNING).apply()
         stopAllServices()
+        getSystemService(NotificationManager::class.java).cancel(ROOT_NOTIF_ID)
         watchLink?.close()
         scope.cancel()
         super.onDestroy()
@@ -602,9 +619,9 @@ class SessionService : Service() {
     @Volatile private var desktop: Process? = null
     /** The desktop's sound on Android, while the desktop runs. */
     @Volatile private var audio: GuestAudio? = null
-    /** The desktop's channel to Android (`droidc host-link`), while the desktop runs. */
-    @Volatile private var link: GuestLink? = null
+    /** Follows Android's look while any container's host-link runs. */
     private var appearanceWatcher: AppearanceWatcher? = null
+    private var batteryWatcher: BatteryWatcher? = null
     private var desktopJob: Job? = null
 
     /** The running compositor, for the view that shows it. */
@@ -670,7 +687,6 @@ class SessionService : Service() {
                         overlays = GuestFiles.prepareIdentity(env, spec) + GuestFiles.prepareSelinuxHiding(env),
                         guestEnv = GuestFiles.guestEnv(env, spec))
                     ensureServices(env, b)
-                    startLink(b, env)
                     val (sw, sh) = DisplayScale.sessionSize(width, height)
                     val inv = if (app != null) b.app(app.argv) else b.graphicalSession(sw, sh, scale)
                     // An app runs in app mode at the display's scale, so adaptive apps get about the
@@ -690,7 +706,7 @@ class SessionService : Service() {
                 // Throwable: a missing native library is an Error, and it must end up on screen too.
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.w(TAG, "desktop failed to start", e)
-                stopLink()
+                _keepAwake.value = false
                 stopCompositor()
                 _state.update { it.copy(desktop = DesktopState.Failed(e.message ?: e.toString(), logTail(env)),
                     desktopContainer = null) }
@@ -708,7 +724,8 @@ class SessionService : Service() {
             if (desktop === p) {
                 desktop = null
                 stopAudio()
-                stopLink()
+                // The link stays for the container's terminals; the desktop's idle inhibitor went with it.
+                _keepAwake.value = false
                 stopCompositor()
                 // SIGKILL that Selkie didn't send: Android closed it, which the containers list explains.
                 val killed = code != 0 && isSigkill(code)
@@ -734,7 +751,7 @@ class SessionService : Service() {
         desktopJob?.cancel()
         desktopJob = null
         stopAudio()
-        stopLink()
+        _keepAwake.value = false
         if (p != null) {
             p.destroy()
             Thread { if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.destroyForcibly() }.start()
@@ -749,40 +766,49 @@ class SessionService : Service() {
     /** Bytes of the desktop's sound received from the guest and played on Android so far, or null without a desktop. */
     fun audioBytes(): Pair<Long, Long>? = audio?.let { it.received to it.played }
 
-    /** Starts `droidc host-link` for the desktop; Android's state goes in each time it says `ready`. */
-    private fun startLink(b: ProotCommandBuilder, env: EngineEnv) {
-        stopLink()
-        link = GuestLink(b.hostLink(), env.hostLinkLog, ::onLinkMessage).apply { start() }
+    /**
+     * Starts `droidc host-link` for a container's sessions, terminals and desktop alike: the desktop follows
+     * Android's look through it, and `droidc adb` in any session reaches Android through it.
+     */
+    private fun startLink(b: ProotCommandBuilder, env: EngineEnv): GuestLink {
+        val container = env.container
+        val link = GuestLink(b.hostLink(), env.hostLinkLog) { m -> onLinkMessage(container, m) }.apply { start() }
         scope.launch(Dispatchers.Main) {
-            if (link != null && appearanceWatcher == null)
+            if (appearanceWatcher == null)
                 appearanceWatcher = AppearanceWatcher(this@SessionService) { sendAppearance() }.apply { start() }
+            if (batteryWatcher == null)
+                batteryWatcher = BatteryWatcher(this@SessionService) { line -> sendToLinks(line) }.apply { start() }
         }
+        return link
     }
 
-    private fun stopLink() {
-        link?.stop()
-        link = null
-        _keepAwake.value = false
-        scope.launch(Dispatchers.Main) { appearanceWatcher?.stop(); appearanceWatcher = null }
-    }
+    private fun linkOf(container: String): GuestLink? = synchronized(services) { services[container]?.link }
 
-    private fun onLinkMessage(m: GuestLinkMessage) {
+    private fun onLinkMessage(container: String, m: GuestLinkMessage) {
         when (m.kind) {
-            "ready" -> {
-                sendAppearance()
+            "ready" -> linkOf(container)?.let { l ->
+                l.send(Appearance.read(this).toLine())
                 // Android locks and blanks the device; GNOME's own lock would be a second one.
-                link?.send("""{"kind":"screen-lock","by_android":true}""")
+                l.send("""{"kind":"screen-lock","by_android":true}""")
+                batteryWatcher?.current?.let { l.send(it) }
             }
             "keep-awake" -> _keepAwake.value = m.body["on"]?.jsonPrimitive?.booleanOrNull == true
             "open-uri" -> OpenUri.uriFrom(m)?.let { uri ->
                 scope.launch(Dispatchers.Main) { OpenUri.open(this@SessionService, uri) }
             }
+            else -> AdbRequests.handle(this, container, m) { line -> linkOf(container)?.send(line) }
         }
     }
 
     private fun sendAppearance() {
-        val l = link ?: return
-        l.send(Appearance.read(this).toLine())
+        if (synchronized(services) { services.values.none { it.link != null } }) return
+        sendToLinks(Appearance.read(this).toLine())
+    }
+
+    /** Sends [line] to every container's link: Android's look and battery are the same for all of them. */
+    private fun sendToLinks(line: String) {
+        val links = synchronized(services) { services.values.mapNotNull { it.link } }
+        links.forEach { it.send(line) }
     }
 
     /** Night mode, font size and the wallpaper's accent arrive here; the desktop follows them. */
@@ -802,10 +828,11 @@ class SessionService : Service() {
      * Host processes a container's sessions share, started with its first terminal or desktop and stopped
      * once it has neither: the `droidc user-services` keeper (one session bus or `systemd --user` for all
      * of them, which no single session's proot can hold, since `--kill-on-exit` takes it along) and the
-     * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither.
+     * `droidc spawn-server` behind the guest's sudo/su/pkexec. Root-mode terminals use neither. [link]
+     * restarts itself, so it doesn't count toward [alive].
      */
-    private class ContainerServices(val keeper: Process?, val spawner: Process?) {
-        val alive: Boolean get() = keeper?.isAlive != false && spawner?.isAlive != false
+    private class ContainerServices(val keeper: Process?, val spawner: RootAskHost?, val link: GuestLink?) {
+        val alive: Boolean get() = keeper?.isAlive != false && spawner?.process?.isAlive != false
     }
     /** By container; guarded by itself, since sessions start on IO threads. */
     private val services = HashMap<String, ContainerServices>()
@@ -821,9 +848,55 @@ class SessionService : Service() {
             cur?.let { stopServices(it, wait = true) }
             services[env.container] = ContainerServices(
                 keeper = startService(b.userServices(), env.userServicesLog),
-                spawner = if (b.hasShims) startService(b.spawnServer(), env.spawnerLog) else null,
+                spawner = if (b.hasShims) startSpawner(env, b) else null,
+                link = startLink(b, env),
             )
         }
+    }
+
+    /**
+     * The container's spawn-server in ask mode: each root request shows on [RootRequestScreen] and in a
+     * notification until it is answered, the guest gives up or the spawner stops.
+     */
+    private fun startSpawner(env: EngineEnv, b: ProotCommandBuilder): RootAskHost? {
+        val container = env.container
+        var host: RootAskHost? = null
+        return try {
+            RootAskHost.start(b.spawnServer(), env.spawnerLog, container, b.rootfs,
+                onEvent = { e ->
+                    when (e) {
+                        is SpawnerEvent.Asked -> _state.update { st ->
+                            st.copy(rootRequests = st.rootRequests.filterNot { it.container == container && it.id == e.request.id } + e.request)
+                        }
+                        is SpawnerEvent.Settled -> _state.update { st ->
+                            st.copy(rootRequests = st.rootRequests.filterNot { it.container == container && it.id == e.id })
+                        }
+                    }
+                    scope.launch { updateRootNotification() }
+                },
+                onEnd = {
+                    // Only the spawner that asked them can answer them; a newer one for the container asks its own.
+                    val current = synchronized(services) { services[container]?.spawner }
+                    if (current == null || current === host) {
+                        _state.update { st -> st.copy(rootRequests = st.rootRequests.filterNot { it.container == container }) }
+                        scope.launch { updateRootNotification() }
+                    }
+                },
+            ).also { host = it }
+        } catch (e: Exception) {
+            // Terminals still work; sudo says it can't reach the spawner.
+            android.util.Log.w(TAG, "cannot start the spawner", e)
+            null
+        }
+    }
+
+    /** Answers a root request on the spawner that asked it. Refusing also ends a remembered allow. */
+    fun answerRootRequest(request: RootRequest, choice: RootChoice) {
+        val host = synchronized(services) { services[request.container]?.spawner }
+        _state.update { st -> st.copy(rootRequests = st.rootRequests.filterNot { it.container == request.container && it.id == request.id }) }
+        updateRootNotification()
+        if (host == null) return
+        Thread { host.answer(request.id, choice) }.start()
     }
 
     private fun startService(inv: Invocation, log: File): Process? = try {
@@ -845,16 +918,27 @@ class SessionService : Service() {
         busy += starting.keys
         val idle = synchronized(services) { services.keys.filter { it !in busy }.map { services.remove(it)!! } }
         idle.forEach { stopServices(it, wait = false) }
+        stopAppearanceWatcherIfIdle()
     }
 
     private fun stopAllServices() {
         val all = synchronized(services) { services.values.toList().also { services.clear() } }
         all.forEach { stopServices(it, wait = false) }
+        stopAppearanceWatcherIfIdle()
     }
 
     /** Ends both processes; proot's `--kill-on-exit` takes the keeper's bus and user manager with it. */
+    private fun stopAppearanceWatcherIfIdle() {
+        if (synchronized(services) { services.isEmpty() })
+            scope.launch(Dispatchers.Main) {
+                appearanceWatcher?.stop(); appearanceWatcher = null
+                batteryWatcher?.stop(); batteryWatcher = null
+            }
+    }
+
     private fun stopServices(s: ContainerServices, wait: Boolean) {
-        val procs = listOfNotNull(s.keeper, s.spawner)
+        s.link?.stop()
+        val procs = listOfNotNull(s.keeper, s.spawner?.process)
         procs.forEach { it.destroy() }
         val reap = { procs.forEach { if (!it.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) it.destroyForcibly() } }
         if (wait) reap() else Thread(reap).start()
@@ -897,6 +981,38 @@ class SessionService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Selkie sessions",
             NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(ROOT_CHANNEL, "Root requests",
+            NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "A container asks to run a command as root"
+        })
+    }
+
+    /**
+     * One notification for the oldest waiting root request. It can only refuse: allowing happens on
+     * Selkie's own screen, which shows the whole command.
+     */
+    private fun updateRootNotification() {
+        val nm = getSystemService(NotificationManager::class.java)
+        val r = _state.value.rootRequests.firstOrNull()
+        if (r == null) { nm.cancel(ROOT_NOTIF_ID); return }
+        val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val deny = PendingIntent.getService(this, 3, Intent(this, SessionService::class.java)
+            .setAction(ACTION_DENY_ROOT).putExtra(EXTRA_CONTAINER, r.container).putExtra(EXTRA_REQUEST, r.id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val more = _state.value.rootRequests.size - 1
+        val n = NotificationCompat.Builder(this, ROOT_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle(rootRequestTitle(r))
+            .setContentText(r.commandLine + if (more > 0) " (and $more more)" else "")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                "${r.commandLine}\nOpen Selkie to check it and allow it, or refuse it here."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOngoing(true).setOnlyAlertOnce(false).setContentIntent(open)
+            .addAction(0, "Don't run", deny)
+            .build()
+        nm.notify(ROOT_NOTIF_ID, n)
     }
 
     /**
@@ -971,6 +1087,11 @@ class SessionService : Service() {
 
     companion object {
         const val ACTION_STOP = "io.github.keplersj.selkie.STOP"
+        const val ACTION_DENY_ROOT = "io.github.keplersj.selkie.DENY_ROOT"
+        const val EXTRA_CONTAINER = "container"
+        const val EXTRA_REQUEST = "request"
+        private const val ROOT_CHANNEL = "root"
+        private const val ROOT_NOTIF_ID = 2
         private const val UPTIME_REFRESH_MS = 1000L
         private const val TAG = "SelkieDesktop"
         private const val CHANNEL = "sessions"

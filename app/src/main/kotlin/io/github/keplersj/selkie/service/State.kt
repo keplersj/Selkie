@@ -97,6 +97,8 @@ data class ServiceState(
     val rootProbing: Boolean = false,
     /** Last root-mode message (grant result, errors). */
     val rootMessage: String? = null,
+    /** Guest commands waiting for the person to allow them as root, oldest first. */
+    val rootRequests: List<RootRequest> = emptyList(),
     /** Containers whose sessions Android closed, until dismissed. */
     val closed: List<Closed> = emptyList(),
 )
