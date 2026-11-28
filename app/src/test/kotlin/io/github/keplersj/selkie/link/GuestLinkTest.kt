@@ -83,4 +83,20 @@ class GuestLinkTest {
         assertEquals(50, BatteryState.of(true, 128, 256, 3, 0).percent)
         assertFalse('\n' in low.toLine())
     }
+
+    @Test fun networkLineFollowsTheDefaultNetwork() {
+        val wifi = NetworkState.of(validated = true, portal = false, notMetered = true, wifi = true)
+        assertEquals(
+            """{"kind":"network","connected":true,"validated":true,"portal":false,"metered":false,"transport":"wifi"}""",
+            wifi.toLine(),
+        )
+        val phone = NetworkState.of(validated = true, portal = false, notMetered = false, cellular = true)
+        assertTrue(phone.metered)
+        assertEquals("cellular", phone.transport)
+        // A VPN over Wi-Fi is the VPN.
+        assertEquals("vpn", NetworkState.of(true, false, true, wifi = true, vpn = true).transport)
+        val hotel = NetworkState.of(validated = false, portal = true, notMetered = true, wifi = true)
+        assertTrue(hotel.portal)
+        assertEquals("""{"kind":"network","connected":false}""", NetworkState.NONE.toLine())
+    }
 }
