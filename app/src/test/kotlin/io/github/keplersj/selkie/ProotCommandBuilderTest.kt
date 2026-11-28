@@ -34,6 +34,7 @@ class ProotCommandBuilderTest {
             "/usr/bin/droidc", "supervise", "--", "/bin/bash", "-l"), inv.argv)
         assertEquals("/lib/libproot-loader.so", inv.env["PROOT_LOADER"])
         assertEquals("/cache/proot-tmp", inv.env["PROOT_TMP_DIR"])
+        assertEquals("/files/proot-l2s", inv.env["PROOT_L2S_DIR"])
         assertEquals("/run/droidc/root", inv.env["DROIDC_ROOT"])
     }
 
@@ -75,6 +76,7 @@ class ProotCommandBuilderTest {
             server.argv.take(7))
         assertEquals(b.prootArgs(rootMode = true), launcher)
         assertEquals("/lib/libproot-loader.so", server.env["PROOT_LOADER"])
+        assertEquals("the sandboxes it starts keep their hard links in the same place", "/files/proot-l2s", server.env["PROOT_L2S_DIR"])
         assertNull("the server's own environment is the host's, not the guest's", server.env["DROIDC_ROOT"])
         // Selkie asks the person before each root command; only tests run it without asking.
         assertEquals("1", server.env["DROIDC_SPAWNER_ASK"])
